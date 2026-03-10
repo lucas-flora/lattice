@@ -12,8 +12,8 @@ describe('EventBus', () => {
   it('TestEventBus_EmitsTypedEvents', () => {
     const handler = vi.fn();
     bus.on('sim:tick', handler);
-    bus.emit('sim:tick', { generation: 42 });
-    expect(handler).toHaveBeenCalledWith({ generation: 42 });
+    bus.emit('sim:tick', { generation: 42, liveCellCount: 10 });
+    expect(handler).toHaveBeenCalledWith({ generation: 42, liveCellCount: 10 });
   });
 
   it('TestEventBus_MultipleListeners', () => {
@@ -21,7 +21,7 @@ describe('EventBus', () => {
     const handler2 = vi.fn();
     bus.on('sim:tick', handler1);
     bus.on('sim:tick', handler2);
-    bus.emit('sim:tick', { generation: 1 });
+    bus.emit('sim:tick', { generation: 1, liveCellCount: 0 });
     expect(handler1).toHaveBeenCalledOnce();
     expect(handler2).toHaveBeenCalledOnce();
   });
@@ -30,7 +30,7 @@ describe('EventBus', () => {
     const handler = vi.fn();
     bus.on('sim:tick', handler);
     bus.off('sim:tick', handler);
-    bus.emit('sim:tick', { generation: 1 });
+    bus.emit('sim:tick', { generation: 1, liveCellCount: 0 });
     expect(handler).not.toHaveBeenCalled();
   });
 
@@ -39,14 +39,14 @@ describe('EventBus', () => {
     const pauseHandler = vi.fn();
     bus.on('sim:tick', tickHandler);
     bus.on('sim:pause', pauseHandler);
-    bus.emit('sim:tick', { generation: 1 });
+    bus.emit('sim:tick', { generation: 1, liveCellCount: 0 });
     expect(tickHandler).toHaveBeenCalledOnce();
     expect(pauseHandler).not.toHaveBeenCalled();
   });
 
   it('TestEventBus_EmitWithNoListeners_NoError', () => {
     // Should not throw even with no listeners registered
-    expect(() => bus.emit('sim:tick', { generation: 1 })).not.toThrow();
+    expect(() => bus.emit('sim:tick', { generation: 1, liveCellCount: 0 })).not.toThrow();
   });
 
   it('TestEventBus_TypeSafety_PayloadMatchesEventMap', () => {
@@ -55,6 +55,7 @@ describe('EventBus', () => {
 
     const tickHandler = (payload: EngineEventMap['sim:tick']) => {
       expect(typeof payload.generation).toBe('number');
+      expect(typeof payload.liveCellCount).toBe('number');
     };
 
     const presetHandler = (payload: EngineEventMap['sim:presetLoaded']) => {
@@ -66,7 +67,7 @@ describe('EventBus', () => {
     bus.on('sim:tick', tickHandler);
     bus.on('sim:presetLoaded', presetHandler);
 
-    bus.emit('sim:tick', { generation: 5 });
+    bus.emit('sim:tick', { generation: 5, liveCellCount: 3 });
     bus.emit('sim:presetLoaded', { name: 'test', width: 10, height: 10 });
   });
 
@@ -75,7 +76,7 @@ describe('EventBus', () => {
     bus.on('sim:tick', handler);
     bus.on('sim:pause', handler);
     bus.clear();
-    bus.emit('sim:tick', { generation: 1 });
+    bus.emit('sim:tick', { generation: 1, liveCellCount: 0 });
     bus.emit('sim:pause', {});
     expect(handler).not.toHaveBeenCalled();
   });
@@ -122,7 +123,7 @@ describe('EventBus', () => {
     bus.on('edit:undo', handlers.editUndo);
     bus.on('edit:redo', handlers.editRedo);
 
-    bus.emit('sim:tick', { generation: 1 });
+    bus.emit('sim:tick', { generation: 1, liveCellCount: 0 });
     bus.emit('sim:play', {});
     bus.emit('sim:pause', {});
     bus.emit('sim:reset', {});

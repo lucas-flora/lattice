@@ -7,15 +7,21 @@
 
 /** Map of all engine events to their payload types */
 export interface EngineEventMap {
-  'sim:tick': { generation: number };
+  'sim:tick': { generation: number; liveCellCount: number };
   'sim:play': Record<string, never>;
   'sim:pause': Record<string, never>;
   'sim:reset': Record<string, never>;
   'sim:presetLoaded': { name: string; width: number; height: number };
+  'sim:speedChange': { fps: number };
+  'sim:clear': Record<string, never>;
+  'sim:stepBack': { generation: number };
+  'sim:seek': { generation: number };
   'view:change': { zoom?: number; cameraX?: number; cameraY?: number };
   'ui:change': { isTerminalOpen?: boolean; isParamPanelOpen?: boolean };
   'edit:undo': Record<string, never>;
   'edit:redo': Record<string, never>;
+  'edit:draw': { x: number; y: number };
+  'edit:erase': { x: number; y: number };
 }
 
 /** Valid event names */

@@ -1,5 +1,5 @@
 /**
- * Preset commands: load.
+ * Preset commands: load, list.
  *
  * Loads built-in or user presets through the CommandRegistry.
  */
@@ -7,6 +7,9 @@
 import { z } from 'zod';
 import type { CommandRegistry } from '../CommandRegistry';
 import type { SimulationController } from '../SimulationController';
+import { BUILTIN_PRESET_NAMES } from '../../engine/preset/builtinPresets';
+
+const NoParams = z.object({}).describe('none');
 
 const LoadPresetParams = z.object({
   name: z.string(),
@@ -25,6 +28,19 @@ export function registerPresetCommands(
       const { name } = params as z.infer<typeof LoadPresetParams>;
       controller.loadPreset(name);
       return { success: true, data: { name } };
+    },
+  });
+
+  registry.register({
+    name: 'preset.list',
+    description: 'List all available built-in presets',
+    category: 'preset',
+    params: NoParams,
+    execute: async () => {
+      return {
+        success: true,
+        data: { presets: [...BUILTIN_PRESET_NAMES] },
+      };
     },
   });
 }

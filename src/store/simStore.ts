@@ -20,6 +20,10 @@ export interface SimState {
   gridWidth: number;
   /** Grid height in cells */
   gridHeight: number;
+  /** Number of live (non-zero) cells */
+  liveCellCount: number;
+  /** Current simulation speed in FPS (0 = max) */
+  speed: number;
 }
 
 /** Default initial state */
@@ -29,6 +33,8 @@ const initialSimState: SimState = {
   activePreset: null,
   gridWidth: 0,
   gridHeight: 0,
+  liveCellCount: 0,
+  speed: 10,
 };
 
 export const useSimStore = create<SimState>()(
@@ -47,6 +53,12 @@ export const simStoreActions = {
     useSimStore.setState({ activePreset: name, gridWidth: width, gridHeight: height });
   },
   resetState: (): void => {
-    useSimStore.setState({ generation: 0, isRunning: false });
+    useSimStore.setState({ generation: 0, isRunning: false, liveCellCount: 0 });
+  },
+  setLiveCellCount: (liveCellCount: number): void => {
+    useSimStore.setState({ liveCellCount });
+  },
+  setSpeed: (speed: number): void => {
+    useSimStore.setState({ speed });
   },
 };

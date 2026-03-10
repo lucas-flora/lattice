@@ -65,7 +65,7 @@ describe('SimulationController', () => {
     controller.loadPreset('conways-gol');
     controller.step();
 
-    expect(handler).toHaveBeenCalledWith({ generation: 1 });
+    expect(handler).toHaveBeenCalledWith(expect.objectContaining({ generation: 1 }));
   });
 
   it('TestSimulationController_Reset_ResetsGeneration', () => {

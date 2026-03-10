@@ -20,9 +20,11 @@ describe('wireStores', () => {
       activePreset: null,
       gridWidth: 0,
       gridHeight: 0,
+      liveCellCount: 0,
+      speed: 10,
     });
     useViewStore.setState({ zoom: 1, cameraX: 0, cameraY: 0 });
-    useUiStore.setState({ isTerminalOpen: false, isParamPanelOpen: false });
+    useUiStore.setState({ isTerminalOpen: false, isParamPanelOpen: false, brushSize: 1 });
   });
 
   afterEach(() => {
@@ -31,8 +33,13 @@ describe('wireStores', () => {
   });
 
   it('TestWireStores_SimTick_UpdatesGeneration', () => {
-    bus.emit('sim:tick', { generation: 42 });
+    bus.emit('sim:tick', { generation: 42, liveCellCount: 100 });
     expect(useSimStore.getState().generation).toBe(42);
+  });
+
+  it('TestWireStores_SimTick_UpdatesLiveCellCount', () => {
+    bus.emit('sim:tick', { generation: 1, liveCellCount: 250 });
+    expect(useSimStore.getState().liveCellCount).toBe(250);
   });
 
   it('TestWireStores_SimPlay_SetsIsRunning', () => {
@@ -55,11 +62,23 @@ describe('wireStores', () => {
   });
 
   it('TestWireStores_SimReset_ResetsState', () => {
-    useSimStore.setState({ generation: 100, isRunning: true });
+    useSimStore.setState({ generation: 100, isRunning: true, liveCellCount: 500 });
     bus.emit('sim:reset', {});
     const state = useSimStore.getState();
     expect(state.generation).toBe(0);
     expect(state.isRunning).toBe(false);
+    expect(state.liveCellCount).toBe(0);
+  });
+
+  it('TestWireStores_SimSpeedChange_UpdatesSpeed', () => {
+    bus.emit('sim:speedChange', { fps: 30 });
+    expect(useSimStore.getState().speed).toBe(30);
+  });
+
+  it('TestWireStores_SimClear_ResetsLiveCellCount', () => {
+    useSimStore.setState({ liveCellCount: 500 });
+    bus.emit('sim:clear', {});
+    expect(useSimStore.getState().liveCellCount).toBe(0);
   });
 
   it('TestWireStores_ViewChange_UpdatesViewStore', () => {
@@ -109,8 +128,8 @@ describe('wireStores', () => {
     // Emit events in sequence
     bus.emit('sim:presetLoaded', { name: 'gol', width: 64, height: 64 });
     bus.emit('sim:play', {});
-    bus.emit('sim:tick', { generation: 1 });
-    bus.emit('sim:tick', { generation: 2 });
+    bus.emit('sim:tick', { generation: 1, liveCellCount: 50 });
+    bus.emit('sim:tick', { generation: 2, liveCellCount: 60 });
     bus.emit('view:change', { zoom: 2 });
     bus.emit('ui:change', { isTerminalOpen: true });
     bus.emit('sim:pause', {});
@@ -127,6 +146,7 @@ describe('wireStores', () => {
     expect(useSimStore.getState().generation).toBe(2);
     expect(useSimStore.getState().isRunning).toBe(false);
     expect(useSimStore.getState().activePreset).toBe('gol');
+    expect(useSimStore.getState().liveCellCount).toBe(60);
     expect(useViewStore.getState().zoom).toBe(2);
     expect(useUiStore.getState().isTerminalOpen).toBe(true);
 
@@ -138,14 +158,14 @@ describe('wireStores', () => {
 
   it('TestWireStores_Unsubscribe_StopsUpdates', () => {
     // Emit an event -- store should update
-    bus.emit('sim:tick', { generation: 10 });
+    bus.emit('sim:tick', { generation: 10, liveCellCount: 100 });
     expect(useSimStore.getState().generation).toBe(10);
 
     // Unsubscribe
     unsubscribe();
 
     // Emit another event -- store should NOT update
-    bus.emit('sim:tick', { generation: 99 });
+    bus.emit('sim:tick', { generation: 99, liveCellCount: 200 });
     expect(useSimStore.getState().generation).toBe(10);
   });
 });
