@@ -110,6 +110,10 @@ pnpm vitest run --dir src && \
 | ASST-05 Typo correction | `typoDetector.test.ts` (13 tests: Levenshtein, detection) | `ai-surface.test.ts` (real commands) | `ai-surface-workflow.test.ts` (typo correction flow) | Covered |
 | ASST-06 Personality config | `personality.test.ts` (8 tests: config, prompt building) | `ai-surface.test.ts` (prompt with context) | — | Covered |
 | ASST-07 Non-intrusive behavior | `aiService.test.ts` (only on input), `contextBuilder.test.ts` (no grid state) | `ai-surface.test.ts` (no grid in payload) | `ai-surface-workflow.test.ts` (no grid state leaked) | Covered |
+| RNDR-02 Three.js 3D renderer | `advanced-rendering.test.ts` (8 tests: 3D grid, voxels, indexToCoord, BoxGeometry), `orbit-camera-controller.test.ts` (12 tests) | `advanced-rendering.test.ts` (3D detection via pipeline) | `advanced-rendering-workflow.test.ts` (3D orbit controls) | Covered |
+| RNDR-08 Multi-viewport | `advanced-rendering.test.ts` (3 tests: independent cameras, shared grid, viewport count), `orbit-camera-controller.test.ts` | `advanced-rendering.test.ts` (view.split command) | `advanced-rendering-workflow.test.ts` (split + independent cameras) | Covered |
+| RNDR-09 Fullscreen per viewport | `advanced-rendering.test.ts` (2 tests: store toggle, split exits fullscreen) | `advanced-rendering.test.ts` (view.fullscreen command, HUD hidden) | `advanced-rendering-workflow.test.ts` (fullscreen toggle workflow) | Covered |
+| RNDR-10 3D camera controls | `orbit-camera-controller.test.ts` (12 tests: orbit, zoom, pan, fit, resize, state) | `advanced-rendering.test.ts` (3D camera integration) | `advanced-rendering-workflow.test.ts` (orbit + zoom + pan) | Covered |
 
 ## Phase Coverage Log
 
@@ -207,3 +211,17 @@ pnpm vitest run --dir src && \
 - Typo detection via Levenshtein distance routes misspelled commands to AI for correction (ASST-05)
 - Centralized personality config in src/ai/personality.ts with system prompt template (ASST-06)
 - Non-intrusive: AI only responds to direct terminal input, no interruptions (ASST-07)
+
+### Phase 9: Advanced Rendering (2026-03-10)
+- 27 new JS/TS unit tests + 6 integration + 5 scenario = 514 total (with Phases 1-8, 461 JS/TS + 16 Rust + 28 integration + 25 scenario)
+- All quality gates pass: tsc --noEmit, vitest
+- Renderer suites: `advanced-rendering.test.ts` (15), `orbit-camera-controller.test.ts` (12)
+- Integration: `advanced-rendering.test.ts` (6) -- view.split, view.fullscreen, timeline scrub via seek, HUD hidden in fullscreen, command count
+- Scenarios: `advanced-rendering-workflow.test.ts` (5) -- multi-viewport + cameras, 3D orbit controls, timeline reverse playback, fullscreen toggle, full workflow
+- LatticeRenderer extended with '3d' render mode: BoxGeometry voxels, only-alive filtering, MeshLambertMaterial + lighting
+- OrbitCameraController: spherical coordinates, orbit/zoom/pan, fit-to-grid, state persistence
+- Multi-viewport: uiStore.viewportCount (1|2), independent CameraController per viewport, shared Grid buffers (zero-copy)
+- Timeline scrubber: simStore.maxGeneration tracks high-water mark, TimelineScrubber component, debounced seek
+- Fullscreen mode: uiStore.fullscreenViewportId, Fullscreen API, HUD/ControlBar hidden when active, Escape to exit
+- 23 commands registered (2 new: view.split, view.fullscreen)
+- Unified InstancedMesh path for 1D/2D/3D -- no second render system (RNDR-04)

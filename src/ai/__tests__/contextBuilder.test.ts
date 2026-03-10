@@ -19,6 +19,7 @@ function makeSimState(overrides: Partial<SimState> = {}): SimState {
     gridHeight: 128,
     liveCellCount: 500,
     speed: 10,
+    maxGeneration: 42,
     ...overrides,
   };
 }

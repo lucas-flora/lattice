@@ -59,7 +59,11 @@ describe('Command Definitions', () => {
     expect(names).toContain('edit.brushSize');
     expect(names).toContain('preset.list');
 
-    expect(list.length).toBe(21);
+    // Phase 9 new commands
+    expect(names).toContain('view.split');
+    expect(names).toContain('view.fullscreen');
+
+    expect(list.length).toBe(23);
   });
 
   it('TestCommandDefinitions_SimPlay_StartsSimulation', async () => {

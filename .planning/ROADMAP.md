@@ -20,7 +20,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 6: Surfaces** - Simulation controls, CLI terminal, GUI panels, cell drawing — all wired to CommandRegistry simultaneously
 - [x] **Phase 7: WASM Acceleration** - Rust rule execution, SharedArrayBuffer bridge, whole-tick API
 - [x] **Phase 8: AI Surface** - OpenAI assistant in terminal, ContextBuilder, Supabase RAG, command execution
-- [ ] **Phase 9: Advanced Rendering** - Multi-viewport, 3D grid view, reverse playback, timeline scrubbing, fullscreen
+- [x] **Phase 9: Advanced Rendering** - Multi-viewport, 3D grid view, reverse playback, timeline scrubbing, fullscreen
 - [ ] **Phase 10: Polish** - Parameter graphs, HUD menus, hotkeys, screenshot export, docs, performance pass
 
 ## Phase Details
@@ -157,6 +157,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 5. Command Hub | 3/3 | Complete | 2026-03-10 |
 | 6. Surfaces | 3/3 | Complete | 2026-03-10 |
 | 7. WASM Acceleration | 3/3 | Complete | 2026-03-10 |
-| 8. AI Surface | 0/TBD | Not started | - |
-| 9. Advanced Rendering | 0/TBD | Not started | - |
+| 8. AI Surface | Complete | Complete | 2026-03-10 |
+| 9. Advanced Rendering | Complete | Complete | 2026-03-10 |
 | 10. Polish | 0/TBD | Not started | - |
