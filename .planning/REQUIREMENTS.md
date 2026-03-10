@@ -98,13 +98,13 @@ Requirements for v1.0 release. Each maps to roadmap phases.
 
 ### AI Assistant
 
-- [ ] **ASST-01**: OpenAI API integration (GPT-4o) living in the terminal
-- [ ] **ASST-02**: Full app state context at all times (user focus, settings, parameters, rules, recent actions, available options)
-- [ ] **ASST-03**: Supabase RAG — embeddings of all docs, CA reference material, tool lists, formulas
-- [ ] **ASST-04**: Can call CLI commands on user's behalf via CommandRegistry
-- [ ] **ASST-05**: Detects misspelled/mangled commands and corrects them, explaining what it did
-- [ ] **ASST-06**: Centralized personality config file with behavior tuning levers
-- [ ] **ASST-07**: Stays out of the way unless needed — never interrupts the user
+- [x] **ASST-01**: OpenAI API integration (GPT-4o) living in the terminal
+- [x] **ASST-02**: Full app state context at all times (user focus, settings, parameters, rules, recent actions, available options)
+- [x] **ASST-03**: Supabase RAG — embeddings of all docs, CA reference material, tool lists, formulas
+- [x] **ASST-04**: Can call CLI commands on user's behalf via CommandRegistry
+- [x] **ASST-05**: Detects misspelled/mangled commands and corrects them, explaining what it did
+- [x] **ASST-06**: Centralized personality config file with behavior tuning levers
+- [x] **ASST-07**: Stays out of the way unless needed — never interrupts the user
 
 ### GUI & Polish
 
@@ -222,13 +222,13 @@ Which phases cover which requirements. Updated during roadmap creation.
 | GUIP-01 | Phase 6 | Pending |
 | RULE-03 | Phase 7 | Complete |
 | RULE-04 | Phase 7 | Complete |
-| ASST-01 | Phase 8 | Pending |
-| ASST-02 | Phase 8 | Pending |
-| ASST-03 | Phase 8 | Pending |
-| ASST-04 | Phase 8 | Pending |
-| ASST-05 | Phase 8 | Pending |
-| ASST-06 | Phase 8 | Pending |
-| ASST-07 | Phase 8 | Pending |
+| ASST-01 | Phase 8 | Complete |
+| ASST-02 | Phase 8 | Complete |
+| ASST-03 | Phase 8 | Complete |
+| ASST-04 | Phase 8 | Complete |
+| ASST-05 | Phase 8 | Complete |
+| ASST-06 | Phase 8 | Complete |
+| ASST-07 | Phase 8 | Complete |
 | RNDR-02 | Phase 9 | Pending |
 | RNDR-08 | Phase 9 | Pending |
 | RNDR-09 | Phase 9 | Pending |
