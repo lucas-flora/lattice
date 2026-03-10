@@ -1,66 +1,154 @@
+/**
+ * Lattice main page.
+ *
+ * Renders the SimulationViewport with a live cellular automaton simulation.
+ * Supports switching between Conway's Game of Life (2D) and Rule 110 (1D)
+ * to demonstrate the unified renderer path (RNDR-04).
+ */
+
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
-import type { WorkerInMessage, WorkerOutMessage } from '@/engine/worker/protocol';
+import { useState, useCallback, useMemo } from 'react';
+import { SimulationViewport } from '@/components/viewport/SimulationViewport';
+import { loadPresetOrThrow } from '@/engine/preset/loader';
+
+// Conway's Game of Life preset (inlined for browser use -- no fs access)
+const CONWAYS_GOL_YAML = `
+schema_version: "1"
+meta:
+  name: "Conway's Game of Life"
+  author: "John Conway"
+  description: "The classic cellular automaton. Cells live or die based on neighbor count."
+  tags: ["classic", "2d", "binary"]
+grid:
+  dimensionality: "2d"
+  width: 128
+  height: 128
+  topology: "toroidal"
+cell_properties:
+  - name: "alive"
+    type: "bool"
+    default: 0
+    role: "input_output"
+rule:
+  type: "typescript"
+  compute: |
+    const alive = ctx.cell.alive;
+    const liveNeighbors = ctx.neighbors.filter(n => n.alive === 1).length;
+    if (alive === 1) {
+      return { alive: (liveNeighbors === 2 || liveNeighbors === 3) ? 1 : 0 };
+    }
+    return { alive: liveNeighbors === 3 ? 1 : 0 };
+visual_mappings:
+  - property: "alive"
+    channel: "color"
+    mapping:
+      "0": "#000000"
+      "1": "#00ff00"
+`;
+
+// Rule 110 preset (inlined for browser use)
+const RULE_110_YAML = `
+schema_version: "1"
+meta:
+  name: "Rule 110"
+  author: "Stephen Wolfram"
+  description: "1D elementary cellular automaton Rule 110 -- proven Turing-complete."
+  tags: ["1d", "elementary", "turing-complete"]
+grid:
+  dimensionality: "1d"
+  width: 256
+  topology: "finite"
+cell_properties:
+  - name: "state"
+    type: "bool"
+    default: 0
+    role: "input_output"
+rule:
+  type: "typescript"
+  compute: |
+    const c = ctx.cell.state ? 1 : 0;
+    const left = ctx.neighbors.length > 0 ? (ctx.neighbors[0].state ? 1 : 0) : 0;
+    const right = ctx.neighbors.length > 1 ? (ctx.neighbors[1].state ? 1 : 0) : 0;
+    const pattern = (left << 2) | (c << 1) | right;
+    const rule110 = 0b01101110;
+    return { state: (rule110 >> pattern) & 1 };
+visual_mappings:
+  - property: "state"
+    channel: "color"
+    mapping:
+      "0": "#ffffff"
+      "1": "#000000"
+`;
+
+type PresetKey = 'gol' | 'rule110';
 
 export default function Home() {
   const [generation, setGeneration] = useState(0);
-  const [status, setStatus] = useState<'idle' | 'initialized' | 'running'>('idle');
-  const workerRef = useRef<Worker | null>(null);
+  const [activePreset, setActivePreset] = useState<PresetKey>('gol');
 
-  useEffect(() => {
-    // Create Worker using the URL pattern supported by Turbopack/webpack
-    const worker = new Worker(
-      new URL('../engine/worker/simulation.worker.ts', import.meta.url),
-    );
-    workerRef.current = worker;
+  const preset = useMemo(() => {
+    return activePreset === 'gol'
+      ? loadPresetOrThrow(CONWAYS_GOL_YAML)
+      : loadPresetOrThrow(RULE_110_YAML);
+  }, [activePreset]);
 
-    worker.addEventListener('message', (event: MessageEvent<WorkerOutMessage>) => {
-      const msg = event.data;
-      switch (msg.type) {
-        case 'initialized':
-          setStatus('initialized');
-          setGeneration(msg.generation);
-          break;
-        case 'tick-result':
-          setStatus('running');
-          setGeneration(msg.generation);
-          break;
-        case 'error':
-          console.error('Worker error:', msg.message);
-          break;
-      }
-    });
+  const handleGenerationChange = useCallback((gen: number) => {
+    setGeneration(gen);
+  }, []);
 
-    // Initialize the worker
-    worker.postMessage({ type: 'init' } satisfies WorkerInMessage);
-
-    // Send a few ticks to demonstrate
-    const tickInterval = setInterval(() => {
-      worker.postMessage({ type: 'tick' } satisfies WorkerInMessage);
-    }, 500);
-
-    return () => {
-      clearInterval(tickInterval);
-      worker.terminate();
-      workerRef.current = null;
-    };
+  const switchPreset = useCallback((key: PresetKey) => {
+    setGeneration(0);
+    setActivePreset(key);
   }, []);
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-black font-sans">
-      <main className="flex flex-col items-center gap-6 text-center">
-        <h1 className="text-5xl font-bold tracking-tight text-zinc-50">Lattice</h1>
-        <p className="max-w-md text-lg leading-8 text-zinc-400">
-          Universal simulation substrate.
+    <div className="flex flex-col h-screen bg-black">
+      {/* Minimal HUD overlay */}
+      <div className="absolute top-4 left-4 z-10 flex flex-col gap-1 pointer-events-none">
+        <h1 className="text-sm font-mono text-zinc-500 tracking-wider uppercase">
+          Lattice
+        </h1>
+        <p className="text-xs font-mono text-zinc-600">{preset.meta.name}</p>
+        <p className="text-lg font-mono text-green-400 tabular-nums">
+          Gen {generation}
         </p>
-        <div className="mt-8 rounded-lg border border-zinc-800 bg-zinc-900 p-6">
-          <p className="text-sm text-zinc-500">Worker Status</p>
-          <p className="mt-1 text-2xl font-mono text-zinc-200">{status}</p>
-          <p className="mt-4 text-sm text-zinc-500">Generation</p>
-          <p className="mt-1 text-4xl font-mono font-bold text-green-400">{generation}</p>
-        </div>
-      </main>
+      </div>
+
+      {/* Preset switcher */}
+      <div className="absolute top-4 right-4 z-10 flex gap-2">
+        <button
+          onClick={() => switchPreset('gol')}
+          className={`px-3 py-1 text-xs font-mono rounded transition-colors ${
+            activePreset === 'gol'
+              ? 'bg-zinc-700 text-zinc-200'
+              : 'bg-zinc-900 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-400'
+          }`}
+        >
+          GoL
+        </button>
+        <button
+          onClick={() => switchPreset('rule110')}
+          className={`px-3 py-1 text-xs font-mono rounded transition-colors ${
+            activePreset === 'rule110'
+              ? 'bg-zinc-700 text-zinc-200'
+              : 'bg-zinc-900 text-zinc-500 hover:bg-zinc-800 hover:text-zinc-400'
+          }`}
+        >
+          Rule 110
+        </button>
+      </div>
+
+      {/* Viewport fills remaining space */}
+      <div className="flex-1">
+        <SimulationViewport
+          key={activePreset}
+          preset={preset}
+          running={true}
+          tickInterval={100}
+          onGenerationChange={handleGenerationChange}
+        />
+      </div>
     </div>
   );
 }
