@@ -1,0 +1,22 @@
+/**
+ * UI state store.
+ *
+ * Manages panel visibility, terminal state, and layout configuration.
+ */
+
+import { create } from 'zustand';
+import { subscribeWithSelector } from 'zustand/middleware';
+
+export interface UiState {
+  /** Whether the terminal panel is visible */
+  isTerminalOpen: boolean;
+  /** Whether the parameter panel is visible */
+  isParamPanelOpen: boolean;
+}
+
+export const useUiStore = create<UiState>()(
+  subscribeWithSelector((): UiState => ({
+    isTerminalOpen: false,
+    isParamPanelOpen: false,
+  })),
+);
