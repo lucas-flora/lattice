@@ -64,11 +64,13 @@ export class RuleRunner implements IRuleRunner {
 
     if (preset.rule.type === 'wasm' && preset.rule.wasm_module) {
       try {
-        // Attempt to dynamically import the wasm-bindgen generated module.
-        // The WASM pkg is generated at build time and may not exist (gitignored).
+        // Dynamically import the wasm-bindgen generated module.
+        // Use variable path to prevent Vite from statically resolving the import
+        // at build/test time -- the WASM pkg is gitignored and only exists after build.
+        const wasmPath = '../../wasm/pkg/lattice_engine.js';
         // eslint-disable-next-line @typescript-eslint/ban-ts-comment
         // @ts-ignore -- WASM pkg is build-time generated, not in git
-        const mod = await import('../../wasm/pkg/lattice_engine.js');
+        const mod = await import(/* @vite-ignore */ wasmPath);
         // Initialize the WASM module if it has a default init function
         // wasm-bindgen's init function auto-detects the .wasm path when no arg is given
         if (typeof mod.default === 'function') {
