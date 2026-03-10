@@ -1,0 +1,47 @@
+{
+  "initialized_at": "2026-03-10T07:30:00.000Z",
+  "project_name": "Lattice",
+  "mode": "greenfield",
+  "profile": "quality",
+  "notion": {
+    "parent_page_id": "31fb7b9d807080a49c05f29a2b1de119",
+    "doc_pages": {
+      "architecture": "31fb7b9d-8070-8137-9dff-dfc218e53b2b",
+      "data_flow": "31fb7b9d-8070-8110-be1b-db03b1f095cc",
+      "api_reference": "31fb7b9d-8070-81bc-b7a2-f3bf2e250475",
+      "component_index": "31fb7b9d-8070-81bb-9f62-e3d89aaebf0d",
+      "adrs": "31fb7b9d-8070-812e-aa7e-d38b274890d9",
+      "deployment": "31fb7b9d-8070-8128-a617-e8e0456f684f",
+      "dev_workflow": "31fb7b9d-8070-81f2-9425-dfe46307b6ff",
+      "phase_reports": "31fb7b9d-8070-8118-9f87-de36c2c263eb"
+    },
+    "last_updated": "2026-03-10T07:30:00.000Z"
+  },
+  "testing": {
+    "stack": "node",
+    "language_version": "22",
+    "test_framework": "vitest",
+    "unit_command": "pnpm vitest run --dir src --dir engine",
+    "integration_command": "pnpm vitest run --dir test/integration",
+    "scenario_command": "pnpm vitest run --dir test/scenarios",
+    "docker_compose_file": "docker-compose.test.yml"
+  },
+  "deployment": {
+    "type": "web-app",
+    "provider": "vercel",
+    "url": null
+  },
+  "ci": {
+    "provider": "github-actions",
+    "workflow_file": ".github/workflows/ci.yml"
+  },
+  "phases_completed": [],
+  "milestone_history": [],
+  "last_commands": {
+    "init": "2026-03-10T07:30:00.000Z",
+    "phase": null,
+    "run": null,
+    "finish": null,
+    "status": null
+  }
+}
