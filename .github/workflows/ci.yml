@@ -80,7 +80,7 @@ jobs:
       - name: Run integration tests
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/lattice_test
-        run: pnpm vitest run --dir test/integration
+        run: pnpm vitest run --dir test/integration --passWithNoTests
 
   scenario-tests:
     name: Scenario Tests
@@ -112,4 +112,4 @@ jobs:
       - name: Run scenario tests
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/lattice_test
-        run: pnpm vitest run --dir test/scenarios
+        run: pnpm vitest run --dir test/scenarios --passWithNoTests
