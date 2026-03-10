@@ -3,6 +3,8 @@
  *
  * Manages output log, command history, input state, and ghost-text autocomplete.
  * Subscribes to EventBus for curated log entries.
+ *
+ * Phase 8: Non-command input routes to AI assistant instead of placeholder.
  */
 
 'use client';
@@ -11,6 +13,7 @@ import { useRef, useState, useCallback, useEffect } from 'react';
 import { commandRegistry } from '@/commands/CommandRegistry';
 import { eventBus } from '@/engine/core/EventBus';
 import { parseCommand, isCommand, getGhostText } from './commandParser';
+import { aiService } from '@/ai/aiService';
 
 export type LogEntryType = 'command' | 'info' | 'error' | 'ai';
 
@@ -87,6 +90,7 @@ export function useTerminal() {
 
     if (parsed && isCommand(trimmed, commandRegistry)) {
       addLogEntry('command', `> ${trimmed}`);
+      aiService.addRecentAction(trimmed);
 
       const result = await commandRegistry.execute(parsed.commandName, parsed.params);
 
@@ -98,9 +102,10 @@ export function useTerminal() {
         addLogEntry('error', result.error ?? 'Command failed');
       }
     } else {
-      // Non-command input -- route to AI placeholder
+      // Non-command input -- route to AI assistant
       addLogEntry('command', `> ${trimmed}`);
-      addLogEntry('ai', 'AI not connected \u2014 available in a future update');
+      aiService.addRecentAction(trimmed);
+      await aiService.handleTerminalInput(trimmed, addLogEntry);
     }
 
     setInputValue('');
