@@ -4,17 +4,17 @@
  * All stores use subscribeWithSelector middleware for engine-to-store
  * event subscription without causing React re-renders.
  *
- * Stores are read-only mirrors of engine state — engine is source of truth.
+ * Stores are read-only mirrors of engine state -- engine is source of truth.
  */
 
-export { useSimStore } from './simStore';
+export { useSimStore, simStoreActions } from './simStore';
 export type { SimState } from './simStore';
 
-export { useViewStore } from './viewStore';
+export { useViewStore, viewStoreActions } from './viewStore';
 export type { ViewState } from './viewStore';
 
-export { useUiStore } from './uiStore';
+export { useUiStore, uiStoreActions } from './uiStore';
 export type { UiState } from './uiStore';
 
-export { useAiStore } from './aiStore';
+export { useAiStore, aiStoreActions } from './aiStore';
 export type { AiState, ChatMessage } from './aiStore';

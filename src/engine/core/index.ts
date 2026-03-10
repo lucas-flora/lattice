@@ -22,3 +22,6 @@ export type {
   SimulationConfig,
   WorkerState,
 } from './types';
+
+export { EventBus, eventBus } from './EventBus';
+export type { EngineEventMap, EngineEvent, EventHandler } from './EventBus';

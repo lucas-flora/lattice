@@ -20,3 +20,16 @@ export const useUiStore = create<UiState>()(
     isParamPanelOpen: false,
   })),
 );
+
+/** Store actions -- called from wireStores event handlers */
+export const uiStoreActions = {
+  setTerminalOpen: (isTerminalOpen: boolean): void => {
+    useUiStore.setState({ isTerminalOpen });
+  },
+  setParamPanelOpen: (isParamPanelOpen: boolean): void => {
+    useUiStore.setState({ isParamPanelOpen });
+  },
+  updateUi: (partial: Partial<UiState>): void => {
+    useUiStore.setState(partial);
+  },
+};
