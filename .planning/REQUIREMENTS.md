@@ -163,13 +163,90 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| (populated by roadmapper) | | |
+| FOUN-01 | Phase 1 | Pending |
+| FOUN-02 | Phase 1 | Pending |
+| FOUN-03 | Phase 1 | Pending |
+| FOUN-04 | Phase 1 | Pending |
+| FOUN-05 | Phase 1 | Pending |
+| FOUN-06 | Phase 1 | Pending |
+| GRID-01 | Phase 2 | Pending |
+| GRID-02 | Phase 2 | Pending |
+| GRID-03 | Phase 2 | Pending |
+| GRID-04 | Phase 2 | Pending |
+| GRID-05 | Phase 2 | Pending |
+| CELL-01 | Phase 2 | Pending |
+| CELL-02 | Phase 2 | Pending |
+| CELL-03 | Phase 2 | Pending |
+| CELL-04 | Phase 2 | Pending |
+| CELL-05 | Phase 2 | Pending |
+| CELL-06 | Phase 2 | Pending |
+| YAML-01 | Phase 2 | Pending |
+| YAML-02 | Phase 2 | Pending |
+| YAML-03 | Phase 2 | Pending |
+| RULE-01 | Phase 3 | Pending |
+| RULE-02 | Phase 3 | Pending |
+| RULE-05 | Phase 3 | Pending |
+| YAML-04 | Phase 3 | Pending |
+| YAML-05 | Phase 3 | Pending |
+| YAML-06 | Phase 3 | Pending |
+| YAML-07 | Phase 3 | Pending |
+| YAML-08 | Phase 3 | Pending |
+| YAML-09 | Phase 3 | Pending |
+| YAML-10 | Phase 3 | Pending |
+| CTRL-07 | Phase 3 | Pending |
+| RNDR-01 | Phase 4 | Pending |
+| RNDR-03 | Phase 4 | Pending |
+| RNDR-04 | Phase 4 | Pending |
+| RNDR-05 | Phase 4 | Pending |
+| RNDR-06 | Phase 4 | Pending |
+| RNDR-07 | Phase 4 | Pending |
+| RNDR-11 | Phase 4 | Pending |
+| RNDR-12 | Phase 4 | Pending |
+| CMDS-01 | Phase 5 | Pending |
+| CMDS-02 | Phase 5 | Pending |
+| CMDS-03 | Phase 5 | Pending |
+| CMDS-04 | Phase 5 | Pending |
+| CTRL-01 | Phase 6 | Pending |
+| CTRL-02 | Phase 6 | Pending |
+| CTRL-03 | Phase 6 | Pending |
+| CTRL-04 | Phase 6 | Pending |
+| CTRL-05 | Phase 6 | Pending |
+| CTRL-06 | Phase 6 | Pending |
+| CTRL-08 | Phase 6 | Pending |
+| TERM-01 | Phase 6 | Pending |
+| TERM-02 | Phase 6 | Pending |
+| TERM-03 | Phase 6 | Pending |
+| TERM-04 | Phase 6 | Pending |
+| TERM-05 | Phase 6 | Pending |
+| TERM-06 | Phase 6 | Pending |
+| GUIP-01 | Phase 6 | Pending |
+| RULE-03 | Phase 7 | Pending |
+| RULE-04 | Phase 7 | Pending |
+| ASST-01 | Phase 8 | Pending |
+| ASST-02 | Phase 8 | Pending |
+| ASST-03 | Phase 8 | Pending |
+| ASST-04 | Phase 8 | Pending |
+| ASST-05 | Phase 8 | Pending |
+| ASST-06 | Phase 8 | Pending |
+| ASST-07 | Phase 8 | Pending |
+| RNDR-02 | Phase 9 | Pending |
+| RNDR-08 | Phase 9 | Pending |
+| RNDR-09 | Phase 9 | Pending |
+| RNDR-10 | Phase 9 | Pending |
+| GUIP-02 | Phase 10 | Pending |
+| GUIP-03 | Phase 10 | Pending |
+| GUIP-04 | Phase 10 | Pending |
+| GUIP-05 | Phase 10 | Pending |
+| GUIP-06 | Phase 10 | Pending |
+| GUIP-07 | Phase 10 | Pending |
 
 **Coverage:**
-- v1 requirements: 63 total
-- Mapped to phases: 0
-- Unmapped: 63
+- v1 requirements: 76 total
+- Mapped to phases: 76
+- Unmapped: 0
+
+Note: The initial count of 63 in this file was incorrect. Actual count is 76 (FOUN×6, GRID×5, CELL×6, YAML×10, RULE×5, RNDR×12, CTRL×8, CMDS×4, TERM×6, ASST×7, GUIP×7).
 
 ---
 *Requirements defined: 2026-03-10*
-*Last updated: 2026-03-10 after initial definition*
+*Last updated: 2026-03-10 after roadmap creation — traceability populated*
