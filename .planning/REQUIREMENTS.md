@@ -50,8 +50,8 @@ Requirements for v1.0 release. Each maps to roadmap phases.
 
 - [ ] **RULE-01**: Rules follow perceive-update contract: perceive (gather neighborhood) → update (compute next state)
 - [ ] **RULE-02**: TypeScript rule execution as baseline (works without WASM)
-- [ ] **RULE-03**: WASM (Rust) rule execution pipeline via wasm-bindgen-cli (NOT wasm-pack — archived Sept 2025) for performance-critical sims
-- [ ] **RULE-04**: WASM API operates on whole ticks (not per-cell) to avoid JS/WASM boundary overhead
+- [x] **RULE-03**: WASM (Rust) rule execution pipeline via wasm-bindgen-cli (NOT wasm-pack — archived Sept 2025) for performance-critical sims
+- [x] **RULE-04**: WASM API operates on whole ticks (not per-cell) to avoid JS/WASM boundary overhead
 - [ ] **RULE-05**: RuleRunner checks for WASM module and falls back to TypeScript silently
 
 ### Rendering
@@ -220,8 +220,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | TERM-05 | Phase 6 | Pending |
 | TERM-06 | Phase 6 | Pending |
 | GUIP-01 | Phase 6 | Pending |
-| RULE-03 | Phase 7 | Pending |
-| RULE-04 | Phase 7 | Pending |
+| RULE-03 | Phase 7 | Complete |
+| RULE-04 | Phase 7 | Complete |
 | ASST-01 | Phase 8 | Pending |
 | ASST-02 | Phase 8 | Pending |
 | ASST-03 | Phase 8 | Pending |

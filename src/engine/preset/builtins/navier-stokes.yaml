@@ -31,7 +31,8 @@ cell_properties:
     role: "input_output"
 
 rule:
-  type: "typescript"
+  type: "wasm"
+  wasm_module: "navier_stokes_tick"
   compute: |
     const viscosity = 0.1;
     const diffusion = 0.0001;

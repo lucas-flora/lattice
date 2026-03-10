@@ -1,5 +1,18 @@
 use wasm_bindgen::prelude::*;
 
+pub mod gray_scott;
+pub mod grid_utils;
+pub mod navier_stokes;
+
+pub use gray_scott::gray_scott_tick;
+pub use navier_stokes::navier_stokes_tick;
+
+/// Initialize panic hook for better error messages in WASM.
+#[wasm_bindgen(start)]
+pub fn init() {
+    console_error_panic_hook::set_once();
+}
+
 /// Proof-of-concept: doubles a number.
 /// Validates the full wasm-bindgen-cli pipeline works.
 #[wasm_bindgen]

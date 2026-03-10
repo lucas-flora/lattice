@@ -49,7 +49,44 @@ export interface IRuleRunner {
   getGeneration(): number;
   /** Reset to initial state */
   reset(): void;
+  /** Check whether the runner is using WASM or TypeScript */
+  isUsingWasm(): boolean;
 }
+
+/** WASM module interface for lattice-engine exports */
+export interface WasmModule {
+  gray_scott_tick: (
+    u_in: Float32Array,
+    v_in: Float32Array,
+    u_out: Float32Array,
+    v_out: Float32Array,
+    width: number,
+    height: number,
+    du: number,
+    dv: number,
+    f: number,
+    k: number,
+    dt: number,
+  ) => void;
+  navier_stokes_tick: (
+    vx_in: Float32Array,
+    vy_in: Float32Array,
+    density_in: Float32Array,
+    pressure_in: Float32Array,
+    vx_out: Float32Array,
+    vy_out: Float32Array,
+    density_out: Float32Array,
+    pressure_out: Float32Array,
+    width: number,
+    height: number,
+    viscosity: number,
+    diffusion: number,
+    dt: number,
+  ) => void;
+}
+
+/** WASM tick function type -- whole-tick API */
+export type WasmTickFn = (...args: unknown[]) => void;
 
 /** Configuration for creating a Simulation from a PresetConfig */
 export interface SimulationSetup {

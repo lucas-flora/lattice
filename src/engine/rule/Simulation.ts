@@ -42,8 +42,23 @@ export class Simulation {
       this.grid.addProperty(prop.name, channels, prop.default);
     }
 
-    // Create the rule runner
+    // Create the rule runner (synchronous path -- always uses TS fallback)
     this.runner = new RuleRunner(this.grid, preset);
+  }
+
+  /**
+   * Create a Simulation with async WASM module loading.
+   * Falls back to TypeScript silently if WASM loading fails.
+   */
+  static async create(preset: PresetConfig): Promise<Simulation> {
+    const sim = new Simulation(preset);
+    // If the preset requests WASM, try to load it
+    if (preset.rule.type === 'wasm') {
+      const wasmRunner = await RuleRunner.create(sim.grid, preset);
+      // Replace the runner with the WASM-enabled one
+      (sim as { runner: RuleRunner }).runner = wasmRunner;
+    }
+    return sim;
   }
 
   /**

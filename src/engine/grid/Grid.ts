@@ -56,8 +56,23 @@ export class Grid {
     }
 
     const bufferSize = this.cellCount * channels;
-    const bufferA = new Float32Array(bufferSize);
-    const bufferB = new Float32Array(bufferSize);
+    const byteSize = bufferSize * Float32Array.BYTES_PER_ELEMENT;
+
+    let bufferA: Float32Array;
+    let bufferB: Float32Array;
+    let sharedA: SharedArrayBuffer | undefined;
+    let sharedB: SharedArrayBuffer | undefined;
+
+    // Use SharedArrayBuffer if requested and available
+    if (this.config.useSharedBuffer && typeof SharedArrayBuffer !== 'undefined') {
+      sharedA = new SharedArrayBuffer(byteSize);
+      sharedB = new SharedArrayBuffer(byteSize);
+      bufferA = new Float32Array(sharedA);
+      bufferB = new Float32Array(sharedB);
+    } else {
+      bufferA = new Float32Array(bufferSize);
+      bufferB = new Float32Array(bufferSize);
+    }
 
     // Fill both buffers with default values
     for (let i = 0; i < this.cellCount; i++) {
@@ -73,6 +88,8 @@ export class Grid {
       aIsCurrent: true,
       channels,
       defaultValue: defaults,
+      sharedA,
+      sharedB,
     });
   }
 
@@ -182,6 +199,29 @@ export class Grid {
    */
   getPropertyNames(): string[] {
     return [...this.properties.keys()];
+  }
+
+  /**
+   * Check whether this grid is using SharedArrayBuffer backing.
+   */
+  isUsingSharedBuffers(): boolean {
+    for (const prop of this.properties.values()) {
+      if (prop.sharedA !== undefined) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Get the SharedArrayBuffer references for all properties.
+   * Returns null for properties that don't use SharedArrayBuffer.
+   * Used for transferring buffer references to a Web Worker.
+   */
+  getSharedBuffers(): Map<string, { sharedA: SharedArrayBuffer | undefined; sharedB: SharedArrayBuffer | undefined }> {
+    const result = new Map<string, { sharedA: SharedArrayBuffer | undefined; sharedB: SharedArrayBuffer | undefined }>();
+    for (const [name, prop] of this.properties) {
+      result.set(name, { sharedA: prop.sharedA, sharedB: prop.sharedB });
+    }
+    return result;
   }
 
   /**

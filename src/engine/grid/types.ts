@@ -25,6 +25,8 @@ export interface GridConfig {
   topology: GridTopology;
   /** Neighborhood type for neighbor calculation. Defaults to 'moore'. */
   neighborhood?: NeighborhoodType;
+  /** Use SharedArrayBuffer backing for zero-copy worker/main thread sharing. */
+  useSharedBuffer?: boolean;
 }
 
 /** Ping-pong double buffer pair for a single property */
@@ -39,4 +41,8 @@ export interface PropertyBuffers {
   channels: number;
   /** Default value(s) for this property */
   defaultValue: number[];
+  /** SharedArrayBuffer backing store for bufferA (if using shared buffers) */
+  sharedA?: SharedArrayBuffer;
+  /** SharedArrayBuffer backing store for bufferB (if using shared buffers) */
+  sharedB?: SharedArrayBuffer;
 }
