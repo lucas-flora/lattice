@@ -5,16 +5,16 @@
 See: .planning/PROJECT.md (updated 2026-03-10)
 
 **Core value:** The engine is universally extensible — any simulation type runs on the same substrate with no special-casing, and users can define, share, and load their own rules as first-class citizens identical to built-in presets.
-**Current focus:** Phase 2 complete. Next: Phase 3 — Rule Engine
+**Current focus:** Phase 7 complete. Next: Phase 8 — AI Surface
 
 ## Current Position
 
-Phase: 3 of 10 (Rule Engine)
+Phase: 8 of 10 (AI Surface)
 Plan: 0 of TBD in current phase
 Status: Ready to plan
-Last activity: 2026-03-10 — Phase 2 (Substrate) completed: 3 plans, 131 tests, all quality gates pass
+Last activity: 2026-03-10 — Phase 7 (WASM Acceleration) completed: 3 plans, 433 tests (386 JS/TS + 16 Rust + 31 integration/scenario), all quality gates pass
 
-Progress: [██░░░░░░░░] 20%
+Progress: [███████░░░] 70%
 
 ## Performance Metrics
 
@@ -73,5 +73,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-10
-Stopped at: Phase 2 complete. Next step is /gsd:plan-phase 3 (Rule Engine).
+Stopped at: Phase 7 complete. Next step is /gsd:plan-phase 8 (AI Surface).
 Resume file: None

@@ -16,9 +16,9 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 2: Substrate** - Grid engine (1D/2D/3D), Cell Property System, YAML preset schema and loader
 - [x] **Phase 3: Rule Engine** - Perceive-Update execution, TypeScript rules, built-in presets, undo/redo Command pattern
 - [x] **Phase 4: Rendering** - Three.js unified renderer, VisualMapper, zero-copy data path, pan/zoom
-- [ ] **Phase 5: Command Hub** - CommandRegistry, Zustand stores, engine-store event protocol
-- [ ] **Phase 6: Surfaces** - Simulation controls, CLI terminal, GUI panels, cell drawing — all wired to CommandRegistry simultaneously
-- [ ] **Phase 7: WASM Acceleration** - Rust rule execution, SharedArrayBuffer bridge, whole-tick API
+- [x] **Phase 5: Command Hub** - CommandRegistry, Zustand stores, engine-store event protocol
+- [x] **Phase 6: Surfaces** - Simulation controls, CLI terminal, GUI panels, cell drawing — all wired to CommandRegistry simultaneously
+- [x] **Phase 7: WASM Acceleration** - Rust rule execution, SharedArrayBuffer bridge, whole-tick API
 - [ ] **Phase 8: AI Surface** - OpenAI assistant in terminal, ContextBuilder, Supabase RAG, command execution
 - [ ] **Phase 9: Advanced Rendering** - Multi-viewport, 3D grid view, reverse playback, timeline scrubbing, fullscreen
 - [ ] **Phase 10: Polish** - Parameter graphs, HUD menus, hotkeys, screenshot export, docs, performance pass
@@ -106,7 +106,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. Disabling the WASM module (by removing the .wasm file) causes RuleRunner to fall back to TypeScript silently — no error thrown, simulation continues at lower speed
   3. The WASM API accepts the full grid buffer in one call per tick (not per-cell) — confirmed by a Rust unit test counting `extern` boundary crossings as exactly 1 per tick
   4. Navier-Stokes fluid simulation runs without freezing the UI thread — the main thread frame rate stays above 30fps even during heavy compute ticks
-**Plans**: TBD
+**Plans**: 07-01, 07-02, 07-03 (2 waves)
 
 ### Phase 8: AI Surface
 **Goal**: The AI assistant lives in the terminal, has full app state context, can call CLI commands on the user's behalf via the CommandRegistry, and uses Supabase RAG over preset descriptions and CA documentation.
@@ -154,9 +154,9 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 2. Substrate | 3/3 | Complete | 2026-03-10 |
 | 3. Rule Engine | Complete | Complete | 2026-03-10 |
 | 4. Rendering | 3/3 | Complete | 2026-03-10 |
-| 5. Command Hub | 0/TBD | Not started | - |
-| 6. Surfaces | 0/TBD | Not started | - |
-| 7. WASM Acceleration | 0/TBD | Not started | - |
+| 5. Command Hub | 3/3 | Complete | 2026-03-10 |
+| 6. Surfaces | 3/3 | Complete | 2026-03-10 |
+| 7. WASM Acceleration | 3/3 | Complete | 2026-03-10 |
 | 8. AI Surface | 0/TBD | Not started | - |
 | 9. Advanced Rendering | 0/TBD | Not started | - |
 | 10. Polish | 0/TBD | Not started | - |

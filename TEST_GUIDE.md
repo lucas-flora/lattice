@@ -73,7 +73,9 @@ pnpm vitest run --dir src && \
 | YAML-10 No preset privilege | `user-preset.test.ts` (4 tests), `builtin-presets.test.ts` | — | — | Covered |
 | RULE-01 Perceive-update contract | `rule-runner.test.ts` (9 tests), `conways-gol.test.ts` | — | — | Covered |
 | RULE-02 TypeScript rule execution | `rule-compiler.test.ts` (10 tests), `rule-runner.test.ts` | — | — | Covered |
-| RULE-05 WASM fallback to TS | `rule-runner.test.ts` (2 WASM fallback tests) | — | — | Covered |
+| RULE-03 WASM rule execution | `wasm-rule-runner.test.ts` (7 tests), Rust tests (16) | `wasm-pipeline.test.ts` (5 tests) | `wasm-acceleration.test.ts` (5 tests) | Covered |
+| RULE-04 Whole-tick API | `wasm-rule-runner.test.ts` (delegation), Rust tests (whole-tick verify) | `wasm-pipeline.test.ts` (full pipeline) | `wasm-acceleration.test.ts` (Gray-Scott + NS output) | Covered |
+| RULE-05 WASM fallback to TS | `wasm-fallback.test.ts` (6 tests), `rule-runner.test.ts` | `wasm-pipeline.test.ts` (schema + fallback) | `wasm-acceleration.test.ts` (silent fallback, match TS) | Covered |
 | CTRL-07 Undo/redo Command pattern | `command-history.test.ts` (14 tests) | — | — | Covered |
 | RNDR-01 Three.js 2D renderer | `integration.test.ts` (GoL mapping), `lattice-renderer.test.ts` | — | — | Covered |
 | RNDR-03 Three.js 1D renderer | `lattice-renderer.test.ts` (spacetime mode), `integration.test.ts` (Rule 110) | — | — | Covered |
@@ -169,3 +171,18 @@ pnpm vitest run --dir src && \
 - 21 commands registered across 5 categories (9 sim, 2 preset, 3 view, 5 edit, 2 ui)
 - Three Surface Doctrine verified: GUI buttons and CLI parsing both invoke commandRegistry.execute()
 - All 6 built-in presets load via client-side inlined YAML (no fs dependency)
+
+### Phase 7: WASM Acceleration (2026-03-10)
+- 21 new JS/TS unit tests + 16 Rust tests + 5 integration + 5 scenario = 433 total (with Phases 1-6)
+- All quality gates pass: tsc --noEmit, vitest (386 JS/TS), cargo test (16 Rust)
+- Rust suites: `gray_scott.rs` (4 tests), `navier_stokes.rs` (4 tests), `grid_utils.rs` (6 tests), `lib.rs` (2 tests)
+- WASM suites: `wasm-rule-runner.test.ts` (7), `wasm-fallback.test.ts` (6), `grid-shared-buffer.test.ts` (8)
+- Integration: `wasm-pipeline.test.ts` (5) -- Gray-Scott/NS loads+ticks, schema accepts wasm/typescript, fallback_compute
+- Scenarios: `wasm-acceleration.test.ts` (5) -- GS/NS non-trivial output, silent fallback lifecycle, all 6 presets load, WASM=TS match
+- Gray-Scott and Navier-Stokes Rust implementations with wasm-bindgen exports
+- Whole-tick API: single extern call per tick processes entire grid (RULE-04)
+- SharedArrayBuffer support with feature detection and graceful fallback
+- COOP/COEP headers configured in next.config.ts for SharedArrayBuffer
+- Silent WASM fallback: no errors thrown, simulation continues at TS speed (RULE-05)
+- Preset schema extended: supports 'wasm' type alongside 'typescript' (backward compatible)
+- WasmRuleRunner delegates to Rust via mock WASM module in tests
