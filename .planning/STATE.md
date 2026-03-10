@@ -1,3 +1,19 @@
+---
+gsd_state_version: 1.0
+milestone: v1.0
+milestone_name: Universal Simulation Substrate
+status: complete
+stopped_at: "Milestone v1.0 shipped. All 10 phases complete."
+last_updated: "2026-03-10T14:00:00.000Z"
+last_activity: "2026-03-10 — Milestone v1.0 shipped: 10 phases, 569 tests, 76 requirements satisfied"
+progress:
+  total_phases: 10
+  completed_phases: 10
+  total_plans: 24
+  completed_plans: 24
+  percent: 100
+---
+
 # Project State
 
 ## Project Reference
@@ -5,73 +21,42 @@
 See: .planning/PROJECT.md (updated 2026-03-10)
 
 **Core value:** The engine is universally extensible — any simulation type runs on the same substrate with no special-casing, and users can define, share, and load their own rules as first-class citizens identical to built-in presets.
-**Current focus:** Phase 8 complete. Next: Phase 9 — Advanced Rendering
+**Current focus:** v1.0 shipped. Next: `/gsd:new-milestone` for v2.0
 
 ## Current Position
 
-Phase: 9 of 10 (Advanced Rendering)
-Plan: 0 of TBD in current phase
-Status: Ready to plan
-Last activity: 2026-03-10 — Phase 8 (AI Surface) completed: 4 plans, 476 tests (434 JS/TS + 16 Rust + 22 integration + 20 scenario), all quality gates pass
+Milestone: v1.0 — SHIPPED
+Phase: 10 of 10 (all complete)
+Status: Complete
+Last activity: 2026-03-10 — Milestone v1.0 shipped
 
-Progress: [████████░░] 80%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
-**Velocity:**
-- Total plans completed: 7
-- Average duration: ~5 min
-- Total execution time: ~35 min
-
-**By Phase:**
-
-| Phase | Plans | Total | Avg/Plan |
-|-------|-------|-------|----------|
-| 1. Scaffold | 4 | ~20 min | ~5 min |
-| 2. Substrate | 3 | ~15 min | ~5 min |
-
-**Recent Trend:**
-- Last 5 plans: 01-03, 01-04, 02-01, 02-02, 02-03
-- Trend: Steady
-
-*Updated after each plan completion*
+**Overall:**
+- Total phases: 10
+- Total plans: 24
+- Total tests: 569 (503 unit + 16 Rust + 36 integration + 30 scenario)
+- Lines of code: 16,158
+- Git commits: 59
 
 ## Accumulated Context
 
 ### Decisions
 
-Decisions are logged in PROJECT.md Key Decisions table.
-Recent decisions affecting current work:
-
-- [Phase 2]: Grid uses separate Float32Arrays per property for cache-friendly access
-- [Phase 2]: Computed functions use new Function() — no sandboxing in v1
-- [Phase 2]: YAML schema_version is string "1" enforced by z.literal('1')
-- [Phase 2]: Neighbor calculation computed on each call, no caching
-- [Phase 2]: Grid class-based API (not functional) for cohesive property/buffer management
-- [Phase 2]: Cell property types: bool as 0/1, int via Math.round, vec as consecutive channels
-- [Phase 1]: vitest.config uses `.mts` extension for ESM compatibility
-- [Phase 1]: Engine isolation enforced by `no-restricted-imports` lint rule in eslint.config.mjs
-- [Phase 1]: Worker protocol uses pure `handleMessage(msg, state) -> [response, newState]` for Node.js testability
-- [Phase 1]: Three.js dispose traversal uses early return after Mesh to avoid double-disposal
-- [Phase 1]: Zustand stores need explicit return type annotations with subscribeWithSelector to avoid literal type narrowing
-- [Pre-Phase 1]: wasm-bindgen-cli (NOT wasm-pack — archived Sept 2025) is the WASM toolchain
-- [Pre-Phase 1]: Web Worker for simulation loop is load-bearing — must be in from tick zero, cannot be retrofitted
-- [Pre-Phase 1]: Three Surface Doctrine is a build discipline — GUI + CLI wired simultaneously per feature, no separate CLI phase
-- [Pre-Phase 1]: Cell Property System is v1 (Phase 2), not a stretch goal
-- [Pre-Phase 1]: AI assistant scoped to Phase 8 — terminal is generic shell infrastructure first (Phases 5-6), AI slots in later
-- [Pre-Phase 1]: YAML schema must have schema_version from day one — one-way door once community presets exist
+All decisions logged in PROJECT.md Key Decisions table. All outcomes marked ✓ Good or ⚠️ Revisit.
 
 ### Pending Todos
 
-None yet.
+None.
 
 ### Blockers/Concerns
 
-- [Phase 7]: SharedArrayBuffer + Worker bridge with Next.js COOP/COEP has known friction points — research flag
-- [Resolved]: Computed property DSL boundary decision — resolved in Phase 2 as JS function bodies via new Function()
+None — milestone complete.
 
 ## Session Continuity
 
 Last session: 2026-03-10
-Stopped at: Phase 8 complete. Next step is /gsd:discuss-phase 9 (Advanced Rendering).
+Stopped at: Milestone v1.0 shipped.
 Resume file: None
