@@ -1,7 +1,8 @@
 /**
- * HUD: heads-up display overlay showing simulation status.
+ * HUD: heads-up display overlay showing simulation status and shortcut hints.
  *
- * Shows preset name, generation counter (tabular-nums), and live cell count.
+ * Shows preset name, generation counter (tabular-nums), live cell count,
+ * and a subtle keyboard shortcut hint.
  * Reads reactively from simStore.
  */
 
@@ -36,6 +37,9 @@ export function HUD() {
       </p>
       <p className="text-xs font-mono text-zinc-400" data-testid="hud-cell-count">
         {liveCellCount.toLocaleString()} cells
+      </p>
+      <p className="text-[10px] font-mono text-zinc-700 mt-1" data-testid="hud-shortcut-hint">
+        Press <kbd className="text-zinc-600 bg-zinc-800 px-1 rounded">?</kbd> for shortcuts
       </p>
     </div>
   );

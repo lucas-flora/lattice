@@ -3,7 +3,10 @@
  *
  * All buttons invoke commands through CommandRegistry.
  * Play/Pause toggle, Step Forward, Step Back, Reset, Clear, Speed slider,
- * Timeline scrubber, and Split viewport toggle.
+ * Timeline scrubber, Split viewport toggle, and Screenshot export.
+ *
+ * GUIP-04: Shortcut hints shown in button titles.
+ * GUIP-05: Screenshot button triggers viewport.screenshot command.
  */
 
 'use client';
@@ -64,6 +67,10 @@ export function ControlBar() {
     commandRegistry.execute('view.split', {});
   }, []);
 
+  const handleScreenshot = useCallback(() => {
+    commandRegistry.execute('viewport.screenshot', {});
+  }, []);
+
   return (
     <div
       className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 bg-zinc-800/90 backdrop-blur-sm rounded-lg px-3 py-2 border border-zinc-700"
@@ -73,7 +80,7 @@ export function ControlBar() {
       <button
         onClick={handleStepBack}
         className="text-zinc-300 hover:text-white px-2 py-1 text-lg"
-        title="Step Back"
+        title="Step Back (B)"
         data-testid="btn-step-back"
       >
         {'\u23EE'}
@@ -83,7 +90,7 @@ export function ControlBar() {
       <button
         onClick={handlePlayPause}
         className={`px-2 py-1 text-lg ${isRunning ? 'text-green-400' : 'text-zinc-300 hover:text-white'}`}
-        title={isRunning ? 'Pause' : 'Play'}
+        title={isRunning ? 'Pause (Space)' : 'Play (Space)'}
         data-testid="btn-play-pause"
       >
         {isRunning ? '\u23F8' : '\u25B6'}
@@ -93,7 +100,7 @@ export function ControlBar() {
       <button
         onClick={handleStep}
         className="text-zinc-300 hover:text-white px-2 py-1 text-lg"
-        title="Step Forward"
+        title="Step Forward (N)"
         data-testid="btn-step"
       >
         {'\u23ED'}
@@ -112,7 +119,7 @@ export function ControlBar() {
       <button
         onClick={handleReset}
         className="text-zinc-300 hover:text-white px-2 py-1 text-lg"
-        title="Reset"
+        title="Reset (R)"
         data-testid="btn-reset"
       >
         {'\u21BA'}
@@ -122,7 +129,7 @@ export function ControlBar() {
       <button
         onClick={handleClear}
         className="text-zinc-300 hover:text-white px-2 py-1 text-lg"
-        title="Clear"
+        title="Clear (C)"
         data-testid="btn-clear"
       >
         {'\u2715'}
@@ -151,11 +158,21 @@ export function ControlBar() {
       {/* Divider */}
       <div className="w-px h-5 bg-zinc-700" />
 
+      {/* Screenshot */}
+      <button
+        onClick={handleScreenshot}
+        className="text-zinc-300 hover:text-white px-2 py-1 text-lg"
+        title="Screenshot"
+        data-testid="btn-screenshot"
+      >
+        {'\uD83D\uDCF7'}
+      </button>
+
       {/* Split Viewport Toggle */}
       <button
         onClick={handleSplitToggle}
         className={`px-2 py-1 text-lg ${viewportCount === 2 ? 'text-green-400' : 'text-zinc-300 hover:text-white'}`}
-        title={viewportCount === 2 ? 'Single viewport' : 'Split viewport'}
+        title={viewportCount === 2 ? 'Single viewport (S)' : 'Split viewport (S)'}
         data-testid="btn-split"
       >
         {'\u2261'}

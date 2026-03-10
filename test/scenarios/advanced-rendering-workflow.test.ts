@@ -42,6 +42,7 @@ describe('Advanced Rendering Workflow Scenarios', () => {
     useUiStore.setState({
       isTerminalOpen: false,
       isParamPanelOpen: false,
+      isHotkeyHelpOpen: false,
       brushSize: 1,
       viewportCount: 1,
       fullscreenViewportId: null,

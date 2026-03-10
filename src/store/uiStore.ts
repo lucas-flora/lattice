@@ -12,6 +12,8 @@ export interface UiState {
   isTerminalOpen: boolean;
   /** Whether the parameter panel is visible */
   isParamPanelOpen: boolean;
+  /** Whether the hotkey help overlay is visible */
+  isHotkeyHelpOpen: boolean;
   /** Current brush size for drawing (1, 3, 5, 7) */
   brushSize: number;
   /** Number of viewport panels (1 = single, 2 = split) */
@@ -24,6 +26,7 @@ export const useUiStore = create<UiState>()(
   subscribeWithSelector((): UiState => ({
     isTerminalOpen: false,
     isParamPanelOpen: false,
+    isHotkeyHelpOpen: false,
     brushSize: 1,
     viewportCount: 1,
     fullscreenViewportId: null,

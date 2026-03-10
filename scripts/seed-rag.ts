@@ -258,6 +258,7 @@ async function main(): Promise<void> {
   await deleteExistingDocuments('ca-reference');
   await deleteExistingDocuments('builtin-preset');
   await deleteExistingDocuments('lattice-docs');
+  await deleteExistingDocuments('lattice-app-docs');
 
   // Seed CA reference documents
   console.log('Seeding CA reference documents...');
@@ -287,6 +288,61 @@ async function main(): Promise<void> {
       console.log(' done');
       seededCount++;
     }
+  }
+
+  // Seed Lattice app documentation (GUIP-06)
+  console.log('Seeding Lattice app documentation...');
+  const APP_DOCS = [
+    {
+      title: 'Lattice App Overview',
+      content: 'Lattice is a universal cellular automaton simulator built with Next.js, Three.js, and Rust/WASM. It supports 1D, 2D, and 3D grid simulations with six built-in presets. The app follows the Three Surface Doctrine: every action is accessible via GUI buttons, CLI terminal commands, and the AI assistant.',
+      category: 'overview',
+      source: 'lattice-app-docs',
+    },
+    {
+      title: 'Grid Engine Architecture',
+      content: 'The grid engine uses typed arrays (Float32Array) with ping-pong double buffering. Grids support 1D, 2D, and 3D dimensionalities with configurable topology. The Cell Property System allows cells to have static parameters and computed functions. All engine code is pure TypeScript with zero UI imports.',
+      category: 'architecture',
+      source: 'lattice-app-docs',
+    },
+    {
+      title: 'Simulation Controls and Keyboard Shortcuts',
+      content: 'Controls: Space=Play/Pause, N=Step, B=Step Back, R=Reset, C=Clear, T=Terminal, P=Parameters, F=Fullscreen, S=Split View, ?=Shortcuts, Ctrl+Z=Undo, Ctrl+Shift+Z=Redo. Speed slider adjusts FPS. Timeline scrubber allows navigation to any visited generation.',
+      category: 'features',
+      source: 'lattice-app-docs',
+    },
+    {
+      title: 'Rendering and Visual Mappings',
+      content: 'Unified Three.js InstancedMesh path for 1D/2D/3D grids. Data-driven visual mappings from YAML. Zero-copy typed array reads. GPU resources explicitly disposed. Multi-viewport with independent cameras. 3D orbit controls.',
+      category: 'architecture',
+      source: 'lattice-app-docs',
+    },
+    {
+      title: 'WASM Acceleration Details',
+      content: 'Rust implementations compiled to WASM via wasm-bindgen-cli. Whole-tick API with SharedArrayBuffer. Silent fallback to TypeScript if WASM unavailable. Gray-Scott 512x512 targets <16ms frame time.',
+      category: 'architecture',
+      source: 'lattice-app-docs',
+    },
+    {
+      title: 'AI Assistant Integration',
+      content: 'OpenAI GPT-4o streaming in terminal. Full app state context without raw grid buffers. Command execution via CommandRegistry. Typo detection with Levenshtein distance. RAG retrieval from Supabase pgvector.',
+      category: 'features',
+      source: 'lattice-app-docs',
+    },
+    {
+      title: 'Parameter Visualization and Screenshot Export',
+      content: 'Parameters panel shows live sparkline graphs for Cell Count and Tick Rate. Ring buffer of 200 samples. Screenshot export via camera button or viewport screenshot command. PNG download with timestamp filename.',
+      category: 'features',
+      source: 'lattice-app-docs',
+    },
+  ];
+
+  for (const doc of APP_DOCS) {
+    process.stdout.write(`  Embedding "${doc.title}"...`);
+    const embedding = await generateEmbedding(`${doc.title}\n${doc.content}`);
+    await insertDocument({ ...doc, embedding });
+    console.log(' done');
+    seededCount++;
   }
 
   console.log(`\nSeeded ${seededCount} documents successfully.`);

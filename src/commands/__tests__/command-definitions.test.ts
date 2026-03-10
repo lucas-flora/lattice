@@ -63,7 +63,12 @@ describe('Command Definitions', () => {
     expect(names).toContain('view.split');
     expect(names).toContain('view.fullscreen');
 
-    expect(list.length).toBe(23);
+    // Phase 10 new commands
+    expect(names).toContain('sim.playToggle');
+    expect(names).toContain('ui.toggleHotkeyHelp');
+    expect(names).toContain('viewport.screenshot');
+
+    expect(list.length).toBe(26);
   });
 
   it('TestCommandDefinitions_SimPlay_StartsSimulation', async () => {
