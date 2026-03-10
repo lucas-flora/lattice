@@ -14,7 +14,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Scaffold** - Project foundation, Web Worker boundary, WASM toolchain proof-of-concept, GPU dispose utilities
 - [x] **Phase 2: Substrate** - Grid engine (1D/2D/3D), Cell Property System, YAML preset schema and loader
-- [ ] **Phase 3: Rule Engine** - Perceive-Update execution, TypeScript rules, built-in presets, undo/redo Command pattern
+- [x] **Phase 3: Rule Engine** - Perceive-Update execution, TypeScript rules, built-in presets, undo/redo Command pattern
 - [ ] **Phase 4: Rendering** - Three.js unified renderer, VisualMapper, zero-copy data path, pan/zoom
 - [ ] **Phase 5: Command Hub** - CommandRegistry, Zustand stores, engine-store event protocol
 - [ ] **Phase 6: Surfaces** - Simulation controls, CLI terminal, GUI panels, cell drawing — all wired to CommandRegistry simultaneously
@@ -152,7 +152,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 |-------|----------------|--------|-----------|
 | 1. Scaffold | 4/4 | Complete | 2026-03-10 |
 | 2. Substrate | 3/3 | Complete | 2026-03-10 |
-| 3. Rule Engine | 0/TBD | Not started | - |
+| 3. Rule Engine | Complete | Complete | 2026-03-10 |
 | 4. Rendering | 0/TBD | Not started | - |
 | 5. Command Hub | 0/TBD | Not started | - |
 | 6. Surfaces | 0/TBD | Not started | - |

@@ -1,0 +1,88 @@
+schema_version: "1"
+
+meta:
+  name: "Langton's Ant"
+  author: "Chris Langton"
+  description: "A 2D Turing machine where an ant moves on a grid, flipping cell colors and turning."
+  tags: ["2d", "ant", "turing-machine"]
+
+grid:
+  dimensionality: "2d"
+  width: 128
+  height: 128
+  topology: "toroidal"
+
+cell_properties:
+  - name: "color"
+    type: "bool"
+    default: 0
+    role: "input_output"
+  - name: "ant"
+    type: "bool"
+    default: 0
+    role: "input_output"
+  - name: "ant_dir"
+    type: "int"
+    default: 0
+    role: "input_output"
+
+rule:
+  type: "typescript"
+  compute: |
+    const hasAnt = ctx.cell.ant === 1;
+    if (!hasAnt) {
+      let newColor = ctx.cell.color;
+      let newAnt = 0;
+      let newDir = 0;
+      for (const n of ctx.neighbors) {
+        if (n.ant !== 1) continue;
+        const nDir = n.ant_dir;
+        const nColor = n.color;
+        let nextDir;
+        if (nColor === 0) {
+          nextDir = (nDir + 1) % 4;
+        } else {
+          nextDir = (nDir + 3) % 4;
+        }
+        const dx = [0, 1, 0, -1];
+        const dy = [-1, 0, 1, 0];
+        const targetX = (ctx.x - dx[nextDir] + ctx.grid.width) % ctx.grid.width;
+        const targetY = (ctx.y - dy[nextDir] + ctx.grid.height) % ctx.grid.height;
+        if (targetX === ctx.x && targetY === ctx.y) {
+          return { color: ctx.cell.color, ant: 1, ant_dir: nextDir };
+        }
+      }
+      return { color: newColor, ant: 0, ant_dir: 0 };
+    }
+    const color = ctx.cell.color;
+    const dir = ctx.cell.ant_dir;
+    let nextDir;
+    if (color === 0) {
+      nextDir = (dir + 1) % 4;
+    } else {
+      nextDir = (dir + 3) % 4;
+    }
+    const newColor = color === 0 ? 1 : 0;
+    const dx = [0, 1, 0, -1];
+    const dy = [-1, 0, 1, 0];
+    const targetX = (ctx.x + dx[nextDir] + ctx.grid.width) % ctx.grid.width;
+    const targetY = (ctx.y + dy[nextDir] + ctx.grid.height) % ctx.grid.height;
+    return { color: newColor, ant: 0, ant_dir: 0 };
+
+visual_mappings:
+  - property: "color"
+    channel: "color"
+    mapping:
+      "0": "#ffffff"
+      "1": "#000000"
+  - property: "ant"
+    channel: "color"
+    mapping:
+      "1": "#ff0000"
+
+ai_context:
+  description: "Langton's Ant — a 2D Turing machine on a grid"
+  hints:
+    - "On a white cell: turn right 90°, flip color, move forward"
+    - "On a black cell: turn left 90°, flip color, move forward"
+    - "After ~10000 steps, the ant creates a repeating 'highway' pattern"

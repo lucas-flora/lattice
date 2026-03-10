@@ -1,0 +1,42 @@
+schema_version: "1"
+
+meta:
+  name: "Rule 110"
+  author: "Stephen Wolfram"
+  description: "1D elementary cellular automaton Rule 110 — proven Turing-complete."
+  tags: ["1d", "elementary", "turing-complete"]
+
+grid:
+  dimensionality: "1d"
+  width: 256
+  topology: "finite"
+
+cell_properties:
+  - name: "state"
+    type: "bool"
+    default: 0
+    role: "input_output"
+
+rule:
+  type: "typescript"
+  compute: |
+    const c = ctx.cell.state ? 1 : 0;
+    const left = ctx.neighbors.length > 0 ? (ctx.neighbors[0].state ? 1 : 0) : 0;
+    const right = ctx.neighbors.length > 1 ? (ctx.neighbors[1].state ? 1 : 0) : 0;
+    const pattern = (left << 2) | (c << 1) | right;
+    const rule110 = 0b01101110;
+    return { state: (rule110 >> pattern) & 1 };
+
+visual_mappings:
+  - property: "state"
+    channel: "color"
+    mapping:
+      "0": "#ffffff"
+      "1": "#000000"
+
+ai_context:
+  description: "Elementary cellular automaton Rule 110"
+  hints:
+    - "Each cell looks at itself and its two neighbors"
+    - "The 3-bit pattern indexes into the binary representation of 110"
+    - "Rule 110 is Turing-complete"

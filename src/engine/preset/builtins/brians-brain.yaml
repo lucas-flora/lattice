@@ -1,0 +1,47 @@
+schema_version: "1"
+
+meta:
+  name: "Brian's Brain"
+  author: "Brian Silverman"
+  description: "A 3-state cellular automaton: off, on, dying. Creates chaotic activity."
+  tags: ["2d", "3-state", "chaotic"]
+
+grid:
+  dimensionality: "2d"
+  width: 128
+  height: 128
+  topology: "toroidal"
+
+cell_properties:
+  - name: "state"
+    type: "int"
+    default: 0
+    role: "input_output"
+
+rule:
+  type: "typescript"
+  compute: |
+    const state = ctx.cell.state;
+    if (state === 1) {
+      return { state: 2 };
+    }
+    if (state === 2) {
+      return { state: 0 };
+    }
+    const onNeighbors = ctx.neighbors.filter(n => n.state === 1).length;
+    return { state: onNeighbors === 2 ? 1 : 0 };
+
+visual_mappings:
+  - property: "state"
+    channel: "color"
+    mapping:
+      "0": "#000000"
+      "1": "#ffffff"
+      "2": "#0066ff"
+
+ai_context:
+  description: "Brian's Brain with 3 states: off (0), on (1), dying (2)"
+  hints:
+    - "On cells always become dying next tick"
+    - "Dying cells always become off next tick"
+    - "Off cells turn on if exactly 2 neighbors are on"
