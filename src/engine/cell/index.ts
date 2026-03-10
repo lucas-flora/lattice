@@ -1,6 +1,17 @@
 /**
  * Cell Property System module.
  *
- * Defines static parameters and computed functions for cells.
- * Expanded in Phase 2.
+ * Provides typed property definitions, a registry for managing collections,
+ * and compiled computed functions for derived values.
  */
+export { CellPropertyDefinition } from './CellPropertyDefinition';
+export { CellPropertyRegistry } from './CellPropertyRegistry';
+export { ComputedFunction } from './ComputedFunction';
+export type {
+  CellPropertyType,
+  PropertyRole,
+  CellPropertyConfig,
+  ComputeContext,
+  ComputeFn,
+} from './types';
+export { CHANNELS_PER_TYPE } from './types';

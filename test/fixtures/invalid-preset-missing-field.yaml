@@ -1,0 +1,14 @@
+schema_version: "1"
+meta: {}
+grid:
+  dimensionality: "2d"
+  width: 10
+  height: 10
+  topology: "toroidal"
+cell_properties:
+  - name: "state"
+    type: "float"
+    default: 0
+rule:
+  type: "typescript"
+  compute: "return 0;"

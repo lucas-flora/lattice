@@ -1,0 +1,55 @@
+schema_version: "1"
+
+meta:
+  name: "Test Simulation"
+  author: "Test Author"
+  description: "A test preset demonstrating all schema sections"
+  tags: ["test", "demo"]
+
+grid:
+  dimensionality: "2d"
+  width: 64
+  height: 64
+  topology: "toroidal"
+
+cell_properties:
+  - name: "alive"
+    type: "bool"
+    default: 0
+    role: "input_output"
+  - name: "age"
+    type: "int"
+    default: 0
+    role: "output"
+  - name: "energy"
+    type: "float"
+    default: 0.0
+    role: "input_output"
+
+rule:
+  type: "typescript"
+  compute: |
+    const alive = ctx.cell.alive;
+    const neighborCount = ctx.neighbors.filter(n => n.alive === 1).length;
+    if (alive === 1) {
+      return neighborCount === 2 || neighborCount === 3 ? 1 : 0;
+    }
+    return neighborCount === 3 ? 1 : 0;
+
+visual_mappings:
+  - property: "alive"
+    channel: "color"
+    mapping:
+      "0": "#000000"
+      "1": "#00ff00"
+  - property: "energy"
+    channel: "size"
+    mapping:
+      min: 0.5
+      max: 1.0
+
+ai_context:
+  description: "A simple Game of Life variant with age and energy tracking"
+  hints:
+    - "Alive cells follow standard GoL rules"
+    - "Energy decreases each tick for alive cells"
