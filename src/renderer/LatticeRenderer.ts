@@ -1,0 +1,329 @@
+/**
+ * LatticeRenderer: unified Three.js renderer for 1D/2D/3D grids using InstancedMesh.
+ *
+ * Single render path for all grid dimensionalities (RNDR-04).
+ * Uses InstancedMesh for efficient GPU-instanced rendering -- no per-frame object allocation.
+ * Reads typed arrays directly from Grid.getCurrentBuffer() -- zero-copy (RNDR-12).
+ * All GPU resources explicitly disposed via disposeObject/disposeRenderer (RNDR-11).
+ */
+
+import * as THREE from 'three';
+import type { Grid } from '@/engine/grid/Grid';
+import type { PresetConfig } from '@/engine/preset/types';
+import { VisualMapper } from './VisualMapper';
+import { disposeObject, disposeRenderer } from '@/lib/three-dispose';
+import type { RendererConfig, GridRenderMode } from './types';
+
+export class LatticeRenderer {
+  readonly scene: THREE.Scene;
+  readonly camera: THREE.OrthographicCamera;
+  private _renderer: THREE.WebGLRenderer | null;
+  private instancedMesh: THREE.InstancedMesh | null = null;
+  private visualMapper: VisualMapper | null = null;
+  private grid: Grid | null = null;
+  private preset: PresetConfig | null = null;
+  private renderMode: GridRenderMode = '2d';
+
+  // Reusable temporaries -- no per-frame allocation
+  private readonly tempMatrix: THREE.Matrix4 = new THREE.Matrix4();
+  private readonly tempColor: THREE.Color = new THREE.Color();
+  private readonly tempPosition: THREE.Vector3 = new THREE.Vector3();
+  private readonly tempQuaternion: THREE.Quaternion = new THREE.Quaternion();
+  private readonly tempScale: THREE.Vector3 = new THREE.Vector3(1, 1, 1);
+
+  // 1D spacetime state
+  private historyBuffers: Float32Array[] = [];
+  private maxHistory: number = 128;
+
+  constructor(config: RendererConfig) {
+    // Scene
+    this.scene = new THREE.Scene();
+    this.scene.background = new THREE.Color(config.backgroundColor ?? 0x000000);
+
+    // Orthographic camera
+    this.camera = new THREE.OrthographicCamera(
+      -config.width / 2,
+      config.width / 2,
+      config.height / 2,
+      -config.height / 2,
+      0.1,
+      1000,
+    );
+    this.camera.position.set(0, 0, 10);
+    this.camera.lookAt(0, 0, 0);
+
+    // WebGL renderer
+    this._renderer = new THREE.WebGLRenderer({
+      canvas: config.canvas,
+      antialias: config.antialias ?? true,
+    });
+    this._renderer.setSize(config.width, config.height);
+  }
+
+  /**
+   * Initialize or reinitialize for a new simulation.
+   * Creates InstancedMesh sized to the grid.
+   */
+  setSimulation(grid: Grid, preset: PresetConfig): void {
+    // Clean up existing mesh
+    if (this.instancedMesh) {
+      this.scene.remove(this.instancedMesh);
+      this.instancedMesh.geometry.dispose();
+      if (this.instancedMesh.material instanceof THREE.Material) {
+        this.instancedMesh.material.dispose();
+      }
+      this.instancedMesh = null;
+    }
+
+    this.grid = grid;
+    this.preset = preset;
+    this.visualMapper = new VisualMapper(preset);
+    this.historyBuffers = [];
+
+    // Determine render mode
+    this.renderMode = preset.grid.dimensionality === '1d' ? '1d-spacetime' : '2d';
+
+    // Create geometry: 1x1 plane for each cell
+    const geometry = new THREE.PlaneGeometry(1, 1);
+
+    // Material with vertex colors for per-instance coloring
+    const material = new THREE.MeshBasicMaterial();
+
+    // Instance count
+    let instanceCount: number;
+    if (this.renderMode === '1d-spacetime') {
+      instanceCount = grid.config.width * this.maxHistory;
+    } else {
+      instanceCount = grid.cellCount;
+    }
+
+    // Create instanced mesh
+    this.instancedMesh = new THREE.InstancedMesh(geometry, material, instanceCount);
+    this.instancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+
+    // Initialize instance positions
+    this.initializePositions();
+
+    // Initialize all colors to default
+    this.initializeColors();
+
+    this.scene.add(this.instancedMesh);
+  }
+
+  /**
+   * Set instance positions based on grid coordinates.
+   */
+  private initializePositions(): void {
+    if (!this.instancedMesh || !this.grid) return;
+
+    if (this.renderMode === '2d') {
+      // 2D mode: position each cell at its (x, y) coordinate
+      for (let i = 0; i < this.grid.cellCount; i++) {
+        const [x, y] = this.grid.indexToCoord(i);
+        this.tempPosition.set(x, y, 0);
+        this.tempScale.set(1, 1, 1);
+        this.tempMatrix.compose(this.tempPosition, this.tempQuaternion, this.tempScale);
+        this.instancedMesh.setMatrixAt(i, this.tempMatrix);
+      }
+    } else {
+      // 1D spacetime: initially all instances at origin with scale 0 (hidden)
+      this.tempScale.set(0, 0, 0);
+      for (let i = 0; i < this.instancedMesh.count; i++) {
+        this.tempPosition.set(0, 0, 0);
+        this.tempMatrix.compose(this.tempPosition, this.tempQuaternion, this.tempScale);
+        this.instancedMesh.setMatrixAt(i, this.tempMatrix);
+      }
+    }
+
+    this.instancedMesh.instanceMatrix.needsUpdate = true;
+  }
+
+  /**
+   * Initialize all instance colors to black.
+   */
+  private initializeColors(): void {
+    if (!this.instancedMesh) return;
+    this.tempColor.set(0x000000);
+    for (let i = 0; i < this.instancedMesh.count; i++) {
+      this.instancedMesh.setColorAt(i, this.tempColor);
+    }
+    if (this.instancedMesh.instanceColor) {
+      this.instancedMesh.instanceColor.needsUpdate = true;
+    }
+  }
+
+  /**
+   * Update instance matrices and colors from current grid state.
+   * Reads typed arrays directly from Grid -- zero-copy (RNDR-12).
+   */
+  update(): void {
+    if (!this.grid || !this.instancedMesh || !this.visualMapper) return;
+
+    const colorProp = this.visualMapper.getPrimaryColorProperty();
+    const sizeProp = this.visualMapper.getPrimarySizeProperty();
+
+    if (this.renderMode === '2d') {
+      this.update2D(colorProp, sizeProp);
+    } else {
+      this.update1DSpacetime(colorProp);
+    }
+  }
+
+  /**
+   * Update 2D grid: read current buffer and apply visual mappings.
+   */
+  private update2D(colorProp: string | null, sizeProp: string | null): void {
+    if (!this.grid || !this.instancedMesh || !this.visualMapper) return;
+
+    // Zero-copy read from grid buffer (RNDR-12)
+    const colorBuffer = colorProp ? this.grid.getCurrentBuffer(colorProp) : null;
+    const sizeBuffer = sizeProp ? this.grid.getCurrentBuffer(sizeProp) : null;
+
+    for (let i = 0; i < this.grid.cellCount; i++) {
+      // Color mapping
+      if (colorBuffer && colorProp) {
+        const value = colorBuffer[i];
+        const color = this.visualMapper.getColor(colorProp, value);
+        this.instancedMesh.setColorAt(i, color);
+      }
+
+      // Size mapping: update instance matrix if needed
+      if (sizeBuffer && sizeProp) {
+        const value = sizeBuffer[i];
+        const scale = this.visualMapper.getSize(sizeProp, value);
+        const [x, y] = this.grid.indexToCoord(i);
+        this.tempPosition.set(x, y, 0);
+        this.tempScale.set(scale, scale, 1);
+        this.tempMatrix.compose(this.tempPosition, this.tempQuaternion, this.tempScale);
+        this.instancedMesh.setMatrixAt(i, this.tempMatrix);
+      }
+    }
+
+    if (this.instancedMesh.instanceColor) {
+      this.instancedMesh.instanceColor.needsUpdate = true;
+    }
+    if (sizeBuffer) {
+      this.instancedMesh.instanceMatrix.needsUpdate = true;
+    }
+  }
+
+  /**
+   * Update 1D spacetime diagram: snapshot current generation, rebuild display.
+   */
+  private update1DSpacetime(colorProp: string | null): void {
+    if (!this.grid || !this.instancedMesh || !this.visualMapper || !colorProp) return;
+
+    // Snapshot current generation buffer
+    const currentBuffer = this.grid.getCurrentBuffer(colorProp);
+    const snapshot = new Float32Array(currentBuffer.length);
+    snapshot.set(currentBuffer);
+
+    // Add to history
+    this.historyBuffers.push(snapshot);
+    if (this.historyBuffers.length > this.maxHistory) {
+      this.historyBuffers.shift();
+    }
+
+    const width = this.grid.config.width;
+    const historyLen = this.historyBuffers.length;
+
+    // Update all visible instances
+    let instanceIdx = 0;
+    for (let gen = 0; gen < historyLen; gen++) {
+      const buffer = this.historyBuffers[gen];
+      for (let x = 0; x < width; x++) {
+        const value = buffer[x];
+        const color = this.visualMapper.getColor(colorProp, value);
+        this.instancedMesh.setColorAt(instanceIdx, color);
+
+        // Position: x = cell index, y = generation (newest at top)
+        this.tempPosition.set(x, historyLen - 1 - gen, 0);
+        this.tempScale.set(1, 1, 1);
+        this.tempMatrix.compose(this.tempPosition, this.tempQuaternion, this.tempScale);
+        this.instancedMesh.setMatrixAt(instanceIdx, this.tempMatrix);
+
+        instanceIdx++;
+      }
+    }
+
+    // Hide remaining instances
+    this.tempScale.set(0, 0, 0);
+    for (let i = instanceIdx; i < this.instancedMesh.count; i++) {
+      this.tempMatrix.compose(this.tempPosition, this.tempQuaternion, this.tempScale);
+      this.instancedMesh.setMatrixAt(i, this.tempMatrix);
+    }
+
+    this.instancedMesh.instanceMatrix.needsUpdate = true;
+    if (this.instancedMesh.instanceColor) {
+      this.instancedMesh.instanceColor.needsUpdate = true;
+    }
+  }
+
+  /**
+   * Render one frame.
+   */
+  render(): void {
+    if (this._renderer) {
+      this._renderer.render(this.scene, this.camera);
+    }
+  }
+
+  /**
+   * Resize the renderer and update camera aspect.
+   */
+  resize(width: number, height: number): void {
+    if (this._renderer) {
+      this._renderer.setSize(width, height);
+    }
+  }
+
+  /**
+   * Dispose all GPU resources. Must be called on component unmount (RNDR-11).
+   */
+  dispose(): void {
+    disposeObject(this.scene);
+    if (this._renderer) {
+      disposeRenderer(this._renderer);
+      this._renderer = null;
+    }
+    this.instancedMesh = null;
+    this.grid = null;
+    this.preset = null;
+    this.visualMapper = null;
+    this.historyBuffers = [];
+  }
+
+  /**
+   * Get renderer memory info for leak verification.
+   */
+  getMemoryInfo(): { geometries: number; textures: number } {
+    if (!this._renderer) {
+      return { geometries: 0, textures: 0 };
+    }
+    return {
+      geometries: this._renderer.info.memory.geometries,
+      textures: this._renderer.info.memory.textures,
+    };
+  }
+
+  /**
+   * Get the current render mode.
+   */
+  getRenderMode(): GridRenderMode {
+    return this.renderMode;
+  }
+
+  /**
+   * Get the max history depth for 1D spacetime diagrams.
+   */
+  getMaxHistory(): number {
+    return this.maxHistory;
+  }
+
+  /**
+   * Set the max history depth for 1D spacetime diagrams.
+   */
+  setMaxHistory(depth: number): void {
+    this.maxHistory = Math.max(1, depth);
+  }
+}

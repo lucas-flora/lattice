@@ -75,6 +75,14 @@ pnpm vitest run --dir src && \
 | RULE-02 TypeScript rule execution | `rule-compiler.test.ts` (10 tests), `rule-runner.test.ts` | — | — | Covered |
 | RULE-05 WASM fallback to TS | `rule-runner.test.ts` (2 WASM fallback tests) | — | — | Covered |
 | CTRL-07 Undo/redo Command pattern | `command-history.test.ts` (14 tests) | — | — | Covered |
+| RNDR-01 Three.js 2D renderer | `integration.test.ts` (GoL mapping), `lattice-renderer.test.ts` | — | — | Covered |
+| RNDR-03 Three.js 1D renderer | `lattice-renderer.test.ts` (spacetime mode), `integration.test.ts` (Rule 110) | — | — | Covered |
+| RNDR-04 Unified renderer | `lattice-renderer.test.ts` (unified path), `integration.test.ts` (same path) | — | — | Covered |
+| RNDR-05 Pan/zoom non-integer | `camera-controller.test.ts` (12 tests) | — | — | Covered |
+| RNDR-06 Zoom to fit | `camera-controller.test.ts` (3 zoom-to-fit tests), `integration.test.ts` | — | — | Covered |
+| RNDR-07 Data-driven visuals | `visual-mapper.test.ts` (9 tests), `integration.test.ts` (mapping change) | — | — | Covered |
+| RNDR-11 Explicit dispose | `lattice-renderer.test.ts` (dispose test), `simulation-viewport.test.tsx` | — | — | Covered |
+| RNDR-12 Zero-copy typed arrays | `lattice-renderer.test.ts` (zero-copy), `integration.test.ts` (buffer ref) | — | — | Covered |
 
 ## Phase Coverage Log
 
@@ -105,3 +113,16 @@ pnpm vitest run --dir src && \
 - User-supplied YAML runs identically to built-ins — no privilege difference
 - 5 edits + 5 undos verified by buffer equality
 - WASM fallback: silent TS fallback, no exceptions thrown
+
+### Phase 4: Rendering (2026-03-10)
+- 44 new JS/TS unit tests = 240 total (with Phases 1-3)
+- All quality gates pass: lint (0 warnings), tsc --noEmit, vitest
+- Renderer suites: `visual-mapper.test.ts` (9), `lattice-renderer.test.ts` (12), `camera-controller.test.ts` (12), `integration.test.ts` (8)
+- Component suite: `simulation-viewport.test.tsx` (3)
+- VisualMapper: data-driven color/size/orientation mapping from YAML visual_mappings
+- LatticeRenderer: unified InstancedMesh path for 1D spacetime and 2D grids
+- CameraController: pan, zoom (non-integer), zoom-to-fit, state persistence
+- Zero-copy: Grid.getCurrentBuffer() returns same typed array reference -- no copy
+- Dispose: disposeObject() traverses scene graph and cleans geometry/material
+- Conway's GoL renders with green/black instanced quads via YAML mapping
+- Rule 110 renders as spacetime diagram using the same LatticeRenderer path
