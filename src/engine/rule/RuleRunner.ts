@@ -13,7 +13,8 @@ import { Grid } from '../grid/Grid';
 import type { PresetConfig } from '../preset/types';
 import { CHANNELS_PER_TYPE } from '../cell/types';
 import { compileRule } from './RuleCompiler';
-import type { RuleFn, RuleContext, TickResult, IRuleRunner } from './types';
+import { WasmRuleRunner } from './WasmRuleRunner';
+import type { RuleFn, RuleContext, TickResult, IRuleRunner, WasmModule } from './types';
 
 export class RuleRunner implements IRuleRunner {
   readonly grid: Grid;
@@ -24,8 +25,9 @@ export class RuleRunner implements IRuleRunner {
   private propertyChannels: Map<string, number>;
   private dt: number = 1;
   private useWasm: boolean = false;
+  private wasmDelegate: WasmRuleRunner | null = null;
 
-  constructor(grid: Grid, preset: PresetConfig) {
+  constructor(grid: Grid, preset: PresetConfig, wasmModule?: WasmModule) {
     this.grid = grid;
     this.preset = preset;
 
@@ -36,28 +38,46 @@ export class RuleRunner implements IRuleRunner {
       this.propertyChannels.set(prop.name, CHANNELS_PER_TYPE[prop.type]);
     }
 
-    // Try WASM first, fall back to TS silently
-    this.useWasm = this.tryLoadWasm();
+    // Try to set up WASM delegate if this is a WASM-type preset
+    if (wasmModule && preset.rule.type === 'wasm' && preset.rule.wasm_module) {
+      try {
+        this.wasmDelegate = new WasmRuleRunner(grid, preset, wasmModule);
+        this.useWasm = true;
+      } catch {
+        // Silent fallback -- RULE-05
+        this.wasmDelegate = null;
+        this.useWasm = false;
+      }
+    }
 
-    // Compile the TypeScript rule function
-    this.ruleFn = compileRule(preset.rule.compute);
+    // Compile the TypeScript rule function (always needed as fallback)
+    const computeBody = preset.rule.compute || preset.rule.fallback_compute || '';
+    this.ruleFn = compileRule(computeBody);
   }
 
   /**
-   * Attempt to load a WASM module for this rule.
-   * Returns false silently if no WASM is available -- no exceptions thrown.
+   * Create a RuleRunner with async WASM module loading.
+   * Falls back to TypeScript silently if WASM loading fails.
    */
-  private tryLoadWasm(): boolean {
-    try {
-      // WASM module lookup: check if a WASM implementation exists
-      // for this specific preset. In Phase 7, this will actually
-      // load and instantiate the WASM module.
-      // For now, always returns false (TS fallback).
-      return false;
-    } catch {
-      // Silent fallback -- this is the documented behavior (RULE-05)
-      return false;
+  static async create(grid: Grid, preset: PresetConfig): Promise<RuleRunner> {
+    let wasmModule: WasmModule | undefined;
+
+    if (preset.rule.type === 'wasm' && preset.rule.wasm_module) {
+      try {
+        // Attempt to dynamically import the wasm-bindgen generated module
+        const mod = await import('../../wasm/pkg/lattice_engine.js');
+        // Initialize the WASM module if it has a default init function
+        if (typeof mod.default === 'function') {
+          await mod.default();
+        }
+        wasmModule = mod as unknown as WasmModule;
+      } catch {
+        // Silent fallback -- no WASM available, use TypeScript
+        wasmModule = undefined;
+      }
     }
+
+    return new RuleRunner(grid, preset, wasmModule);
   }
 
   /**
@@ -82,8 +102,18 @@ export class RuleRunner implements IRuleRunner {
 
   /**
    * Run one full perceive-update cycle on the entire grid.
+   * If WASM delegate is available, delegates to it (whole-tick API).
+   * Otherwise, uses the TypeScript per-cell loop.
    */
   tick(): TickResult {
+    // Delegate to WASM if available
+    if (this.wasmDelegate) {
+      const result = this.wasmDelegate.tick();
+      this.generation = this.wasmDelegate.getGeneration();
+      return result;
+    }
+
+    // TypeScript fallback: per-cell perceive-update loop
     const { width, height, depth, dimensionality } = this.grid.config;
     const gridInfo = { width, height, depth, dimensionality };
 
@@ -157,6 +187,9 @@ export class RuleRunner implements IRuleRunner {
   reset(): void {
     this.grid.reset();
     this.generation = 0;
+    if (this.wasmDelegate) {
+      this.wasmDelegate.setGeneration(0);
+    }
   }
 
   /**
@@ -172,6 +205,9 @@ export class RuleRunner implements IRuleRunner {
    */
   setGeneration(gen: number): void {
     this.generation = gen;
+    if (this.wasmDelegate) {
+      this.wasmDelegate.setGeneration(gen);
+    }
   }
 
   /**

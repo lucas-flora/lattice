@@ -23,7 +23,8 @@ cell_properties:
     role: "input_output"
 
 rule:
-  type: "typescript"
+  type: "wasm"
+  wasm_module: "gray_scott_tick"
   compute: |
     const Du = 0.2097;
     const Dv = 0.105;

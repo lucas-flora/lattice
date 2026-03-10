@@ -36,13 +36,15 @@ export type { PresetConfig, PresetValidationResult } from '../preset/types';
 export type WorkerInMessage =
   | { type: 'init' }
   | { type: 'tick' }
-  | { type: 'stop' };
+  | { type: 'stop' }
+  | { type: 'init-wasm' };
 
 /** Messages sent from simulation Worker to main thread */
 export type WorkerOutMessage =
   | { type: 'initialized'; generation: number }
   | { type: 'tick-result'; generation: number; timestamp: number }
-  | { type: 'error'; message: string };
+  | { type: 'error'; message: string }
+  | { type: 'wasm-ready'; available: boolean };
 
 // --- Simulation Config Types ---
 

@@ -55,6 +55,13 @@ export function handleMessage(
       return [null, newState];
     }
 
+    case 'init-wasm': {
+      // WASM initialization is handled asynchronously in the worker entry point.
+      // The protocol handler returns a placeholder; actual loading happens in the worker.
+      const response: WorkerOutMessage = { type: 'wasm-ready', available: false };
+      return [response, state];
+    }
+
     default:
       return [null, state];
   }
