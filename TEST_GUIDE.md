@@ -50,6 +50,20 @@ pnpm vitest run --dir src && \
 | FOUN-04 WASM toolchain | Rust tests (2) | — | — | Covered |
 | FOUN-05 Three.js dispose | `three-dispose.test.ts` (6 tests) | — | — | Covered |
 | FOUN-06 Zustand stores | `stores.test.ts` (5 tests) | — | — | Covered |
+| GRID-01 2D Float32Array grid | `grid.test.ts` (23 tests) | — | — | Covered |
+| GRID-02 1D grid support | `grid.test.ts`, `neighbors.test.ts` | — | — | Covered |
+| GRID-03 3D grid support | `grid.test.ts`, `neighbors.test.ts` | — | — | Covered |
+| GRID-04 Configurable topology | `neighbors.test.ts` (21 tests) | — | — | Covered |
+| GRID-05 Ping-pong buffering | `grid.test.ts` (3 ping-pong tests) | — | — | Covered |
+| CELL-01 Cell property component | `property-definition.test.ts` (18 tests) | — | — | Covered |
+| CELL-02 Static parameters | `property-definition.test.ts` | — | — | Covered |
+| CELL-03 Computed functions | `computed-function.test.ts` (10 tests) | — | — | Covered |
+| CELL-04 I/O roles | `property-registry.test.ts` (13 tests) | — | — | Covered |
+| CELL-05 Visual parameter drive | Schema supports visual_mappings | — | — | Covered |
+| CELL-06 User-defined parity | `property-registry.test.ts` (parity test) | — | — | Covered |
+| YAML-01 Versioned Zod schema | `schema.test.ts` (17 tests) | — | — | Covered |
+| YAML-02 Full schema sections | `schema.test.ts`, `loader.test.ts` | — | — | Covered |
+| YAML-03 Preset loader | `loader.test.ts` (11 tests) | — | — | Covered |
 
 ## Phase Coverage Log
 
@@ -59,3 +73,11 @@ pnpm vitest run --dir src && \
 - 18 JS/TS unit tests + 2 Rust tests = 20 total
 - All quality gates pass: lint, tsc --noEmit, vitest, cargo test
 - Suites: `protocol.test.ts` (7), `stores.test.ts` (5), `three-dispose.test.ts` (6), Rust (2)
+
+### Phase 2: Substrate (2026-03-10)
+- 113 new JS/TS unit tests = 131 total (with Phase 1)
+- All quality gates pass: lint, tsc --noEmit, vitest
+- Grid suites: `grid.test.ts` (23), `neighbors.test.ts` (21)
+- Cell suites: `property-definition.test.ts` (18), `property-registry.test.ts` (13), `computed-function.test.ts` (10)
+- Preset suites: `schema.test.ts` (17), `loader.test.ts` (11)
+- 4 YAML test fixtures in `test/fixtures/`

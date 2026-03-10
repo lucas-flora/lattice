@@ -13,7 +13,7 @@ Lattice builds from the bottom up: pure engine substrate first, then rule execut
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Scaffold** - Project foundation, Web Worker boundary, WASM toolchain proof-of-concept, GPU dispose utilities
-- [ ] **Phase 2: Substrate** - Grid engine (1D/2D/3D), Cell Property System, YAML preset schema and loader
+- [x] **Phase 2: Substrate** - Grid engine (1D/2D/3D), Cell Property System, YAML preset schema and loader
 - [ ] **Phase 3: Rule Engine** - Perceive-Update execution, TypeScript rules, built-in presets, undo/redo Command pattern
 - [ ] **Phase 4: Rendering** - Three.js unified renderer, VisualMapper, zero-copy data path, pan/zoom
 - [ ] **Phase 5: Command Hub** - CommandRegistry, Zustand stores, engine-store event protocol
@@ -47,7 +47,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. A hand-written YAML file matching the full schema (meta, grid, cell_properties, rule, visual_mappings, ai_context) passes Zod validation with `schema_version: "1"` present
   4. A YAML file with a missing required field produces a typed Zod error describing exactly which field is invalid
   5. 1D and 3D grid abstractions initialize and return correct neighbor lists in a Vitest test without touching any browser API
-**Plans**: TBD
+**Plans**: 02-01, 02-02, 02-03 (2 waves)
 
 ### Phase 3: Rule Engine
 **Goal**: The simulation engine runs perceive-update cycles for all six built-in presets in TypeScript, with undo/redo using sparse Command-pattern diffs. Engine is fully testable in Node.js before any renderer exists.
@@ -151,7 +151,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Scaffold | 4/4 | Complete | 2026-03-10 |
-| 2. Substrate | 0/TBD | Not started | - |
+| 2. Substrate | 3/3 | Complete | 2026-03-10 |
 | 3. Rule Engine | 0/TBD | Not started | - |
 | 4. Rendering | 0/TBD | Not started | - |
 | 5. Command Hub | 0/TBD | Not started | - |
