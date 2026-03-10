@@ -30,7 +30,7 @@ export class WasmRuleRunner implements IRuleRunner {
     this.wasmFnName = fnName;
 
     // Verify the function exists on the module
-    if (typeof (this.wasmModule as Record<string, unknown>)[this.wasmFnName] !== 'function') {
+    if (typeof (this.wasmModule as unknown as Record<string, unknown>)[this.wasmFnName] !== 'function') {
       throw new Error(`WASM module does not export function '${this.wasmFnName}'`);
     }
   }

@@ -67,8 +67,9 @@ export class RuleRunner implements IRuleRunner {
         // Attempt to dynamically import the wasm-bindgen generated module
         const mod = await import('../../wasm/pkg/lattice_engine.js');
         // Initialize the WASM module if it has a default init function
+        // wasm-bindgen's init function auto-detects the .wasm path when no arg is given
         if (typeof mod.default === 'function') {
-          await mod.default();
+          await (mod.default as (input?: unknown) => Promise<unknown>)();
         }
         wasmModule = mod as unknown as WasmModule;
       } catch {
