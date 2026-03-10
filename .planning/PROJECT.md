@@ -54,10 +54,13 @@ The engine is universally extensible — any simulation type runs on the same su
 
 - **Tech stack**: Next.js (App Router), TypeScript (strict), Tailwind CSS, Three.js, Zustand, pnpm
 - **AI provider**: OpenAI API (GPT-4o recommended) with Supabase pgvector for RAG
-- **WASM language**: Rust (via wasm-pack) for performance-critical rule execution
+- **WASM language**: Rust via wasm-bindgen-cli (NOT wasm-pack — archived Sept 2025) for performance-critical rule execution
 - **Preset format**: YAML — human-readable, portable, community-shareable
 - **Rendering**: Three.js only — no separate 2D renderer, unified approach for all dimensions
 - **Architecture**: Engine is pure TypeScript with no UI dependencies; UI components are modular and independently testable
+- **UI/UX quality**: All frontend work must reference the UI/UX skill at https://github.com/nextlevelbuilder/ui-ux-pro-max-skill.git — non-negotiable quality bar
+- **Web Worker**: Simulation loop runs in a dedicated Web Worker from the very first tick — load-bearing, cannot be retrofitted
+- **Three Surface Doctrine**: Build discipline, not a feature phase — wire every action to GUI + CLI simultaneously as it is built
 
 ## Key Decisions
 
