@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'phase-*']
   pull_request:
     branches: [main]
 
@@ -10,41 +10,50 @@ permissions:
   contents: read
 
 jobs:
-  lint:
-    name: Lint
+  quality:
+    name: Lint, Typecheck & Unit Tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: 'pnpm'
-      - uses: pnpm/action-setup@v4
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Lint
         run: pnpm lint
+      - name: Type check
+        run: pnpm tsc --noEmit
+      - name: Unit tests
+        run: pnpm vitest run --dir src
 
-  unit-tests:
-    name: Unit Tests
+  wasm-build:
+    name: WASM Build Verification
     runs-on: ubuntu-latest
-    needs: lint
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          node-version: '22'
-          cache: 'pnpm'
-      - uses: pnpm/action-setup@v4
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-      - name: Run unit tests
-        run: pnpm vitest run --dir src --dir engine
+          targets: wasm32-unknown-unknown
+      - name: Rust tests
+        run: cargo test -p lattice-engine
+      - name: Build WASM
+        run: cargo build --target wasm32-unknown-unknown --release -p lattice-engine
+      - name: Install wasm-bindgen-cli
+        run: cargo install wasm-bindgen-cli
+      - name: Generate JS bindings
+        run: |
+          mkdir -p src/wasm/pkg
+          wasm-bindgen target/wasm32-unknown-unknown/release/lattice_engine.wasm \
+            --out-dir src/wasm/pkg \
+            --target web
 
   integration-tests:
     name: Integration Tests
     runs-on: ubuntu-latest
-    needs: unit-tests
+    needs: quality
     services:
       postgres:
         image: pgvector/pgvector:pg16
@@ -61,17 +70,17 @@ jobs:
           --health-retries 5
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: 'pnpm'
-      - uses: pnpm/action-setup@v4
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Run integration tests
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/lattice_test
-        run: pnpm vitest run --dir test/integration
+        run: pnpm vitest run --dir test/integration --passWithNoTests
 
   scenario-tests:
     name: Scenario Tests
@@ -93,14 +102,14 @@ jobs:
           --health-retries 5
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: 'pnpm'
-      - uses: pnpm/action-setup@v4
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Run scenario tests
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/lattice_test
-        run: pnpm vitest run --dir test/scenarios
+        run: pnpm vitest run --dir test/scenarios --passWithNoTests

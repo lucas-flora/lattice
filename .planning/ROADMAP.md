@@ -12,7 +12,7 @@ Lattice builds from the bottom up: pure engine substrate first, then rule execut
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Scaffold** - Project foundation, Web Worker boundary, WASM toolchain proof-of-concept, GPU dispose utilities
+- [x] **Phase 1: Scaffold** - Project foundation, Web Worker boundary, WASM toolchain proof-of-concept, GPU dispose utilities
 - [ ] **Phase 2: Substrate** - Grid engine (1D/2D/3D), Cell Property System, YAML preset schema and loader
 - [ ] **Phase 3: Rule Engine** - Perceive-Update execution, TypeScript rules, built-in presets, undo/redo Command pattern
 - [ ] **Phase 4: Rendering** - Three.js unified renderer, VisualMapper, zero-copy data path, pan/zoom
@@ -35,7 +35,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. A Rust "hello" function compiles through the wasm-bindgen-cli pipeline (cargo build → wasm-bindgen → wasm-opt) and is callable from TypeScript in the browser
   4. A `disposeObject()` Three.js utility exists and is covered by a unit test asserting `renderer.info.memory.geometries === 0` after disposal
   5. The folder structure matches the spec (/engine, /components, /presets, /ai, /lib) and the engine has zero UI imports verified by a lint rule
-**Plans**: TBD
+**Plans**: 01-01, 01-02, 01-03, 01-04 (2 waves)
 
 ### Phase 2: Substrate
 **Goal**: The grid engine (1D, 2D, 3D), Cell Property System, and YAML preset schema form a stable, tested foundation that all other components depend on. The YAML schema is formally versioned before any preset is written.
@@ -150,7 +150,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Scaffold | 0/TBD | Not started | - |
+| 1. Scaffold | 4/4 | Complete | 2026-03-10 |
 | 2. Substrate | 0/TBD | Not started | - |
 | 3. Rule Engine | 0/TBD | Not started | - |
 | 4. Rendering | 0/TBD | Not started | - |
