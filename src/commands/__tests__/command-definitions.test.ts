@@ -20,7 +20,7 @@ describe('Command Definitions', () => {
     registerAllCommands(registry, controller, bus);
 
     // Reset store state
-    useUiStore.setState({ isTerminalOpen: false, isParamPanelOpen: false });
+    useUiStore.setState({ isTerminalOpen: false, isParamPanelOpen: false, brushSize: 1 });
     useViewStore.setState({ zoom: 1, cameraX: 0, cameraY: 0 });
   });
 
@@ -34,6 +34,7 @@ describe('Command Definitions', () => {
     const list = registry.list();
     const names = list.map((c) => c.name);
 
+    // Original Phase 5 commands
     expect(names).toContain('sim.play');
     expect(names).toContain('sim.pause');
     expect(names).toContain('sim.step');
@@ -47,7 +48,18 @@ describe('Command Definitions', () => {
     expect(names).toContain('ui.toggleTerminal');
     expect(names).toContain('ui.toggleParamPanel');
 
-    expect(list.length).toBe(12);
+    // Phase 6 new commands
+    expect(names).toContain('sim.stepBack');
+    expect(names).toContain('sim.clear');
+    expect(names).toContain('sim.speed');
+    expect(names).toContain('sim.seek');
+    expect(names).toContain('sim.status');
+    expect(names).toContain('edit.draw');
+    expect(names).toContain('edit.erase');
+    expect(names).toContain('edit.brushSize');
+    expect(names).toContain('preset.list');
+
+    expect(list.length).toBe(21);
   });
 
   it('TestCommandDefinitions_SimPlay_StartsSimulation', async () => {

@@ -12,6 +12,8 @@ describe('Zustand Stores', () => {
     expect(state.activePreset).toBeNull();
     expect(state.gridWidth).toBe(0);
     expect(state.gridHeight).toBe(0);
+    expect(state.liveCellCount).toBe(0);
+    expect(state.speed).toBe(10);
   });
 
   it('TestViewStore_InitializesWithDefaults', () => {
@@ -25,6 +27,7 @@ describe('Zustand Stores', () => {
     const state = useUiStore.getState();
     expect(state.isTerminalOpen).toBe(false);
     expect(state.isParamPanelOpen).toBe(false);
+    expect(state.brushSize).toBe(1);
   });
 
   it('TestAiStore_InitializesWithDefaults', () => {

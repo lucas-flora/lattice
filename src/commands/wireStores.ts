@@ -20,8 +20,9 @@ import { uiStoreActions } from '../store/uiStore';
  */
 export function wireStores(eventBus: EventBus): () => void {
   // --- simStore wiring ---
-  const onTick = (payload: { generation: number }) => {
+  const onTick = (payload: { generation: number; liveCellCount: number }) => {
     simStoreActions.setGeneration(payload.generation);
+    simStoreActions.setLiveCellCount(payload.liveCellCount);
   };
 
   const onPlay = () => {
@@ -40,6 +41,14 @@ export function wireStores(eventBus: EventBus): () => void {
     simStoreActions.resetState();
   };
 
+  const onSpeedChange = (payload: { fps: number }) => {
+    simStoreActions.setSpeed(payload.fps);
+  };
+
+  const onClear = () => {
+    simStoreActions.setLiveCellCount(0);
+  };
+
   // --- viewStore wiring ---
   const onViewChange = (payload: { zoom?: number; cameraX?: number; cameraY?: number }) => {
     viewStoreActions.updateView(payload);
@@ -56,6 +65,8 @@ export function wireStores(eventBus: EventBus): () => void {
   eventBus.on('sim:pause', onPause);
   eventBus.on('sim:presetLoaded', onPresetLoaded);
   eventBus.on('sim:reset', onReset);
+  eventBus.on('sim:speedChange', onSpeedChange);
+  eventBus.on('sim:clear', onClear);
   eventBus.on('view:change', onViewChange);
   eventBus.on('ui:change', onUiChange);
 
@@ -68,6 +79,8 @@ export function wireStores(eventBus: EventBus): () => void {
     eventBus.off('sim:pause', onPause);
     eventBus.off('sim:presetLoaded', onPresetLoaded);
     eventBus.off('sim:reset', onReset);
+    eventBus.off('sim:speedChange', onSpeedChange);
+    eventBus.off('sim:clear', onClear);
     eventBus.off('view:change', onViewChange);
     eventBus.off('ui:change', onUiChange);
   };

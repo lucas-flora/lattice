@@ -12,12 +12,15 @@ export interface UiState {
   isTerminalOpen: boolean;
   /** Whether the parameter panel is visible */
   isParamPanelOpen: boolean;
+  /** Current brush size for drawing (1, 3, 5, 7) */
+  brushSize: number;
 }
 
 export const useUiStore = create<UiState>()(
   subscribeWithSelector((): UiState => ({
     isTerminalOpen: false,
     isParamPanelOpen: false,
+    brushSize: 1,
   })),
 );
 
@@ -31,5 +34,8 @@ export const uiStoreActions = {
   },
   updateUi: (partial: Partial<UiState>): void => {
     useUiStore.setState(partial);
+  },
+  setBrushSize: (brushSize: number): void => {
+    useUiStore.setState({ brushSize });
   },
 };

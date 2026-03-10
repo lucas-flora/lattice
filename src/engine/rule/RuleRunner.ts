@@ -167,6 +167,14 @@ export class RuleRunner implements IRuleRunner {
   }
 
   /**
+   * Set the generation counter directly.
+   * Used by SimulationController for reverse-step operations.
+   */
+  setGeneration(gen: number): void {
+    this.generation = gen;
+  }
+
+  /**
    * Set the time step for continuous simulations.
    */
   setDt(dt: number): void {

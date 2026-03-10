@@ -37,9 +37,11 @@ describe('Command Hub Integration', () => {
       activePreset: null,
       gridWidth: 0,
       gridHeight: 0,
+      liveCellCount: 0,
+      speed: 10,
     });
     useViewStore.setState({ zoom: 1, cameraX: 0, cameraY: 0 });
-    useUiStore.setState({ isTerminalOpen: false, isParamPanelOpen: false });
+    useUiStore.setState({ isTerminalOpen: false, isParamPanelOpen: false, brushSize: 1 });
   });
 
   afterEach(() => {

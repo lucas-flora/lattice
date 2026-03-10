@@ -15,7 +15,7 @@
       "dev_workflow": "31fb7b9d-8070-81f2-9425-dfe46307b6ff",
       "phase_reports": "31fb7b9d-8070-8118-9f87-de36c2c263eb"
     },
-    "last_updated": "2026-03-10T07:30:00.000Z"
+    "last_updated": "2026-03-10T11:40:00.000Z"
   },
   "testing": {
     "stack": "node",
@@ -59,12 +59,24 @@
       "title": "Rendering",
       "started_at": "2026-03-10T09:06:00.000Z",
       "completed_at": "2026-03-10T09:35:00.000Z"
+    },
+    {
+      "phase": 5,
+      "title": "Command Hub",
+      "started_at": "2026-03-10T10:00:00.000Z",
+      "completed_at": "2026-03-10T10:30:00.000Z"
+    },
+    {
+      "phase": 6,
+      "title": "Surfaces",
+      "started_at": "2026-03-10T10:45:00.000Z",
+      "completed_at": "2026-03-10T11:40:00.000Z"
     }
   ],
   "milestone_history": [],
   "last_commands": {
     "init": "2026-03-10T07:30:00.000Z",
-    "phase": "2026-03-10T08:15:00.000Z",
+    "phase": "2026-03-10T11:40:00.000Z",
     "run": "2026-03-10T07:45:00.000Z",
     "finish": null,
     "status": null

@@ -87,6 +87,20 @@ pnpm vitest run --dir src && \
 | CMDS-02 GUI invokes via registry | `command-definitions.test.ts` (sim/view/edit/ui commands) | `command-hub.test.ts` (full pipeline) | `command-hub-workflow.test.ts` (lifecycle) | Covered |
 | CMDS-03 CLI invokes via registry | `command-registry.test.ts` (execute + list) | `command-hub.test.ts` (registry → stores) | `command-hub-workflow.test.ts` (command list) | Covered |
 | CMDS-04 Three Surface Doctrine | `command-registry.test.ts` (single path), `command-definitions.test.ts` (command vs direct) | `command-hub.test.ts` (identical state) | `command-hub-workflow.test.ts` (all surfaces) | Covered |
+| CTRL-01 Extended sim controls | `extended-commands.test.ts` (stepBack, clear, speed, seek, status) | `surfaces.test.ts` (sim.status) | `surfaces-workflow.test.ts` (full lifecycle) | Covered |
+| CTRL-02 Cell editing commands | `extended-commands.test.ts` (draw, erase, brushSize) | `surfaces.test.ts` (edit.draw, edit.undo) | `surfaces-workflow.test.ts` (draw + undo) | Covered |
+| CTRL-03 Preset listing | `extended-commands.test.ts` (preset.list returns 6 names) | `surfaces.test.ts` (command registry check) | — | Covered |
+| CTRL-04 Speed slider | `extended-commands.test.ts` (setSpeed changes interval) | — | — | Covered |
+| CTRL-05 Tick history | `extended-commands.test.ts` (stepBack reverses generation), `simulation-controller.test.ts` | — | — | Covered |
+| CTRL-06 Live cell count | `extended-commands.test.ts` (liveCellCount on tick), `wire-stores.test.ts` | — | — | Covered |
+| CTRL-08 GUI via CommandRegistry | `control-bar.test.tsx` (8 tests), `hud.test.tsx` (5), `preset-selector.test.tsx` (4) | `surfaces.test.ts` (all commands wired) | `surfaces-workflow.test.ts` (GUI = CLI) | Covered |
+| TERM-01 Terminal toggle | `terminal.test.tsx` (toggle visibility) | — | — | Covered |
+| TERM-02 Timestamped output | `terminal.test.tsx` (log entries) | — | — | Covered |
+| TERM-03 CLI command parsing | `commandParser.test.ts` (16 tests) | — | `surfaces-workflow.test.ts` (CLI parsing) | Covered |
+| TERM-04 Ghost-text autocomplete | `commandParser.test.ts` (autocomplete + ghost-text) | — | — | Covered |
+| TERM-05 Command history | `terminal.test.tsx` (history navigation) | — | — | Covered |
+| TERM-06 AI placeholder | `terminal.test.tsx` (non-command routing) | — | `surfaces-workflow.test.ts` (AI placeholder) | Covered |
+| GUIP-01 Parameter panel | `param-panel.test.tsx` (4 tests) | — | — | Covered |
 
 ## Phase Coverage Log
 
@@ -142,3 +156,16 @@ pnpm vitest run --dir src && \
 - Command vs direct engine call: identical generation count and grid buffer contents
 - All 4 Zustand stores (sim, view, ui, ai) wired to EventBus with cleanup functions
 - EventBus is pure TypeScript with zero UI imports
+
+### Phase 6: Surfaces (2026-03-10)
+- 78 new JS/TS unit tests + 6 integration + 5 scenario = 386 total (with Phases 1-5)
+- All quality gates pass: tsc --noEmit, vitest
+- Extended commands: `extended-commands.test.ts` (21) -- stepBack, clear, speed, seek, status, draw, erase, brushSize, preset.list
+- Terminal: `commandParser.test.ts` (16), `terminal.test.tsx` (6)
+- GUI: `hud.test.tsx` (5), `control-bar.test.tsx` (8), `preset-selector.test.tsx` (4), `param-panel.test.tsx` (4)
+- Integration: `surfaces.test.ts` (6) -- full registry wiring, draw/undo, preset loading, sim.status
+- Scenarios: `surfaces-workflow.test.ts` (5) -- full lifecycle, preset switching, CLI parsing, GUI=CLI parity, AI placeholder
+- Updated existing tests for sim:tick payload change (generation + liveCellCount)
+- 21 commands registered across 5 categories (9 sim, 2 preset, 3 view, 5 edit, 2 ui)
+- Three Surface Doctrine verified: GUI buttons and CLI parsing both invoke commandRegistry.execute()
+- All 6 built-in presets load via client-side inlined YAML (no fs dependency)
