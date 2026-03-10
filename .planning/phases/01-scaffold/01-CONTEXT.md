@@ -134,6 +134,36 @@ Requirements: FOUN-01, FOUN-02, FOUN-03, FOUN-04, FOUN-05, FOUN-06
 
 </deferred>
 
+<testing>
+## Testing Requirements
+
+### Test Tiers (All Three Required)
+1. **Unit tests** -- Test individual functions/methods in isolation. Mock external dependencies. Located in `src/` and `engine/` directories alongside source code.
+2. **Integration tests** -- Test component interactions with real services via docker-compose.test.yml. Located in `test/integration/`.
+3. **Scenario tests** -- Test full user workflows end-to-end. Located in `test/scenarios/`.
+
+### Phase 1 Test Coverage Requirements
+- **Worker initialization**: Unit test that Worker can be instantiated and responds to init message
+- **Worker tick loop**: Unit test that Worker posts tick results back to main thread
+- **WASM pipeline**: Unit test that Rust hello function is callable from TypeScript and returns correct value
+- **Three.js dispose**: Unit test that `disposeObject()` cleans up all GPU resources (geometries === 0 after disposal)
+- **Engine isolation**: Lint rule test or static analysis test that `src/engine/` has zero UI imports
+- **Folder structure**: Test or CI check that required directories exist
+- **TypeScript strict mode**: `pnpm tsc --noEmit` passes with zero errors
+
+### Test Naming Convention
+Use semantic names: `Test<Component>_<Behavior>[_<Condition>]`
+- Good: `TestSimulationWorker_PostsTickResult`, `TestDisposeObject_CleansGeometry`, `TestWasmHello_ReturnsCorrectValue`
+- Bad: `TestShouldWork`, `Test1`, `TestWorker`
+
+### Test Framework Configuration
+- Vitest with `vitest.config.ts`
+- For Three.js tests requiring DOM: use jsdom or happy-dom environment
+- For Worker tests: mock Worker API or use vitest's worker testing support
+- For WASM tests: ensure WASM binary is pre-built before test run
+
+</testing>
+
 ---
 
 *Phase: 01-scaffold*
