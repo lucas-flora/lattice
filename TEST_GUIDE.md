@@ -13,7 +13,10 @@
 
 ```bash
 # Unit tests (fast, no dependencies)
-pnpm vitest run --dir src --dir engine
+pnpm vitest run --dir src
+
+# Rust tests
+cargo test -p lattice-engine
 
 # Start test infrastructure
 docker compose -f docker-compose.test.yml up -d --wait
@@ -28,7 +31,7 @@ pnpm vitest run --dir test/scenarios
 docker compose -f docker-compose.test.yml down -v
 
 # Full pyramid (run all in order)
-pnpm vitest run --dir src --dir engine && \
+pnpm vitest run --dir src && \
   docker compose -f docker-compose.test.yml up -d --wait && \
   pnpm vitest run --dir test/integration && \
   pnpm vitest run --dir test/scenarios ; \
@@ -41,8 +44,18 @@ pnpm vitest run --dir src --dir engine && \
 
 | Requirement | Unit Tests | Integration Tests | Scenario Tests | Status |
 |---|---|---|---|---|
-| _Example: FOUN-03 Web Worker_ | `TestWorkerInit` | `TestWorkerMessagePassing` | `TestSimulationRunsInWorker` | Pending |
+| FOUN-01 Next.js + TS strict | — (build verifies) | — | — | Covered |
+| FOUN-02 Folder structure | — (lint rule verifies) | — | — | Covered |
+| FOUN-03 Web Worker boundary | `protocol.test.ts` (7 tests) | — | — | Covered |
+| FOUN-04 WASM toolchain | Rust tests (2) | — | — | Covered |
+| FOUN-05 Three.js dispose | `three-dispose.test.ts` (6 tests) | — | — | Covered |
+| FOUN-06 Zustand stores | `stores.test.ts` (5 tests) | — | — | Covered |
 
 ## Phase Coverage Log
 
 <!-- Appended after each /ax:phase run -->
+
+### Phase 1: Scaffold (2026-03-10)
+- 18 JS/TS unit tests + 2 Rust tests = 20 total
+- All quality gates pass: lint, tsc --noEmit, vitest, cargo test
+- Suites: `protocol.test.ts` (7), `stores.test.ts` (5), `three-dispose.test.ts` (6), Rust (2)
