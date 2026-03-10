@@ -27,3 +27,15 @@ export const useAiStore = create<AiState>()(
     isLoading: false,
   })),
 );
+
+/** Store actions -- ready for Phase 8 AI event wiring */
+export const aiStoreActions = {
+  setLoading: (isLoading: boolean): void => {
+    useAiStore.setState({ isLoading });
+  },
+  addMessage: (msg: ChatMessage): void => {
+    useAiStore.setState((state) => ({
+      chatHistory: [...state.chatHistory, msg],
+    }));
+  },
+};

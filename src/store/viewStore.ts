@@ -24,3 +24,16 @@ export const useViewStore = create<ViewState>()(
     cameraY: 0,
   })),
 );
+
+/** Store actions -- called from wireStores event handlers */
+export const viewStoreActions = {
+  setZoom: (zoom: number): void => {
+    useViewStore.setState({ zoom });
+  },
+  setCameraPosition: (x: number, y: number): void => {
+    useViewStore.setState({ cameraX: x, cameraY: y });
+  },
+  updateView: (partial: Partial<ViewState>): void => {
+    useViewStore.setState(partial);
+  },
+};

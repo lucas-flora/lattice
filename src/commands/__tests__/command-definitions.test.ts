@@ -1,0 +1,164 @@
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { EventBus } from '../../engine/core/EventBus';
+import { CommandRegistry } from '../CommandRegistry';
+import { SimulationController } from '../SimulationController';
+import { registerAllCommands } from '../definitions';
+import { Simulation } from '../../engine/rule/Simulation';
+import { loadBuiltinPreset } from '../../engine/preset/builtinPresets';
+import { useUiStore } from '../../store/uiStore';
+import { useViewStore } from '../../store/viewStore';
+
+describe('Command Definitions', () => {
+  let bus: EventBus;
+  let registry: CommandRegistry;
+  let controller: SimulationController;
+
+  beforeEach(() => {
+    bus = new EventBus();
+    registry = new CommandRegistry();
+    controller = new SimulationController(bus, 10000);
+    registerAllCommands(registry, controller, bus);
+
+    // Reset store state
+    useUiStore.setState({ isTerminalOpen: false, isParamPanelOpen: false });
+    useViewStore.setState({ zoom: 1, cameraX: 0, cameraY: 0 });
+  });
+
+  afterEach(() => {
+    controller.dispose();
+    registry.clear();
+    bus.clear();
+  });
+
+  it('TestCommandDefinitions_AllCommandsRegistered', () => {
+    const list = registry.list();
+    const names = list.map((c) => c.name);
+
+    expect(names).toContain('sim.play');
+    expect(names).toContain('sim.pause');
+    expect(names).toContain('sim.step');
+    expect(names).toContain('sim.reset');
+    expect(names).toContain('preset.load');
+    expect(names).toContain('view.zoom');
+    expect(names).toContain('view.pan');
+    expect(names).toContain('view.fit');
+    expect(names).toContain('edit.undo');
+    expect(names).toContain('edit.redo');
+    expect(names).toContain('ui.toggleTerminal');
+    expect(names).toContain('ui.toggleParamPanel');
+
+    expect(list.length).toBe(12);
+  });
+
+  it('TestCommandDefinitions_SimPlay_StartsSimulation', async () => {
+    controller.loadPreset('conways-gol');
+    const result = await registry.execute('sim.play', {});
+    expect(result.success).toBe(true);
+    expect(controller.isPlaying()).toBe(true);
+    controller.pause(); // cleanup
+  });
+
+  it('TestCommandDefinitions_SimPause_StopsSimulation', async () => {
+    controller.loadPreset('conways-gol');
+    controller.play();
+    const result = await registry.execute('sim.pause', {});
+    expect(result.success).toBe(true);
+    expect(controller.isPlaying()).toBe(false);
+  });
+
+  it('TestCommandDefinitions_SimStep_AdvancesOneGeneration', async () => {
+    controller.loadPreset('conways-gol');
+    expect(controller.getGeneration()).toBe(0);
+    const result = await registry.execute('sim.step', {});
+    expect(result.success).toBe(true);
+    expect(controller.getGeneration()).toBe(1);
+  });
+
+  it('TestCommandDefinitions_SimReset_ResetsSimulation', async () => {
+    controller.loadPreset('conways-gol');
+    controller.step();
+    controller.step();
+    expect(controller.getGeneration()).toBe(2);
+    const result = await registry.execute('sim.reset', {});
+    expect(result.success).toBe(true);
+    expect(controller.getGeneration()).toBe(0);
+  });
+
+  it('TestCommandDefinitions_PresetLoad_LoadsPreset', async () => {
+    const result = await registry.execute('preset.load', { name: 'conways-gol' });
+    expect(result.success).toBe(true);
+    expect(controller.getSimulation()).not.toBeNull();
+  });
+
+  it('TestCommandDefinitions_PresetLoad_InvalidParams_ReturnsError', async () => {
+    const result = await registry.execute('preset.load', {});
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('Invalid params');
+  });
+
+  it('TestCommandDefinitions_AllCommandsHaveMetadata', () => {
+    const list = registry.list();
+    for (const entry of list) {
+      expect(entry.name).toBeTruthy();
+      expect(entry.description).toBeTruthy();
+      expect(entry.category).toBeTruthy();
+      expect(entry.paramsDescription).toBeTruthy();
+    }
+  });
+
+  it('TestCommandDefinitions_CommandVsDirectCall_IdenticalState', async () => {
+    // Load same preset into both the registry-controlled simulation and a direct simulation
+    const config = loadBuiltinPreset('conways-gol');
+
+    // Set up via registry
+    await registry.execute('preset.load', { name: 'conways-gol' });
+    await registry.execute('sim.step', {});
+    const registryGeneration = controller.getGeneration();
+    const registryBuffer = controller.getSimulation()!.grid.getCurrentBuffer('alive');
+
+    // Direct engine call
+    const directSim = new Simulation(config);
+    directSim.tick();
+    const directGeneration = directSim.getGeneration();
+    const directBuffer = directSim.grid.getCurrentBuffer('alive');
+
+    // They must be identical (Success Criterion #3)
+    expect(registryGeneration).toBe(directGeneration);
+    expect(registryGeneration).toBe(1);
+
+    // Compare grid buffers
+    expect(registryBuffer.length).toBe(directBuffer.length);
+    for (let i = 0; i < registryBuffer.length; i++) {
+      expect(registryBuffer[i]).toBe(directBuffer[i]);
+    }
+  });
+
+  it('TestCommandDefinitions_ViewZoom_UpdatesViewStore', async () => {
+    const result = await registry.execute('view.zoom', { level: 2.5 });
+    expect(result.success).toBe(true);
+    expect(useViewStore.getState().zoom).toBe(2.5);
+  });
+
+  it('TestCommandDefinitions_ViewPan_UpdatesViewStore', async () => {
+    const result = await registry.execute('view.pan', { x: 10, y: 20 });
+    expect(result.success).toBe(true);
+    expect(useViewStore.getState().cameraX).toBe(10);
+    expect(useViewStore.getState().cameraY).toBe(20);
+  });
+
+  it('TestCommandDefinitions_UiToggleTerminal', async () => {
+    expect(useUiStore.getState().isTerminalOpen).toBe(false);
+    await registry.execute('ui.toggleTerminal', {});
+    expect(useUiStore.getState().isTerminalOpen).toBe(true);
+    await registry.execute('ui.toggleTerminal', {});
+    expect(useUiStore.getState().isTerminalOpen).toBe(false);
+  });
+
+  it('TestCommandDefinitions_UiToggleParamPanel', async () => {
+    expect(useUiStore.getState().isParamPanelOpen).toBe(false);
+    await registry.execute('ui.toggleParamPanel', {});
+    expect(useUiStore.getState().isParamPanelOpen).toBe(true);
+    await registry.execute('ui.toggleParamPanel', {});
+    expect(useUiStore.getState().isParamPanelOpen).toBe(false);
+  });
+});
