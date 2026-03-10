@@ -64,6 +64,17 @@ pnpm vitest run --dir src && \
 | YAML-01 Versioned Zod schema | `schema.test.ts` (17 tests) | — | — | Covered |
 | YAML-02 Full schema sections | `schema.test.ts`, `loader.test.ts` | — | — | Covered |
 | YAML-03 Preset loader | `loader.test.ts` (11 tests) | — | — | Covered |
+| YAML-04 Conway's GoL preset | `conways-gol.test.ts` (4 tests), `builtin-presets.test.ts` | — | — | Covered |
+| YAML-05 Rule 110 preset | `builtin-presets.test.ts` (3 tests) | — | — | Covered |
+| YAML-06 Langton's Ant preset | `builtin-presets.test.ts` (2 tests) | — | — | Covered |
+| YAML-07 Brian's Brain preset | `builtin-presets.test.ts` (3 tests) | — | — | Covered |
+| YAML-08 Gray-Scott preset | `builtin-presets.test.ts` (3 tests) | — | — | Covered |
+| YAML-09 Navier-Stokes preset | `builtin-presets.test.ts` (4 tests) | — | — | Covered |
+| YAML-10 No preset privilege | `user-preset.test.ts` (4 tests), `builtin-presets.test.ts` | — | — | Covered |
+| RULE-01 Perceive-update contract | `rule-runner.test.ts` (9 tests), `conways-gol.test.ts` | — | — | Covered |
+| RULE-02 TypeScript rule execution | `rule-compiler.test.ts` (10 tests), `rule-runner.test.ts` | — | — | Covered |
+| RULE-05 WASM fallback to TS | `rule-runner.test.ts` (2 WASM fallback tests) | — | — | Covered |
+| CTRL-07 Undo/redo Command pattern | `command-history.test.ts` (14 tests) | — | — | Covered |
 
 ## Phase Coverage Log
 
@@ -81,3 +92,16 @@ pnpm vitest run --dir src && \
 - Cell suites: `property-definition.test.ts` (18), `property-registry.test.ts` (13), `computed-function.test.ts` (10)
 - Preset suites: `schema.test.ts` (17), `loader.test.ts` (11)
 - 4 YAML test fixtures in `test/fixtures/`
+
+### Phase 3: Rule Engine (2026-03-10)
+- 65 new JS/TS unit tests = 196 total (with Phases 1-2)
+- All quality gates pass: lint, tsc --noEmit, vitest
+- Rule suites: `rule-compiler.test.ts` (10), `rule-runner.test.ts` (9), `simulation.test.ts` (8)
+- Preset suites: `conways-gol.test.ts` (4), `builtin-presets.test.ts` (16), `user-preset.test.ts` (4)
+- Undo/redo: `command-history.test.ts` (14)
+- 6 built-in YAML presets in `src/engine/preset/builtins/`
+- Glider test: 100-generation GoL glider verified at correct translated position
+- All 6 presets load from YAML and produce non-trivial output after 10 ticks
+- User-supplied YAML runs identically to built-ins — no privilege difference
+- 5 edits + 5 undos verified by buffer equality
+- WASM fallback: silent TS fallback, no exceptions thrown

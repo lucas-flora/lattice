@@ -1,0 +1,43 @@
+schema_version: "1"
+
+meta:
+  name: "Conway's Game of Life"
+  author: "John Conway"
+  description: "The classic cellular automaton. Cells live or die based on neighbor count."
+  tags: ["classic", "2d", "binary"]
+
+grid:
+  dimensionality: "2d"
+  width: 128
+  height: 128
+  topology: "toroidal"
+
+cell_properties:
+  - name: "alive"
+    type: "bool"
+    default: 0
+    role: "input_output"
+
+rule:
+  type: "typescript"
+  compute: |
+    const alive = ctx.cell.alive;
+    const liveNeighbors = ctx.neighbors.filter(n => n.alive === 1).length;
+    if (alive === 1) {
+      return { alive: (liveNeighbors === 2 || liveNeighbors === 3) ? 1 : 0 };
+    }
+    return { alive: liveNeighbors === 3 ? 1 : 0 };
+
+visual_mappings:
+  - property: "alive"
+    channel: "color"
+    mapping:
+      "0": "#000000"
+      "1": "#00ff00"
+
+ai_context:
+  description: "Conway's Game of Life with standard B3/S23 rules"
+  hints:
+    - "A cell is born if it has exactly 3 live neighbors"
+    - "A cell survives if it has 2 or 3 live neighbors"
+    - "All other cells die or stay dead"

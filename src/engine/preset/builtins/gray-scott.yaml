@@ -1,0 +1,72 @@
+schema_version: "1"
+
+meta:
+  name: "Gray-Scott Reaction-Diffusion"
+  author: "Peter Gray & Stephen Scott"
+  description: "Reaction-diffusion system producing spots, stripes, and labyrinthine patterns."
+  tags: ["2d", "continuous", "reaction-diffusion"]
+
+grid:
+  dimensionality: "2d"
+  width: 128
+  height: 128
+  topology: "toroidal"
+
+cell_properties:
+  - name: "u"
+    type: "float"
+    default: 1.0
+    role: "input_output"
+  - name: "v"
+    type: "float"
+    default: 0.0
+    role: "input_output"
+
+rule:
+  type: "typescript"
+  compute: |
+    const Du = 0.2097;
+    const Dv = 0.105;
+    const F = 0.037;
+    const k = 0.06;
+    const dt = 1.0;
+    const u = ctx.cell.u;
+    const v = ctx.cell.v;
+    let lapU = 0;
+    let lapV = 0;
+    const neighborCount = ctx.neighbors.length;
+    for (const n of ctx.neighbors) {
+      lapU += n.u - u;
+      lapV += n.v - v;
+    }
+    if (neighborCount > 0) {
+      lapU = lapU * (4.0 / neighborCount);
+      lapV = lapV * (4.0 / neighborCount);
+    }
+    const uvv = u * v * v;
+    const newU = u + dt * (Du * lapU - uvv + F * (1.0 - u));
+    const newV = v + dt * (Dv * lapV + uvv - (F + k) * v);
+    return {
+      u: Math.max(0, Math.min(1, newU)),
+      v: Math.max(0, Math.min(1, newV))
+    };
+
+visual_mappings:
+  - property: "v"
+    channel: "color"
+    mapping:
+      min: "#000000"
+      max: "#ff6600"
+  - property: "u"
+    channel: "size"
+    mapping:
+      min: 0.5
+      max: 1.0
+
+ai_context:
+  description: "Gray-Scott reaction-diffusion with chemicals U and V"
+  hints:
+    - "U is the substrate (feed), V is the activator"
+    - "F controls the feed rate, k controls the kill rate"
+    - "Du and Dv are diffusion rates for U and V respectively"
+    - "Different F and k values produce different pattern types"

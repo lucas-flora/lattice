@@ -1,0 +1,98 @@
+schema_version: "1"
+
+meta:
+  name: "Navier-Stokes Fluid Dynamics"
+  author: "Lattice Engine"
+  description: "Simplified 2D Navier-Stokes fluid simulation using a lattice-based diffusion and advection model. Proves the engine's universality — same substrate, different rule YAML."
+  tags: ["2d", "continuous", "fluid", "navier-stokes", "physics"]
+
+grid:
+  dimensionality: "2d"
+  width: 64
+  height: 64
+  topology: "toroidal"
+
+cell_properties:
+  - name: "vx"
+    type: "float"
+    default: 0.0
+    role: "input_output"
+  - name: "vy"
+    type: "float"
+    default: 0.0
+    role: "input_output"
+  - name: "density"
+    type: "float"
+    default: 0.0
+    role: "input_output"
+  - name: "pressure"
+    type: "float"
+    default: 0.0
+    role: "input_output"
+
+rule:
+  type: "typescript"
+  compute: |
+    const viscosity = 0.1;
+    const diffusion = 0.0001;
+    const dt = 0.1;
+    const vx = ctx.cell.vx;
+    const vy = ctx.cell.vy;
+    const density = ctx.cell.density;
+    const pressure = ctx.cell.pressure;
+    let lapVx = 0;
+    let lapVy = 0;
+    let lapDensity = 0;
+    let dpdx = 0;
+    let dpdy = 0;
+    let divV = 0;
+    const nc = ctx.neighbors.length;
+    for (const n of ctx.neighbors) {
+      lapVx += n.vx - vx;
+      lapVy += n.vy - vy;
+      lapDensity += n.density - density;
+      dpdx += n.pressure - pressure;
+      dpdy += n.pressure - pressure;
+      divV += n.vx + n.vy;
+    }
+    if (nc > 0) {
+      const scale = 4.0 / nc;
+      lapVx *= scale;
+      lapVy *= scale;
+      lapDensity *= scale;
+      dpdx *= scale / 2.0;
+      dpdy *= scale / 2.0;
+      divV = divV * scale - 4.0 * (vx + vy);
+    }
+    let newVx = vx + dt * (viscosity * lapVx - dpdx);
+    let newVy = vy + dt * (viscosity * lapVy - dpdy);
+    const newDensity = Math.max(0, density + dt * (diffusion * lapDensity - density * divV * 0.01));
+    const newPressure = pressure + dt * (-divV * 0.5);
+    const damping = 0.999;
+    newVx *= damping;
+    newVy *= damping;
+    return {
+      vx: Math.max(-10, Math.min(10, newVx)),
+      vy: Math.max(-10, Math.min(10, newVy)),
+      density: Math.min(10, newDensity),
+      pressure: Math.max(-10, Math.min(10, newPressure))
+    };
+
+visual_mappings:
+  - property: "density"
+    channel: "color"
+    mapping:
+      min: "#000033"
+      max: "#00ccff"
+  - property: "vx"
+    channel: "orientation"
+    mapping:
+      type: "angle"
+
+ai_context:
+  description: "Simplified 2D Navier-Stokes fluid simulation"
+  hints:
+    - "Velocity (vx, vy) advects density"
+    - "Viscosity diffuses velocity"
+    - "Pressure gradient drives flow from high to low pressure"
+    - "This is a simplified model — real NS solvers use projection methods"

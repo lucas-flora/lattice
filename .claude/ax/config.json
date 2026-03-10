@@ -35,11 +35,24 @@
     "provider": "github-actions",
     "workflow_file": ".github/workflows/ci.yml"
   },
-  "phases_completed": [],
+  "phases_completed": [
+    {
+      "phase": 1,
+      "title": "Scaffold",
+      "started_at": "2026-03-10T07:45:00.000Z",
+      "completed_at": "2026-03-10T08:15:00.000Z"
+    },
+    {
+      "phase": 2,
+      "title": "Substrate",
+      "started_at": "2026-03-10T08:16:00.000Z",
+      "completed_at": "2026-03-10T08:48:00.000Z"
+    }
+  ],
   "milestone_history": [],
   "last_commands": {
     "init": "2026-03-10T07:30:00.000Z",
-    "phase": null,
+    "phase": "2026-03-10T08:15:00.000Z",
     "run": "2026-03-10T07:45:00.000Z",
     "finish": null,
     "status": null
