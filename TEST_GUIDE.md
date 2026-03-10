@@ -83,6 +83,10 @@ pnpm vitest run --dir src && \
 | RNDR-07 Data-driven visuals | `visual-mapper.test.ts` (9 tests), `integration.test.ts` (mapping change) | — | — | Covered |
 | RNDR-11 Explicit dispose | `lattice-renderer.test.ts` (dispose test), `simulation-viewport.test.tsx` | — | — | Covered |
 | RNDR-12 Zero-copy typed arrays | `lattice-renderer.test.ts` (zero-copy), `integration.test.ts` (buffer ref) | — | — | Covered |
+| CMDS-01 CommandRegistry | `command-registry.test.ts` (13 tests), `command-definitions.test.ts` (13 tests) | `command-hub.test.ts` (5 tests) | `command-hub-workflow.test.ts` (5 tests) | Covered |
+| CMDS-02 GUI invokes via registry | `command-definitions.test.ts` (sim/view/edit/ui commands) | `command-hub.test.ts` (full pipeline) | `command-hub-workflow.test.ts` (lifecycle) | Covered |
+| CMDS-03 CLI invokes via registry | `command-registry.test.ts` (execute + list) | `command-hub.test.ts` (registry → stores) | `command-hub-workflow.test.ts` (command list) | Covered |
+| CMDS-04 Three Surface Doctrine | `command-registry.test.ts` (single path), `command-definitions.test.ts` (command vs direct) | `command-hub.test.ts` (identical state) | `command-hub-workflow.test.ts` (all surfaces) | Covered |
 
 ## Phase Coverage Log
 
@@ -126,3 +130,15 @@ pnpm vitest run --dir src && \
 - Dispose: disposeObject() traverses scene graph and cleans geometry/material
 - Conway's GoL renders with green/black instanced quads via YAML mapping
 - Rule 110 renders as spacetime diagram using the same LatticeRenderer path
+
+### Phase 5: Command Hub (2026-03-10)
+- 58 new JS/TS unit tests + 5 integration + 5 scenario = 308 total (with Phases 1-4)
+- All quality gates pass: lint (0 warnings), tsc --noEmit, vitest
+- EventBus suite: `event-bus.test.ts` (10)
+- Command suites: `command-registry.test.ts` (13), `simulation-controller.test.ts` (13), `command-definitions.test.ts` (13), `wire-stores.test.ts` (9)
+- Integration: `command-hub.test.ts` (5) — full pipeline: registry → controller → eventBus → stores
+- Scenarios: `command-hub-workflow.test.ts` (5) — full lifecycle, preset switching, undo/redo, error handling
+- 12 commands registered across 5 categories (sim, preset, view, edit, ui)
+- Command vs direct engine call: identical generation count and grid buffer contents
+- All 4 Zustand stores (sim, view, ui, ai) wired to EventBus with cleanup functions
+- EventBus is pure TypeScript with zero UI imports
