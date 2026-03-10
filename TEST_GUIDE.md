@@ -103,6 +103,13 @@ pnpm vitest run --dir src && \
 | TERM-05 Command history | `terminal.test.tsx` (history navigation) | — | — | Covered |
 | TERM-06 AI placeholder | `terminal.test.tsx` (non-command routing) | — | `surfaces-workflow.test.ts` (AI placeholder) | Covered |
 | GUIP-01 Parameter panel | `param-panel.test.tsx` (4 tests) | — | — | Covered |
+| ASST-01 OpenAI GPT-4o integration | `aiService.test.ts` (streaming, API call), `personality.test.ts` (config) | `ai-surface.test.ts` (full pipeline) | `ai-surface-workflow.test.ts` (natural language response) | Covered |
+| ASST-02 Full app state context | `contextBuilder.test.ts` (7 tests: metadata, no grid buffers) | `ai-surface.test.ts` (real stores) | `ai-surface-workflow.test.ts` (context in request) | Covered |
+| ASST-03 Supabase RAG | `ragClient.test.ts` (6 tests: retrieval, degradation, formatting) | `ai-surface.test.ts` (RAG in prompt) | `ai-surface-workflow.test.ts` (RAG citation) | Covered |
+| ASST-04 Command execution via AI | `aiService.test.ts` (command parsing, execution) | `ai-surface.test.ts` (command via registry) | `ai-surface-workflow.test.ts` (load preset via AI) | Covered |
+| ASST-05 Typo correction | `typoDetector.test.ts` (13 tests: Levenshtein, detection) | `ai-surface.test.ts` (real commands) | `ai-surface-workflow.test.ts` (typo correction flow) | Covered |
+| ASST-06 Personality config | `personality.test.ts` (8 tests: config, prompt building) | `ai-surface.test.ts` (prompt with context) | — | Covered |
+| ASST-07 Non-intrusive behavior | `aiService.test.ts` (only on input), `contextBuilder.test.ts` (no grid state) | `ai-surface.test.ts` (no grid in payload) | `ai-surface-workflow.test.ts` (no grid state leaked) | Covered |
 
 ## Phase Coverage Log
 
@@ -186,3 +193,17 @@ pnpm vitest run --dir src && \
 - Silent WASM fallback: no errors thrown, simulation continues at TS speed (RULE-05)
 - Preset schema extended: supports 'wasm' type alongside 'typescript' (backward compatible)
 - WasmRuleRunner delegates to Rust via mock WASM module in tests
+
+### Phase 8: AI Surface (2026-03-10)
+- 48 new JS/TS unit tests + 6 integration + 5 scenario = 476 total (with Phases 1-7, 386 JS/TS + 16 Rust + 22 integration + 20 scenario)
+- All quality gates pass: tsc --noEmit, vitest
+- AI suites: `contextBuilder.test.ts` (7), `personality.test.ts` (8), `typoDetector.test.ts` (13), `aiService.test.ts` (10), `ragClient.test.ts` (6)
+- Integration: `ai-surface.test.ts` (6) -- full pipeline with real stores, command execution, RAG integration, no grid state
+- Scenarios: `ai-surface-workflow.test.ts` (5) -- natural language response, command execution via AI, typo correction, RAG citation, no grid state leak
+- OpenAI GPT-4o streaming via /api/ai/chat SSE endpoint (ASST-01)
+- ContextBuilder assembles metadata-only context, never raw grid buffers (ASST-02, ASST-07)
+- Supabase pgvector RAG with 13 seeded CA reference documents and match_documents RPC (ASST-03)
+- AI executes commands via CommandRegistry, appears as [AI] > command in terminal (ASST-04)
+- Typo detection via Levenshtein distance routes misspelled commands to AI for correction (ASST-05)
+- Centralized personality config in src/ai/personality.ts with system prompt template (ASST-06)
+- Non-intrusive: AI only responds to direct terminal input, no interruptions (ASST-07)

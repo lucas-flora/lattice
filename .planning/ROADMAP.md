@@ -19,7 +19,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 5: Command Hub** - CommandRegistry, Zustand stores, engine-store event protocol
 - [x] **Phase 6: Surfaces** - Simulation controls, CLI terminal, GUI panels, cell drawing — all wired to CommandRegistry simultaneously
 - [x] **Phase 7: WASM Acceleration** - Rust rule execution, SharedArrayBuffer bridge, whole-tick API
-- [ ] **Phase 8: AI Surface** - OpenAI assistant in terminal, ContextBuilder, Supabase RAG, command execution
+- [x] **Phase 8: AI Surface** - OpenAI assistant in terminal, ContextBuilder, Supabase RAG, command execution
 - [ ] **Phase 9: Advanced Rendering** - Multi-viewport, 3D grid view, reverse playback, timeline scrubbing, fullscreen
 - [ ] **Phase 10: Polish** - Parameter graphs, HUD menus, hotkeys, screenshot export, docs, performance pass
 
@@ -118,7 +118,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. A typo like "sim plya" triggers the AI to detect the misspelled command, execute the corrected version, and explain the correction in the terminal
   4. The AI retrieves relevant CA reference material from Supabase pgvector RAG and cites it in responses about rule behavior
   5. The AI never sends raw grid state to OpenAI — only metadata (preset name, generation, parameters, recent actions) — confirmed by inspecting the request body in network tools
-**Plans**: TBD
+**Plans**: 08-01, 08-02, 08-03, 08-04 (2 waves)
 
 ### Phase 9: Advanced Rendering
 **Goal**: Multi-viewport with independent cameras, full 3D grid visualization, reverse playback with timeline scrubbing, and per-viewport fullscreen mode — all using the existing Three.js renderer path without introducing a second render system.
