@@ -42,4 +42,18 @@ export function registerUiCommands(
       return { success: true, data: { isParamPanelOpen: next } };
     },
   });
+
+  registry.register({
+    name: 'ui.toggleHotkeyHelp',
+    description: 'Toggle keyboard shortcut help overlay',
+    category: 'ui',
+    params: NoParams,
+    execute: async () => {
+      const current = useUiStore.getState().isHotkeyHelpOpen;
+      const next = !current;
+      useUiStore.setState({ isHotkeyHelpOpen: next });
+      eventBus.emit('ui:change', { isHotkeyHelpOpen: next });
+      return { success: true, data: { isHotkeyHelpOpen: next } };
+    },
+  });
 }

@@ -114,6 +114,12 @@ pnpm vitest run --dir src && \
 | RNDR-08 Multi-viewport | `advanced-rendering.test.ts` (3 tests: independent cameras, shared grid, viewport count), `orbit-camera-controller.test.ts` | `advanced-rendering.test.ts` (view.split command) | `advanced-rendering-workflow.test.ts` (split + independent cameras) | Covered |
 | RNDR-09 Fullscreen per viewport | `advanced-rendering.test.ts` (2 tests: store toggle, split exits fullscreen) | `advanced-rendering.test.ts` (view.fullscreen command, HUD hidden) | `advanced-rendering-workflow.test.ts` (fullscreen toggle workflow) | Covered |
 | RNDR-10 3D camera controls | `orbit-camera-controller.test.ts` (12 tests: orbit, zoom, pan, fit, resize, state) | `advanced-rendering.test.ts` (3D camera integration) | `advanced-rendering-workflow.test.ts` (orbit + zoom + pan) | Covered |
+| GUIP-02 Parameter graphs | `paramGraphData.test.ts` (13 tests: ring buffer, sparkline points) | `polish.test.ts` (graph buffer + simulation) | `polish-workflow.test.ts` (live update + sparkline rendering) | Covered |
+| GUIP-03 HUD contextual menus | `keyboard-shortcut-manager.test.ts` (HotkeyHelp display data) | `polish.test.ts` (toggleHotkeyHelp command) | `polish-workflow.test.ts` (full shortcut cycle) | Covered |
+| GUIP-04 Hotkeys | `keyboard-shortcut-manager.test.ts` (11 tests: matching, attach, enable/disable) | `polish.test.ts` (shortcut executes command via registry) | `polish-workflow.test.ts` (keyboard shortcut full cycle) | Covered |
+| GUIP-05 Screenshot export | `screenshotExport.test.ts` (6 tests: capture, filename, download) | `polish.test.ts` (screenshot command registered) | `polish-workflow.test.ts` (screenshot via CLI) | Covered |
+| GUIP-06 Full app documentation | `ragDocuments.test.ts` (6 tests: count, fields, coverage) | `polish.test.ts` (RAG docs comprehensive) | `polish-workflow.test.ts` (all features covered) | Covered |
+| GUIP-07 Performance profiling | `performanceProfiler.test.ts` (6 tests: profiling, format, Gray-Scott 512x512 benchmark) | `polish.test.ts` (command count) | `polish-workflow.test.ts` (performance benchmark) | Covered |
 
 ## Phase Coverage Log
 
@@ -225,3 +231,20 @@ pnpm vitest run --dir src && \
 - Fullscreen mode: uiStore.fullscreenViewportId, Fullscreen API, HUD/ControlBar hidden when active, Escape to exit
 - 23 commands registered (2 new: view.split, view.fullscreen)
 - Unified InstancedMesh path for 1D/2D/3D -- no second render system (RNDR-04)
+
+### Phase 10: Polish (2026-03-10)
+- 42 new JS/TS unit tests + 8 integration + 5 scenario = 569 total (with Phases 1-9, 503 JS/TS + 16 Rust + 36 integration + 30 scenario)
+- All quality gates pass: tsc --noEmit, vitest
+- Keyboard suites: `keyboard-shortcut-manager.test.ts` (11 tests: matching, attach, enable/disable, command execution)
+- Screenshot suites: `screenshotExport.test.ts` (6 tests: capture, filename, download)
+- Graph suites: `paramGraphData.test.ts` (13 tests: ring buffer, sparkline, range, clear)
+- RAG suites: `ragDocuments.test.ts` (6 tests: count, fields, coverage, categories)
+- Performance suites: `performanceProfiler.test.ts` (6 tests: profiling, formatting, Gray-Scott 512x512 benchmark)
+- Integration: `polish.test.ts` (8 tests: shortcut commands, playToggle, hotkeyHelp, screenshot, graph+sim, RAG, command count)
+- Scenarios: `polish-workflow.test.ts` (5 tests: full shortcut cycle, graph live update, screenshot CLI, RAG coverage, performance benchmark)
+- 26 commands registered (3 new: sim.playToggle, ui.toggleHotkeyHelp, viewport.screenshot)
+- KeyboardShortcutManager: 12 default shortcuts mapped to CommandRegistry
+- ParamGraphBuffer: ring buffer of 200 samples for sparkline rendering
+- 13 RAG app documentation documents covering all major features
+- Gray-Scott 512x512 TypeScript baseline: ~170-180ms/tick; WASM target: <16ms/tick
+- Top 3 performance bottlenecks documented: Laplacian computation, U*V^2 reaction, Float32Array allocation

@@ -71,14 +71,38 @@
       "title": "Surfaces",
       "started_at": "2026-03-10T10:45:00.000Z",
       "completed_at": "2026-03-10T11:40:00.000Z"
+    },
+    {
+      "phase": 7,
+      "title": "WASM Acceleration",
+      "started_at": "2026-03-10T11:41:00.000Z",
+      "completed_at": "2026-03-10T12:00:00.000Z"
+    },
+    {
+      "phase": 8,
+      "title": "AI Surface",
+      "started_at": "2026-03-10T12:01:00.000Z",
+      "completed_at": "2026-03-10T12:30:00.000Z"
+    },
+    {
+      "phase": 9,
+      "title": "Advanced Rendering",
+      "started_at": "2026-03-10T12:31:00.000Z",
+      "completed_at": "2026-03-10T13:00:00.000Z"
+    },
+    {
+      "phase": 10,
+      "title": "Polish",
+      "started_at": "2026-03-10T13:01:00.000Z",
+      "completed_at": "2026-03-10T13:45:00.000Z"
     }
   ],
   "milestone_history": [],
   "last_commands": {
     "init": "2026-03-10T07:30:00.000Z",
-    "phase": "2026-03-10T11:40:00.000Z",
-    "run": "2026-03-10T07:45:00.000Z",
-    "finish": null,
-    "status": null
+    "phase": "2026-03-10T13:45:00.000Z",
+    "run": "2026-03-10T13:01:00.000Z",
+    "finish": "2026-03-10T13:45:00.000Z",
+    "status": "2026-03-10T13:45:00.000Z"
   }
 }

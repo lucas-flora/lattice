@@ -1,5 +1,5 @@
 /**
- * View commands: zoom, pan, fit, split, fullscreen.
+ * View commands: zoom, pan, fit, split, fullscreen, screenshot.
  *
  * Controls viewport camera and layout through the CommandRegistry.
  */
@@ -9,6 +9,7 @@ import type { CommandRegistry } from '../CommandRegistry';
 import type { EventBus } from '../../engine/core/EventBus';
 import { useViewStore } from '../../store/viewStore';
 import { uiStoreActions } from '../../store/uiStore';
+import { captureScreenshot, downloadDataUrl, generateScreenshotFilename } from '../../lib/screenshotExport';
 
 const NoParams = z.object({}).describe('none');
 
@@ -24,6 +25,10 @@ const PanParams = z.object({
 const FullscreenParams = z.object({
   viewportId: z.string().optional(),
 }).describe('{ viewportId?: string }');
+
+const ScreenshotParams = z.object({
+  filename: z.string().optional(),
+}).describe('{ filename?: string }');
 
 export function registerViewCommands(
   registry: CommandRegistry,
@@ -94,6 +99,27 @@ export function registerViewCommands(
         uiStoreActions.setFullscreenViewport(id);
       }
       return { success: true, data: { viewportId: id } };
+    },
+  });
+
+  registry.register({
+    name: 'viewport.screenshot',
+    description: 'Export a screenshot of the current viewport as PNG',
+    category: 'view',
+    params: ScreenshotParams,
+    execute: async (params) => {
+      const { filename } = params as z.infer<typeof ScreenshotParams>;
+      // Find the active viewport canvas
+      const canvas = document.querySelector<HTMLCanvasElement>(
+        '[data-testid="viewport-canvas"]'
+      );
+      if (!canvas) {
+        return { success: false, error: 'No viewport canvas found' };
+      }
+      const dataUrl = captureScreenshot(canvas);
+      const name = filename ?? generateScreenshotFilename();
+      downloadDataUrl(dataUrl, name);
+      return { success: true, data: { filename: name } };
     },
   });
 }

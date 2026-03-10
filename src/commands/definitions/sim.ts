@@ -122,4 +122,19 @@ export function registerSimCommands(
       return { success: true, data: status };
     },
   });
+
+  registry.register({
+    name: 'sim.playToggle',
+    description: 'Toggle play/pause',
+    category: 'sim',
+    params: NoParams,
+    execute: async () => {
+      if (controller.isPlaying()) {
+        controller.pause();
+      } else {
+        controller.play();
+      }
+      return { success: true, data: { isRunning: controller.isPlaying() } };
+    },
+  });
 }

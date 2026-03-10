@@ -3,9 +3,10 @@
  * and renders all surfaces (viewport, controls, terminal, panels).
  *
  * On mount: creates EventBus, SimulationController, registers all commands,
- * wires stores, and loads the default preset (Conway's GoL).
+ * wires stores, loads the default preset (Conway's GoL), and attaches keyboard shortcuts.
  *
  * Supports multi-viewport layout (RNDR-08) and per-viewport fullscreen (RNDR-09).
+ * GUIP-04: Keyboard shortcuts attached via KeyboardShortcutManager.
  */
 
 'use client';
@@ -17,10 +18,12 @@ import { commandRegistry } from '@/commands/CommandRegistry';
 import { registerAllCommands } from '@/commands/definitions';
 import { wireStores } from '@/commands/wireStores';
 import { loadBuiltinPresetClient } from '@/engine/preset/builtinPresetsClient';
+import { KeyboardShortcutManager } from '@/commands/KeyboardShortcutManager';
 import { SimulationViewport } from '@/components/viewport/SimulationViewport';
 import { HUD } from '@/components/hud/HUD';
 import { ControlBar } from '@/components/hud/ControlBar';
 import { PresetSelector } from '@/components/hud/PresetSelector';
+import { HotkeyHelp } from '@/components/hud/HotkeyHelp';
 import { Terminal } from '@/components/terminal/Terminal';
 import { ParamPanel } from '@/components/panels/ParamPanel';
 import { useSimStore } from '@/store/simStore';
@@ -29,6 +32,7 @@ import { useUiStore } from '@/store/uiStore';
 /** Module-level singleton for the simulation controller */
 let controllerSingleton: SimulationController | null = null;
 let unwireFn: (() => void) | null = null;
+let shortcutManager: KeyboardShortcutManager | null = null;
 
 export function getController(): SimulationController | null {
   return controllerSingleton;
@@ -85,12 +89,20 @@ export function AppShell() {
     // Wire stores
     unwireFn = wireStores(eventBus);
 
+    // Attach keyboard shortcuts (GUIP-04)
+    shortcutManager = new KeyboardShortcutManager(commandRegistry);
+    shortcutManager.attach(window);
+
     // Load default preset (Conway's GoL) using client-safe loader
     const config = loadBuiltinPresetClient('conways-gol');
     controller.loadPresetConfig(config);
     initializeSimulation(controller);
 
     return () => {
+      if (shortcutManager) {
+        shortcutManager.detach(window);
+        shortcutManager = null;
+      }
       controller.dispose();
       controllerSingleton = null;
       if (unwireFn) {
@@ -98,25 +110,6 @@ export function AppShell() {
         unwireFn = null;
       }
     };
-  }, []);
-
-  // Global keyboard shortcuts
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Ctrl+Z: undo
-      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
-        e.preventDefault();
-        commandRegistry.execute('edit.undo', {});
-      }
-      // Ctrl+Shift+Z: redo
-      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && e.shiftKey) {
-        e.preventDefault();
-        commandRegistry.execute('edit.redo', {});
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
   const isAnyFullscreen = fullscreenViewportId !== null;
@@ -164,6 +157,9 @@ export function AppShell() {
           <Terminal />
         </>
       )}
+
+      {/* Hotkey help overlay -- always rendered (visibility controlled internally) */}
+      <HotkeyHelp />
     </div>
   );
 }

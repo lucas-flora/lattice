@@ -55,7 +55,7 @@ export function wireStores(eventBus: EventBus): () => void {
   };
 
   // --- uiStore wiring ---
-  const onUiChange = (payload: { isTerminalOpen?: boolean; isParamPanelOpen?: boolean }) => {
+  const onUiChange = (payload: { isTerminalOpen?: boolean; isParamPanelOpen?: boolean; isHotkeyHelpOpen?: boolean }) => {
     uiStoreActions.updateUi(payload);
   };
 

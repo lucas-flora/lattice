@@ -17,7 +17,7 @@ export interface EngineEventMap {
   'sim:stepBack': { generation: number };
   'sim:seek': { generation: number };
   'view:change': { zoom?: number; cameraX?: number; cameraY?: number };
-  'ui:change': { isTerminalOpen?: boolean; isParamPanelOpen?: boolean };
+  'ui:change': { isTerminalOpen?: boolean; isParamPanelOpen?: boolean; isHotkeyHelpOpen?: boolean };
   'edit:undo': Record<string, never>;
   'edit:redo': Record<string, never>;
   'edit:draw': { x: number; y: number };
