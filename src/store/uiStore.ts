@@ -14,6 +14,10 @@ export interface UiState {
   isParamPanelOpen: boolean;
   /** Current brush size for drawing (1, 3, 5, 7) */
   brushSize: number;
+  /** Number of viewport panels (1 = single, 2 = split) */
+  viewportCount: 1 | 2;
+  /** ID of viewport currently in fullscreen, or null */
+  fullscreenViewportId: string | null;
 }
 
 export const useUiStore = create<UiState>()(
@@ -21,6 +25,8 @@ export const useUiStore = create<UiState>()(
     isTerminalOpen: false,
     isParamPanelOpen: false,
     brushSize: 1,
+    viewportCount: 1,
+    fullscreenViewportId: null,
   })),
 );
 
@@ -37,5 +43,17 @@ export const uiStoreActions = {
   },
   setBrushSize: (brushSize: number): void => {
     useUiStore.setState({ brushSize });
+  },
+  setViewportCount: (viewportCount: 1 | 2): void => {
+    useUiStore.setState({ viewportCount });
+  },
+  toggleSplitView: (): void => {
+    useUiStore.setState((s) => ({
+      viewportCount: s.viewportCount === 1 ? 2 : 1,
+      fullscreenViewportId: null, // Exit fullscreen when toggling split
+    }));
+  },
+  setFullscreenViewport: (viewportId: string | null): void => {
+    useUiStore.setState({ fullscreenViewportId: viewportId });
   },
 };

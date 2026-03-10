@@ -42,4 +42,4 @@ export interface RendererConfig {
 }
 
 /** Grid render modes */
-export type GridRenderMode = '2d' | '1d-spacetime';
+export type GridRenderMode = '2d' | '1d-spacetime' | '3d';

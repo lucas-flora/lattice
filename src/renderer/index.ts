@@ -10,7 +10,9 @@
 export { LatticeRenderer } from './LatticeRenderer';
 export { VisualMapper } from './VisualMapper';
 export { CameraController } from './CameraController';
+export { OrbitCameraController } from './OrbitCameraController';
 export type { CameraState } from './CameraController';
+export type { OrbitCameraState } from './OrbitCameraController';
 export type {
   VisualChannel,
   VisualMappingConfig,

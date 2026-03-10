@@ -24,6 +24,8 @@ export interface SimState {
   liveCellCount: number;
   /** Current simulation speed in FPS (0 = max) */
   speed: number;
+  /** Maximum generation reached (for timeline scrubber range) */
+  maxGeneration: number;
 }
 
 /** Default initial state */
@@ -35,6 +37,7 @@ const initialSimState: SimState = {
   gridHeight: 0,
   liveCellCount: 0,
   speed: 10,
+  maxGeneration: 0,
 };
 
 export const useSimStore = create<SimState>()(
@@ -44,7 +47,10 @@ export const useSimStore = create<SimState>()(
 /** Store actions -- called from wireStores event handlers, not from UI directly */
 export const simStoreActions = {
   setGeneration: (generation: number): void => {
-    useSimStore.setState({ generation });
+    useSimStore.setState((s) => ({
+      generation,
+      maxGeneration: Math.max(s.maxGeneration, generation),
+    }));
   },
   setIsRunning: (isRunning: boolean): void => {
     useSimStore.setState({ isRunning });
@@ -53,7 +59,7 @@ export const simStoreActions = {
     useSimStore.setState({ activePreset: name, gridWidth: width, gridHeight: height });
   },
   resetState: (): void => {
-    useSimStore.setState({ generation: 0, isRunning: false, liveCellCount: 0 });
+    useSimStore.setState({ generation: 0, isRunning: false, liveCellCount: 0, maxGeneration: 0 });
   },
   setLiveCellCount: (liveCellCount: number): void => {
     useSimStore.setState({ liveCellCount });

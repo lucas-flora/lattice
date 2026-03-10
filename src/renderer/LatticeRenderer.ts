@@ -35,12 +35,16 @@ export class LatticeRenderer {
   private historyBuffers: Float32Array[] = [];
   private maxHistory: number = 128;
 
+  // 3D lighting (added lazily for 3D mode)
+  private ambientLight: THREE.AmbientLight | null = null;
+  private directionalLight: THREE.DirectionalLight | null = null;
+
   constructor(config: RendererConfig) {
     // Scene
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(config.backgroundColor ?? 0x000000);
 
-    // Orthographic camera
+    // Orthographic camera (default; 3D viewports use an external PerspectiveCamera)
     this.camera = new THREE.OrthographicCamera(
       -config.width / 2,
       config.width / 2,
@@ -81,13 +85,31 @@ export class LatticeRenderer {
     this.historyBuffers = [];
 
     // Determine render mode
-    this.renderMode = preset.grid.dimensionality === '1d' ? '1d-spacetime' : '2d';
+    if (preset.grid.dimensionality === '1d') {
+      this.renderMode = '1d-spacetime';
+    } else if (preset.grid.dimensionality === '3d') {
+      this.renderMode = '3d';
+    } else {
+      this.renderMode = '2d';
+    }
 
-    // Create geometry: 1x1 plane for each cell
-    const geometry = new THREE.PlaneGeometry(1, 1);
+    // Create geometry: BoxGeometry for 3D voxels, PlaneGeometry for 1D/2D
+    let geometry: THREE.BufferGeometry;
+    if (this.renderMode === '3d') {
+      geometry = new THREE.BoxGeometry(0.9, 0.9, 0.9);
+    } else {
+      geometry = new THREE.PlaneGeometry(1, 1);
+    }
 
-    // Material with vertex colors for per-instance coloring
-    const material = new THREE.MeshBasicMaterial();
+    // Material: MeshLambertMaterial for 3D (needs lighting), MeshBasicMaterial for 1D/2D
+    let material: THREE.Material;
+    if (this.renderMode === '3d') {
+      material = new THREE.MeshLambertMaterial();
+      this.setup3DLighting();
+    } else {
+      material = new THREE.MeshBasicMaterial();
+      this.remove3DLighting();
+    }
 
     // Instance count
     let instanceCount: number;
@@ -122,6 +144,14 @@ export class LatticeRenderer {
         const [x, y] = this.grid.indexToCoord(i);
         this.tempPosition.set(x, y, 0);
         this.tempScale.set(1, 1, 1);
+        this.tempMatrix.compose(this.tempPosition, this.tempQuaternion, this.tempScale);
+        this.instancedMesh.setMatrixAt(i, this.tempMatrix);
+      }
+    } else if (this.renderMode === '3d') {
+      // 3D mode: all instances start hidden (scale 0), update3D shows alive voxels
+      this.tempScale.set(0, 0, 0);
+      for (let i = 0; i < this.instancedMesh.count; i++) {
+        this.tempPosition.set(0, 0, 0);
         this.tempMatrix.compose(this.tempPosition, this.tempQuaternion, this.tempScale);
         this.instancedMesh.setMatrixAt(i, this.tempMatrix);
       }
@@ -162,7 +192,9 @@ export class LatticeRenderer {
     const colorProp = this.visualMapper.getPrimaryColorProperty();
     const sizeProp = this.visualMapper.getPrimarySizeProperty();
 
-    if (this.renderMode === '2d') {
+    if (this.renderMode === '3d') {
+      this.update3D(colorProp);
+    } else if (this.renderMode === '2d') {
       this.update2D(colorProp, sizeProp);
     } else {
       this.update1DSpacetime(colorProp);
@@ -260,11 +292,87 @@ export class LatticeRenderer {
   }
 
   /**
+   * Update 3D voxel grid: only render alive (non-zero) cells as visible voxels.
+   * Uses the same InstancedMesh path as 2D -- unified renderer (RNDR-04).
+   */
+  private update3D(colorProp: string | null): void {
+    if (!this.grid || !this.instancedMesh || !this.visualMapper || !colorProp) return;
+
+    const colorBuffer = this.grid.getCurrentBuffer(colorProp);
+    let visibleIdx = 0;
+
+    for (let i = 0; i < this.grid.cellCount; i++) {
+      const value = colorBuffer[i];
+      if (value !== 0) {
+        const [x, y, z] = this.grid.indexToCoord(i);
+        this.tempPosition.set(x, y, z);
+        this.tempScale.set(1, 1, 1);
+        this.tempMatrix.compose(this.tempPosition, this.tempQuaternion, this.tempScale);
+        this.instancedMesh.setMatrixAt(visibleIdx, this.tempMatrix);
+
+        const color = this.visualMapper.getColor(colorProp, value);
+        this.instancedMesh.setColorAt(visibleIdx, color);
+        visibleIdx++;
+      }
+    }
+
+    // Hide remaining instances
+    this.tempScale.set(0, 0, 0);
+    for (let i = visibleIdx; i < this.instancedMesh.count; i++) {
+      this.tempMatrix.compose(this.tempPosition, this.tempQuaternion, this.tempScale);
+      this.instancedMesh.setMatrixAt(i, this.tempMatrix);
+    }
+
+    this.instancedMesh.instanceMatrix.needsUpdate = true;
+    if (this.instancedMesh.instanceColor) {
+      this.instancedMesh.instanceColor.needsUpdate = true;
+    }
+  }
+
+  /**
+   * Add ambient and directional lighting for 3D mode.
+   */
+  private setup3DLighting(): void {
+    if (!this.ambientLight) {
+      this.ambientLight = new THREE.AmbientLight(0x404040);
+      this.scene.add(this.ambientLight);
+    }
+    if (!this.directionalLight) {
+      this.directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+      this.directionalLight.position.set(1, 1.5, 1);
+      this.scene.add(this.directionalLight);
+    }
+  }
+
+  /**
+   * Remove 3D lighting when switching back to 2D mode.
+   */
+  private remove3DLighting(): void {
+    if (this.ambientLight) {
+      this.scene.remove(this.ambientLight);
+      this.ambientLight = null;
+    }
+    if (this.directionalLight) {
+      this.scene.remove(this.directionalLight);
+      this.directionalLight = null;
+    }
+  }
+
+  /**
    * Render one frame.
    */
   render(): void {
     if (this._renderer) {
       this._renderer.render(this.scene, this.camera);
+    }
+  }
+
+  /**
+   * Render one frame with an external camera (used by multi-viewport and 3D orbit camera).
+   */
+  renderWithCamera(camera: THREE.Camera): void {
+    if (this._renderer) {
+      this._renderer.render(this.scene, camera);
     }
   }
 

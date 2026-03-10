@@ -69,7 +69,9 @@ describe('Surfaces Integration', () => {
     expect(commands).toContain('view.fit');
     expect(commands).toContain('ui.toggleTerminal');
     expect(commands).toContain('ui.toggleParamPanel');
-    expect(commands.length).toBe(21);
+    expect(commands).toContain('view.split');
+    expect(commands).toContain('view.fullscreen');
+    expect(commands.length).toBe(23);
   });
 
   it('TestSurfaces_SimPlayPause_ViaRegistry', async () => {

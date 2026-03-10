@@ -229,10 +229,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | ASST-05 | Phase 8 | Complete |
 | ASST-06 | Phase 8 | Complete |
 | ASST-07 | Phase 8 | Complete |
-| RNDR-02 | Phase 9 | Pending |
-| RNDR-08 | Phase 9 | Pending |
-| RNDR-09 | Phase 9 | Pending |
-| RNDR-10 | Phase 9 | Pending |
+| RNDR-02 | Phase 9 | Complete |
+| RNDR-08 | Phase 9 | Complete |
+| RNDR-09 | Phase 9 | Complete |
+| RNDR-10 | Phase 9 | Complete |
 | GUIP-02 | Phase 10 | Pending |
 | GUIP-03 | Phase 10 | Pending |
 | GUIP-04 | Phase 10 | Pending |

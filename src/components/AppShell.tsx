@@ -4,14 +4,16 @@
  *
  * On mount: creates EventBus, SimulationController, registers all commands,
  * wires stores, and loads the default preset (Conway's GoL).
+ *
+ * Supports multi-viewport layout (RNDR-08) and per-viewport fullscreen (RNDR-09).
  */
 
 'use client';
 
-import { useRef, useEffect, useCallback } from 'react';
-import { EventBus, eventBus } from '@/engine/core/EventBus';
+import { useRef, useEffect } from 'react';
+import { eventBus } from '@/engine/core/EventBus';
 import { SimulationController } from '@/commands/SimulationController';
-import { commandRegistry, CommandRegistry } from '@/commands/CommandRegistry';
+import { commandRegistry } from '@/commands/CommandRegistry';
 import { registerAllCommands } from '@/commands/definitions';
 import { wireStores } from '@/commands/wireStores';
 import { loadBuiltinPresetClient } from '@/engine/preset/builtinPresetsClient';
@@ -22,6 +24,7 @@ import { PresetSelector } from '@/components/hud/PresetSelector';
 import { Terminal } from '@/components/terminal/Terminal';
 import { ParamPanel } from '@/components/panels/ParamPanel';
 import { useSimStore } from '@/store/simStore';
+import { useUiStore } from '@/store/uiStore';
 
 /** Module-level singleton for the simulation controller */
 let controllerSingleton: SimulationController | null = null;
@@ -50,12 +53,21 @@ function initializeSimulation(controller: SimulationController): void {
         sim.setCellDirect(firstProp, i, 1);
       }
     }
+  } else if (dim === '3d') {
+    // Sparse random initialization for 3D
+    for (let i = 0; i < sim.grid.cellCount; i++) {
+      if (Math.random() < 0.1) {
+        sim.setCellDirect(firstProp, i, 1);
+      }
+    }
   }
 }
 
 export function AppShell() {
   const initializedRef = useRef(false);
   const activePreset = useSimStore((s) => s.activePreset);
+  const viewportCount = useUiStore((s) => s.viewportCount);
+  const fullscreenViewportId = useUiStore((s) => s.fullscreenViewportId);
 
   // Initialize command infrastructure once
   useEffect(() => {
@@ -107,25 +119,51 @@ export function AppShell() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
+  const isAnyFullscreen = fullscreenViewportId !== null;
+
   return (
     <div className="relative w-screen h-screen bg-black overflow-hidden">
-      {/* Viewport fills entire background */}
-      <SimulationViewport />
+      {/* Viewport area */}
+      <div className="flex w-full h-full">
+        {/* Primary viewport: always visible unless a different viewport is fullscreen */}
+        {(!isAnyFullscreen || fullscreenViewportId === 'viewport-1') && (
+          <div
+            className={`${viewportCount === 2 && !isAnyFullscreen ? 'w-1/2 border-r border-zinc-700' : 'w-full'} h-full`}
+          >
+            <SimulationViewport viewportId="viewport-1" />
+          </div>
+        )}
 
-      {/* HUD overlay - top left */}
-      <HUD />
+        {/* Secondary viewport: only visible in split mode or when it's fullscreen */}
+        {(viewportCount === 2 || fullscreenViewportId === 'viewport-2') &&
+          (!isAnyFullscreen || fullscreenViewportId === 'viewport-2') && (
+            <div
+              className={`${viewportCount === 2 && !isAnyFullscreen ? 'w-1/2' : 'w-full'} h-full`}
+            >
+              <SimulationViewport viewportId="viewport-2" />
+            </div>
+          )}
+      </div>
 
-      {/* Preset selector - top right */}
-      <PresetSelector />
+      {/* HUD and controls: hidden when any viewport is fullscreen */}
+      {!isAnyFullscreen && (
+        <>
+          {/* HUD overlay - top left */}
+          <HUD />
 
-      {/* Parameter panel - right side */}
-      <ParamPanel />
+          {/* Preset selector - top right */}
+          <PresetSelector />
 
-      {/* Control bar - bottom center */}
-      <ControlBar />
+          {/* Parameter panel - right side */}
+          <ParamPanel />
 
-      {/* Terminal - bottom slide-up */}
-      <Terminal />
+          {/* Control bar - bottom center */}
+          <ControlBar />
+
+          {/* Terminal - bottom slide-up */}
+          <Terminal />
+        </>
+      )}
     </div>
   );
 }

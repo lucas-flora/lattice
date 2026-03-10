@@ -2,14 +2,17 @@
  * ControlBar: simulation control toolbar at the bottom-center of the viewport.
  *
  * All buttons invoke commands through CommandRegistry.
- * Play/Pause toggle, Step Forward, Step Back, Reset, Clear, Speed slider.
+ * Play/Pause toggle, Step Forward, Step Back, Reset, Clear, Speed slider,
+ * Timeline scrubber, and Split viewport toggle.
  */
 
 'use client';
 
 import { useCallback } from 'react';
 import { useSimStore } from '@/store/simStore';
+import { useUiStore } from '@/store/uiStore';
 import { commandRegistry } from '@/commands/CommandRegistry';
+import { TimelineScrubber } from './TimelineScrubber';
 
 const SPEED_VALUES = [1, 5, 10, 30, 60, 0]; // 0 = max
 
@@ -25,6 +28,7 @@ function speedToSliderIndex(fps: number): number {
 export function ControlBar() {
   const isRunning = useSimStore((s) => s.isRunning);
   const speed = useSimStore((s) => s.speed);
+  const viewportCount = useUiStore((s) => s.viewportCount);
 
   const handlePlayPause = useCallback(() => {
     if (isRunning) {
@@ -54,6 +58,10 @@ export function ControlBar() {
     const idx = parseInt(e.target.value, 10);
     const fps = SPEED_VALUES[idx];
     commandRegistry.execute('sim.speed', { fps });
+  }, []);
+
+  const handleSplitToggle = useCallback(() => {
+    commandRegistry.execute('view.split', {});
   }, []);
 
   return (
@@ -90,6 +98,12 @@ export function ControlBar() {
       >
         {'\u23ED'}
       </button>
+
+      {/* Divider */}
+      <div className="w-px h-5 bg-zinc-700" />
+
+      {/* Timeline Scrubber */}
+      <TimelineScrubber />
 
       {/* Divider */}
       <div className="w-px h-5 bg-zinc-700" />
@@ -133,6 +147,19 @@ export function ControlBar() {
           {speedToLabel(speed)}
         </span>
       </div>
+
+      {/* Divider */}
+      <div className="w-px h-5 bg-zinc-700" />
+
+      {/* Split Viewport Toggle */}
+      <button
+        onClick={handleSplitToggle}
+        className={`px-2 py-1 text-lg ${viewportCount === 2 ? 'text-green-400' : 'text-zinc-300 hover:text-white'}`}
+        title={viewportCount === 2 ? 'Single viewport' : 'Split viewport'}
+        data-testid="btn-split"
+      >
+        {'\u2261'}
+      </button>
     </div>
   );
 }

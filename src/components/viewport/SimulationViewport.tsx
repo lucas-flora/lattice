@@ -5,18 +5,29 @@
  * Uses the shared SimulationController (via getController()) instead of a local Simulation.
  * Handles pan/zoom via mouse events and responsive sizing via ResizeObserver.
  * Supports cell drawing (left-click) and erasing (right-click).
+ * Supports multi-viewport with independent cameras (RNDR-08).
+ * Supports 3D orbit controls for 3D grids (RNDR-10).
+ * Supports per-viewport fullscreen toggle (RNDR-09).
  * Explicitly disposes all GPU resources on unmount (RNDR-11).
  */
 
 'use client';
 
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useCallback } from 'react';
 import { LatticeRenderer } from '@/renderer/LatticeRenderer';
 import { CameraController } from '@/renderer/CameraController';
+import { OrbitCameraController } from '@/renderer/OrbitCameraController';
 import { getController } from '@/components/AppShell';
 import { eventBus } from '@/engine/core/EventBus';
 import { commandRegistry } from '@/commands/CommandRegistry';
 import { useUiStore } from '@/store/uiStore';
+import { uiStoreActions } from '@/store/uiStore';
+
+/** Props for multi-viewport support */
+interface SimulationViewportProps {
+  /** Unique viewport identifier */
+  viewportId?: string;
+}
 
 /**
  * Sync camera controller state to renderer camera.
@@ -32,11 +43,44 @@ function syncCamera(renderer: LatticeRenderer, controller: CameraController): vo
   cam.updateProjectionMatrix();
 }
 
-export function SimulationViewport() {
+export function SimulationViewport({ viewportId = 'viewport-1' }: SimulationViewportProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<LatticeRenderer | null>(null);
   const cameraRef = useRef<CameraController | null>(null);
+  const orbitCameraRef = useRef<OrbitCameraController | null>(null);
   const rafRef = useRef<number>(0);
+  const fullscreenViewportId = useUiStore((s) => s.fullscreenViewportId);
+  const isFullscreen = fullscreenViewportId === viewportId;
+
+  const handleFullscreenToggle = useCallback(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    if (isFullscreen) {
+      // Exit fullscreen
+      uiStoreActions.setFullscreenViewport(null);
+      if (document.fullscreenElement) {
+        document.exitFullscreen().catch(() => {});
+      }
+    } else {
+      // Enter fullscreen
+      uiStoreActions.setFullscreenViewport(viewportId);
+      container.requestFullscreen().catch(() => {
+        // Fullscreen not supported, just toggle the state
+      });
+    }
+  }, [isFullscreen, viewportId]);
+
+  useEffect(() => {
+    // Listen for Escape key to exit fullscreen
+    const handleFullscreenChange = () => {
+      if (!document.fullscreenElement && fullscreenViewportId === viewportId) {
+        uiStoreActions.setFullscreenViewport(null);
+      }
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, [fullscreenViewportId, viewportId]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -75,19 +119,34 @@ export function SimulationViewport() {
     }
     rendererRef.current = latticeRenderer;
 
-    // Create camera controller
-    const cameraController = new CameraController(width, height);
-    cameraRef.current = cameraController;
-
     // Connect simulation grid to renderer
     latticeRenderer.setSimulation(sim.grid, sim.preset);
 
-    // Zoom to fit on load
-    const gridW = sim.preset.grid.width;
-    const gridH = sim.preset.grid.height ?? 1;
-    const fitH = sim.preset.grid.dimensionality === '1d' ? latticeRenderer.getMaxHistory() : gridH;
-    cameraController.zoomToFit(gridW, fitH);
-    syncCamera(latticeRenderer, cameraController);
+    // Determine if 3D mode
+    const is3D = sim.preset.grid.dimensionality === '3d';
+
+    // Create appropriate camera controller
+    let cameraController: CameraController | null = null;
+    let orbitController: OrbitCameraController | null = null;
+
+    if (is3D) {
+      orbitController = new OrbitCameraController(width, height);
+      orbitCameraRef.current = orbitController;
+      const gridW = sim.preset.grid.width;
+      const gridH = sim.preset.grid.height ?? 1;
+      const gridD = sim.preset.grid.depth ?? 1;
+      orbitController.fitToGrid(gridW, gridH, gridD);
+    } else {
+      cameraController = new CameraController(width, height);
+      cameraRef.current = cameraController;
+
+      // Zoom to fit on load
+      const gridW = sim.preset.grid.width;
+      const gridH = sim.preset.grid.height ?? 1;
+      const fitH = sim.preset.grid.dimensionality === '1d' ? latticeRenderer.getMaxHistory() : gridH;
+      cameraController.zoomToFit(gridW, fitH);
+      syncCamera(latticeRenderer, cameraController);
+    }
 
     // ResizeObserver for responsive sizing
     const resizeObserver = new ResizeObserver((entries) => {
@@ -95,14 +154,19 @@ export function SimulationViewport() {
         const { width: w, height: h } = entry.contentRect;
         if (w > 0 && h > 0) {
           latticeRenderer.resize(w, h);
-          cameraController.resize(w, h);
-          syncCamera(latticeRenderer, cameraController);
+          if (cameraController) {
+            cameraController.resize(w, h);
+            syncCamera(latticeRenderer, cameraController);
+          }
+          if (orbitController) {
+            orbitController.resize(w, h);
+          }
         }
       }
     });
     resizeObserver.observe(container);
 
-    // Mouse event handlers for pan/zoom
+    // Mouse event handlers for pan/zoom/orbit
     let isDragging = false;
     let isDrawing = false;
     let lastMouseX = 0;
@@ -112,27 +176,24 @@ export function SimulationViewport() {
      * Convert screen coordinates to grid coordinates.
      */
     function screenToGrid(screenX: number, screenY: number): [number, number] | null {
+      if (is3D) return null; // No grid clicking in 3D mode
       const ctrl = getController();
-      if (!ctrl) return null;
+      if (!ctrl || !cameraController) return null;
 
       const canvasRect = canvas.getBoundingClientRect();
       const x = screenX - canvasRect.left;
       const y = screenY - canvasRect.top;
 
-      // Convert to NDC
       const ndcX = (x / canvasRect.width) * 2 - 1;
       const ndcY = -(y / canvasRect.height) * 2 + 1;
 
-      // Convert NDC to world coordinates using camera
       const cam = cameraController.camera;
       const worldX = cam.position.x + ndcX * (cam.right - cam.left) / 2;
       const worldY = cam.position.y + ndcY * (cam.top - cam.bottom) / 2;
 
-      // Round to grid coordinates
       const gridX = Math.round(worldX);
       const gridY = Math.round(worldY);
 
-      // Bounds check
       const currentSim = ctrl.getSimulation();
       if (!currentSim) return null;
       if (gridX < 0 || gridX >= currentSim.grid.config.width) return null;
@@ -142,25 +203,36 @@ export function SimulationViewport() {
     }
 
     const onMouseDown = (e: MouseEvent) => {
-      if (e.button === 0 && !e.shiftKey) {
-        // Left click: draw
-        const coords = screenToGrid(e.clientX, e.clientY);
-        if (coords) {
-          isDrawing = true;
-          commandRegistry.execute('edit.draw', { x: coords[0], y: coords[1] });
+      if (is3D) {
+        // 3D: left-drag to orbit, shift+left or middle to pan
+        if (e.button === 0 && !e.shiftKey) {
+          isDragging = true;
+          lastMouseX = e.clientX;
+          lastMouseY = e.clientY;
+        } else if (e.button === 1 || (e.button === 0 && e.shiftKey)) {
+          isDragging = true;
+          lastMouseX = e.clientX;
+          lastMouseY = e.clientY;
         }
-      } else if (e.button === 2) {
-        // Right click: erase
-        const coords = screenToGrid(e.clientX, e.clientY);
-        if (coords) {
-          isDrawing = true;
-          commandRegistry.execute('edit.erase', { x: coords[0], y: coords[1] });
+      } else {
+        // 2D: existing behavior
+        if (e.button === 0 && !e.shiftKey) {
+          const coords = screenToGrid(e.clientX, e.clientY);
+          if (coords) {
+            isDrawing = true;
+            commandRegistry.execute('edit.draw', { x: coords[0], y: coords[1] });
+          }
+        } else if (e.button === 2) {
+          const coords = screenToGrid(e.clientX, e.clientY);
+          if (coords) {
+            isDrawing = true;
+            commandRegistry.execute('edit.erase', { x: coords[0], y: coords[1] });
+          }
+        } else if (e.button === 1 || (e.button === 0 && e.shiftKey)) {
+          isDragging = true;
+          lastMouseX = e.clientX;
+          lastMouseY = e.clientY;
         }
-      } else if (e.button === 1 || (e.button === 0 && e.shiftKey)) {
-        // Middle click or shift+left click: pan
-        isDragging = true;
-        lastMouseX = e.clientX;
-        lastMouseY = e.clientY;
       }
     };
 
@@ -168,18 +240,28 @@ export function SimulationViewport() {
       if (isDragging) {
         const dx = e.clientX - lastMouseX;
         const dy = e.clientY - lastMouseY;
-        cameraController.pan(-dx, dy);
+
+        if (is3D && orbitController) {
+          if (e.shiftKey || e.buttons === 4) {
+            // Pan in 3D
+            orbitController.pan(dx, dy);
+          } else {
+            // Orbit in 3D
+            orbitController.orbit(dx, dy);
+          }
+        } else if (cameraController) {
+          cameraController.pan(-dx, dy);
+          syncCamera(latticeRenderer, cameraController);
+        }
+
         lastMouseX = e.clientX;
         lastMouseY = e.clientY;
-        syncCamera(latticeRenderer, cameraController);
       } else if (isDrawing && e.buttons === 1) {
-        // Continue drawing while dragging
         const coords = screenToGrid(e.clientX, e.clientY);
         if (coords) {
           commandRegistry.execute('edit.draw', { x: coords[0], y: coords[1] });
         }
       } else if (isDrawing && e.buttons === 2) {
-        // Continue erasing while dragging
         const coords = screenToGrid(e.clientX, e.clientY);
         if (coords) {
           commandRegistry.execute('edit.erase', { x: coords[0], y: coords[1] });
@@ -193,17 +275,22 @@ export function SimulationViewport() {
     };
 
     const onContextMenu = (e: MouseEvent) => {
-      e.preventDefault(); // Prevent right-click context menu
+      e.preventDefault();
     };
 
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
-      const canvasRect = canvas.getBoundingClientRect();
-      const screenX = e.clientX - canvasRect.left;
-      const screenY = e.clientY - canvasRect.top;
-      const delta = -e.deltaY * CameraController.ZOOM_SPEED * 0.01;
-      cameraController.zoomAt(delta, screenX, screenY);
-      syncCamera(latticeRenderer, cameraController);
+      if (is3D && orbitController) {
+        const delta = -e.deltaY * 0.01;
+        orbitController.zoom(delta);
+      } else if (cameraController) {
+        const canvasRect = canvas.getBoundingClientRect();
+        const screenX = e.clientX - canvasRect.left;
+        const screenY = e.clientY - canvasRect.top;
+        const delta = -e.deltaY * CameraController.ZOOM_SPEED * 0.01;
+        cameraController.zoomAt(delta, screenX, screenY);
+        syncCamera(latticeRenderer, cameraController);
+      }
     };
 
     canvas.addEventListener('mousedown', onMouseDown);
@@ -218,11 +305,36 @@ export function SimulationViewport() {
       const newSim = simController.getSimulation();
       if (newSim && latticeRenderer) {
         latticeRenderer.setSimulation(newSim.grid, newSim.preset);
-        const w = newSim.preset.grid.width;
-        const h = newSim.preset.grid.height ?? 1;
-        const fh = newSim.preset.grid.dimensionality === '1d' ? latticeRenderer.getMaxHistory() : h;
-        cameraController.zoomToFit(w, fh);
-        syncCamera(latticeRenderer, cameraController);
+        const newIs3D = newSim.preset.grid.dimensionality === '3d';
+
+        if (newIs3D) {
+          // Switch to orbit controller if needed
+          if (!orbitController) {
+            const r = container.getBoundingClientRect();
+            orbitController = new OrbitCameraController(r.width || 800, r.height || 600);
+            orbitCameraRef.current = orbitController;
+          }
+          const w = newSim.preset.grid.width;
+          const h = newSim.preset.grid.height ?? 1;
+          const d = newSim.preset.grid.depth ?? 1;
+          orbitController.fitToGrid(w, h, d);
+          cameraController = null;
+          cameraRef.current = null;
+        } else {
+          // Switch to orthographic controller
+          if (!cameraController) {
+            const r = container.getBoundingClientRect();
+            cameraController = new CameraController(r.width || 800, r.height || 600);
+            cameraRef.current = cameraController;
+          }
+          const w = newSim.preset.grid.width;
+          const h = newSim.preset.grid.height ?? 1;
+          const fh = newSim.preset.grid.dimensionality === '1d' ? latticeRenderer.getMaxHistory() : h;
+          cameraController.zoomToFit(w, fh);
+          syncCamera(latticeRenderer, cameraController);
+          orbitController = null;
+          orbitCameraRef.current = null;
+        }
       }
     };
     eventBus.on('sim:presetLoaded', onPresetLoaded);
@@ -231,7 +343,11 @@ export function SimulationViewport() {
     const animate = () => {
       rafRef.current = requestAnimationFrame(animate);
       latticeRenderer.update();
-      latticeRenderer.render();
+      if (orbitController) {
+        latticeRenderer.renderWithCamera(orbitController.camera);
+      } else {
+        latticeRenderer.render();
+      }
     };
     rafRef.current = requestAnimationFrame(animate);
 
@@ -250,6 +366,7 @@ export function SimulationViewport() {
       latticeRenderer.dispose();
       rendererRef.current = null;
       cameraRef.current = null;
+      orbitCameraRef.current = null;
 
       if (container.contains(canvas)) {
         container.removeChild(canvas);
@@ -260,9 +377,24 @@ export function SimulationViewport() {
   return (
     <div
       ref={containerRef}
-      className="w-full h-full cursor-crosshair"
-      style={{ minHeight: '400px' }}
-      data-testid="simulation-viewport"
-    />
+      className="relative w-full h-full cursor-crosshair"
+      style={{ minHeight: '200px' }}
+      data-testid={`simulation-viewport-${viewportId}`}
+    >
+      {/* Viewport label */}
+      <div className="absolute top-2 left-2 z-10 text-xs font-mono text-zinc-500 pointer-events-none select-none">
+        {viewportId.replace('-', ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
+      </div>
+
+      {/* Fullscreen toggle */}
+      <button
+        onClick={handleFullscreenToggle}
+        className="absolute top-2 right-2 z-10 text-zinc-400 hover:text-white p-1 rounded bg-zinc-800/50 hover:bg-zinc-700/80 transition-colors"
+        title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+        data-testid={`btn-fullscreen-${viewportId}`}
+      >
+        {isFullscreen ? '\u2716' : '\u26F6'}
+      </button>
+    </div>
   );
 }
