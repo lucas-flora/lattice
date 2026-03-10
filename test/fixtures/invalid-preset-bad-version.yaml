@@ -1,0 +1,15 @@
+schema_version: "2"
+meta:
+  name: "Bad Version Test"
+grid:
+  dimensionality: "2d"
+  width: 10
+  height: 10
+  topology: "toroidal"
+cell_properties:
+  - name: "state"
+    type: "float"
+    default: 0
+rule:
+  type: "typescript"
+  compute: "return 0;"

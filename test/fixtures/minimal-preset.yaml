@@ -1,0 +1,14 @@
+schema_version: "1"
+meta:
+  name: "Minimal Test"
+grid:
+  dimensionality: "1d"
+  width: 100
+  topology: "finite"
+cell_properties:
+  - name: "state"
+    type: "float"
+    default: 0
+rule:
+  type: "typescript"
+  compute: "return 0;"

@@ -5,7 +5,7 @@
  * The engine is pure TypeScript with zero UI dependencies — independently testable in Node.js.
  */
 
-// --- Grid Types ---
+// --- Grid Types (canonical definitions in grid/types.ts) ---
 
 /** Dimensions of the simulation grid */
 export interface GridDimensions {
@@ -20,6 +20,15 @@ export type GridTopology = 'finite' | 'toroidal';
 
 /** Grid dimensionality */
 export type GridDimensionality = '1d' | '2d' | '3d';
+
+// Re-export grid module types for convenience
+export type { GridConfig, NeighborhoodType, PropertyBuffers } from '../grid/types';
+
+// Re-export cell property types for convenience
+export type { CellPropertyType, PropertyRole, CellPropertyConfig, ComputeContext, ComputeFn } from '../cell/types';
+
+// Re-export preset types for convenience
+export type { PresetConfig, PresetValidationResult } from '../preset/types';
 
 // --- Worker Communication Types ---
 
