@@ -47,6 +47,18 @@
       "title": "Substrate",
       "started_at": "2026-03-10T08:16:00.000Z",
       "completed_at": "2026-03-10T08:48:00.000Z"
+    },
+    {
+      "phase": 3,
+      "title": "Rule Engine",
+      "started_at": "2026-03-10T08:49:00.000Z",
+      "completed_at": "2026-03-10T09:05:00.000Z"
+    },
+    {
+      "phase": 4,
+      "title": "Rendering",
+      "started_at": "2026-03-10T09:06:00.000Z",
+      "completed_at": "2026-03-10T09:35:00.000Z"
     }
   ],
   "milestone_history": [],
