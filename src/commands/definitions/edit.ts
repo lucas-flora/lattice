@@ -44,6 +44,7 @@ export function registerEditCommands(
       }
       const undone = history.undo();
       if (undone) {
+        controller.onGridEdited();
         eventBus.emit('edit:undo', {});
       }
       return { success: undone, error: undone ? undefined : 'Nothing to undo' };
@@ -62,6 +63,7 @@ export function registerEditCommands(
       }
       const redone = history.redo();
       if (redone) {
+        controller.onGridEdited();
         eventBus.emit('edit:redo', {});
       }
       return { success: redone, error: redone ? undefined : 'Nothing to redo' };
@@ -103,6 +105,9 @@ export function registerEditCommands(
       }
       history.commitCommand();
 
+      // Invalidate cache and restart compute-ahead with the edited grid
+      controller.onGridEdited();
+
       eventBus.emit('edit:draw', { x, y });
       return { success: true };
     },
@@ -142,6 +147,9 @@ export function registerEditCommands(
         }
       }
       history.commitCommand();
+
+      // Invalidate cache and restart compute-ahead with the edited grid
+      controller.onGridEdited();
 
       eventBus.emit('edit:erase', { x, y });
       return { success: true };

@@ -522,7 +522,7 @@ export class SimulationController {
       this.computeFrames(Math.min(COMPUTE_CHUNK_SIZE, 10));
     }
 
-    // Advance playback
+    // Advance playback — restoreFrame sets the grid to the right state for rendering
     if (this.playbackGeneration < this.computedGeneration) {
       this.playbackGeneration++;
       this.restoreFrame(this.playbackGeneration);
@@ -531,6 +531,8 @@ export class SimulationController {
     // Keep computing ahead in the background
     if (this.computedGeneration < this.computeAheadTarget) {
       this.computeFrames(Math.min(COMPUTE_CHUNK_SIZE, this.computeAheadTarget - this.computedGeneration));
+      // Restore grid to playback frame (computeFrames advanced the engine)
+      this.restoreFrame(this.playbackGeneration);
     }
   }
 
@@ -546,6 +548,9 @@ export class SimulationController {
 
   /**
    * Async compute-ahead: computes frames in chunks to avoid blocking.
+   * After each chunk, restores the grid to the playback generation so
+   * compute-ahead never corrupts the visible grid state (important for
+   * drawing while paused).
    */
   private runComputeAheadChunk(): void {
     if (this.computedGeneration >= this.computeAheadTarget) {
@@ -556,6 +561,12 @@ export class SimulationController {
     const remaining = this.computeAheadTarget - this.computedGeneration;
     const chunkSize = Math.min(COMPUTE_CHUNK_SIZE, remaining);
     this.computeFrames(chunkSize);
+
+    // Restore the grid to the playback frame so the visible state isn't corrupted.
+    // computeFrames advanced the engine beyond playback; put the grid back.
+    if (this.frameCache.has(this.playbackGeneration)) {
+      this.applySnapshot(this.frameCache.get(this.playbackGeneration)!);
+    }
 
     // Schedule next chunk
     this.computeAheadTimer = setTimeout(() => {
@@ -618,6 +629,42 @@ export class SimulationController {
     if (this.computeAheadTarget > this.computedGeneration) {
       this.computeAhead(this.computeAheadTarget);
     }
+  }
+
+  /**
+   * Notify the controller that grid cells have been edited (draw/erase).
+   * Re-snapshots the current state, invalidates future frames, and restarts
+   * compute-ahead so the cache always reflects the edited grid.
+   */
+  onGridEdited(): void {
+    if (!this.simulation) return;
+
+    const gen = this.playbackGeneration;
+
+    // Sync the engine's generation counter to playback (compute-ahead may have
+    // advanced it far beyond playback, but the grid buffers reflect playback gen).
+    this.simulation.runner.setGeneration(gen);
+
+    // Snapshot the current (edited) grid BEFORE invalidating —
+    // invalidation may restore old state via advanceSimTo, so capture first.
+    this.cacheCurrentFrame();
+
+    // Update initial snapshot if at generation 0 so reset preserves edits
+    if (gen === 0 && this.initialSnapshot) {
+      for (const propName of this.simulation.grid.getPropertyNames()) {
+        const buf = this.simulation.grid.getCurrentBuffer(propName);
+        this.initialSnapshot.set(propName, new Float32Array(buf));
+      }
+    }
+
+    // Invalidate only future frames (gen+1 onward) — current frame was just re-cached
+    this.invalidateCacheFrom(gen + 1);
+
+    // Emit tick to update UI with new cell count
+    this.eventBus.emit('sim:tick', {
+      generation: gen,
+      liveCellCount: this.getLiveCellCount(),
+    });
   }
 
   /**
