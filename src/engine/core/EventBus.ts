@@ -16,6 +16,9 @@ export interface EngineEventMap {
   'sim:clear': Record<string, never>;
   'sim:stepBack': { generation: number };
   'sim:seek': { generation: number };
+  'sim:paramChanged': { name: string; value: number };
+  'sim:paramsReset': Record<string, never>;
+  'sim:paramDefsChanged': { defs: Array<{ name: string; label?: string; type: string; default: number; min?: number; max?: number; step?: number }>; values: Record<string, number> };
   'view:change': { zoom?: number; cameraX?: number; cameraY?: number };
   'ui:change': { isTerminalOpen?: boolean; isParamPanelOpen?: boolean; isHotkeyHelpOpen?: boolean };
   'edit:undo': Record<string, never>;

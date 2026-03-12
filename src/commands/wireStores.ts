@@ -59,6 +59,25 @@ export function wireStores(eventBus: EventBus): () => void {
     uiStoreActions.updateUi(payload);
   };
 
+  // --- param wiring ---
+  const onParamChanged = (payload: { name: string; value: number }) => {
+    simStoreActions.setParam(payload.name, payload.value);
+  };
+
+  const onParamsReset = () => {
+    // Reset to defaults from current paramDefs
+    const defs = simStoreActions.getParamDefs();
+    const defaults: Record<string, number> = {};
+    for (const d of defs) {
+      defaults[d.name] = d.default;
+    }
+    simStoreActions.resetParams(defaults);
+  };
+
+  const onParamDefsChanged = (payload: { defs: Array<{ name: string; label?: string; type: string; default: number; min?: number; max?: number; step?: number }>; values: Record<string, number> }) => {
+    simStoreActions.setParamDefs(payload.defs, payload.values);
+  };
+
   // Subscribe to all events
   eventBus.on('sim:tick', onTick);
   eventBus.on('sim:play', onPlay);
@@ -67,6 +86,9 @@ export function wireStores(eventBus: EventBus): () => void {
   eventBus.on('sim:reset', onReset);
   eventBus.on('sim:speedChange', onSpeedChange);
   eventBus.on('sim:clear', onClear);
+  eventBus.on('sim:paramChanged', onParamChanged);
+  eventBus.on('sim:paramsReset', onParamsReset);
+  eventBus.on('sim:paramDefsChanged', onParamDefsChanged);
   eventBus.on('view:change', onViewChange);
   eventBus.on('ui:change', onUiChange);
 
@@ -81,6 +103,9 @@ export function wireStores(eventBus: EventBus): () => void {
     eventBus.off('sim:reset', onReset);
     eventBus.off('sim:speedChange', onSpeedChange);
     eventBus.off('sim:clear', onClear);
+    eventBus.off('sim:paramChanged', onParamChanged);
+    eventBus.off('sim:paramsReset', onParamsReset);
+    eventBus.off('sim:paramDefsChanged', onParamDefsChanged);
     eventBus.off('view:change', onViewChange);
     eventBus.off('ui:change', onUiChange);
   };

@@ -35,10 +35,14 @@ export const DEFAULT_SHORTCUTS: ShortcutBinding[] = [
   { keyLabel: 'B', key: 'b', commandName: 'sim.stepBack', description: 'Step back' },
   { keyLabel: 'R', key: 'r', commandName: 'sim.reset', description: 'Reset simulation' },
   { keyLabel: 'C', key: 'c', commandName: 'sim.clear', description: 'Clear grid' },
-  { keyLabel: 'T', key: 't', commandName: 'ui.toggleTerminal', description: 'Toggle terminal' },
+  { keyLabel: 'T / `', key: 't', commandName: 'ui.toggleTerminal', description: 'Toggle terminal' },
+  { keyLabel: '`', key: '`', commandName: 'ui.toggleTerminal', description: 'Toggle terminal' },
+  { keyLabel: 'Ctrl+`', key: '`', ctrlOrMeta: true, commandName: 'ui.toggleTerminal', commandParams: { docked: true }, description: 'Dock terminal' },
   { keyLabel: 'P', key: 'p', commandName: 'ui.toggleParamPanel', description: 'Toggle parameters' },
+  { keyLabel: 'Ctrl+P', key: 'p', ctrlOrMeta: true, commandName: 'ui.toggleParamPanel', commandParams: { docked: true }, description: 'Dock parameters' },
   { keyLabel: 'F', key: 'f', commandName: 'view.fullscreen', description: 'Toggle fullscreen' },
   { keyLabel: 'S', key: 's', commandName: 'view.split', description: 'Toggle split view' },
+  { keyLabel: 'G', key: 'g', commandName: 'view.gridLines', description: 'Toggle grid lines' },
   { keyLabel: '?', key: '?', commandName: 'ui.toggleHotkeyHelp', description: 'Show keyboard shortcuts' },
   { keyLabel: 'Ctrl+Z', key: 'z', ctrlOrMeta: true, commandName: 'edit.undo', description: 'Undo' },
   { keyLabel: 'Ctrl+Shift+Z', key: 'z', ctrlOrMeta: true, shift: true, commandName: 'edit.redo', description: 'Redo' },
@@ -92,9 +96,11 @@ export class KeyboardShortcutManager {
     this.handler = (e: KeyboardEvent) => {
       if (!this.enabled) return;
 
-      // Skip if user is typing in an input field
+      // Skip if user is typing in an input field, unless it's a
+      // Ctrl/Cmd shortcut (e.g. Ctrl+` to close terminal from its input)
       const tag = (e.target as HTMLElement)?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      if ((tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') &&
+          !(e.ctrlKey || e.metaKey)) return;
 
       for (const binding of this.shortcuts) {
         if (this.matchesEvent(e, binding)) {

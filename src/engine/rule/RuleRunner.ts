@@ -26,6 +26,7 @@ export class RuleRunner implements IRuleRunner {
   private dt: number = 1;
   private useWasm: boolean = false;
   private wasmDelegate: WasmRuleRunner | null = null;
+  private paramsProvider: (() => Record<string, number>) | null = null;
 
   constructor(grid: Grid, preset: PresetConfig, wasmModule?: WasmModule) {
     this.grid = grid;
@@ -140,7 +141,7 @@ export class RuleRunner implements IRuleRunner {
         cell: cellValues,
         neighbors,
         grid: gridInfo,
-        params: {},
+        params: this.paramsProvider ? this.paramsProvider() : {},
         cellIndex: i,
         x,
         y,
@@ -221,5 +222,15 @@ export class RuleRunner implements IRuleRunner {
    */
   setDt(dt: number): void {
     this.dt = dt;
+  }
+
+  /**
+   * Set a function that provides runtime params for each tick.
+   */
+  setParamsProvider(provider: () => Record<string, number>): void {
+    this.paramsProvider = provider;
+    if (this.wasmDelegate) {
+      this.wasmDelegate.setParamsProvider(provider);
+    }
   }
 }

@@ -46,8 +46,9 @@ export function TerminalInput({
     } else if (e.key === 'Escape') {
       e.preventDefault();
       onChange('');
-    } else if (e.key === '`') {
-      // Prevent backtick from toggling terminal while typing
+    } else if (e.key === '`' && !e.ctrlKey && !e.metaKey) {
+      // Prevent plain backtick from toggling terminal while typing,
+      // but allow Ctrl+` through to close the terminal
       e.stopPropagation();
     }
   };

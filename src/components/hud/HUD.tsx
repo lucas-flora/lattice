@@ -17,7 +17,7 @@ export function HUD() {
 
   return (
     <div
-      className="absolute top-4 left-4 z-10 flex flex-col gap-1 pointer-events-none select-none"
+      className="absolute top-4 left-4 z-20 flex flex-col gap-1 pointer-events-none select-none bg-zinc-900/80 backdrop-blur-sm rounded-lg px-3 py-2"
       data-testid="hud"
     >
       <h1 className="text-sm font-mono text-zinc-500 tracking-wider uppercase">

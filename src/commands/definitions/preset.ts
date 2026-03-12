@@ -7,7 +7,7 @@
 import { z } from 'zod';
 import type { CommandRegistry } from '../CommandRegistry';
 import type { SimulationController } from '../SimulationController';
-import { BUILTIN_PRESET_NAMES } from '../../engine/preset/builtinPresets';
+import { BUILTIN_PRESET_NAMES_CLIENT as BUILTIN_PRESET_NAMES } from '../../engine/preset/builtinPresetsClient';
 
 const NoParams = z.object({}).describe('none');
 

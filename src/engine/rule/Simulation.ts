@@ -14,15 +14,24 @@ import type { GridConfig } from '../grid/types';
 import type { PresetConfig } from '../preset/types';
 import { CHANNELS_PER_TYPE } from '../cell/types';
 import { RuleRunner } from './RuleRunner';
+import { compileRule } from './RuleCompiler';
 import type { TickResult } from './types';
 
 export class Simulation {
   readonly grid: Grid;
-  readonly runner: RuleRunner;
+  runner: RuleRunner;
   readonly preset: PresetConfig;
+  readonly params: Map<string, number> = new Map();
 
   constructor(preset: PresetConfig) {
     this.preset = preset;
+
+    // Initialize params from preset defaults
+    if (preset.params) {
+      for (const p of preset.params) {
+        this.params.set(p.name, p.default);
+      }
+    }
 
     // Build grid config from preset
     const gridConfig: GridConfig = {
@@ -44,6 +53,7 @@ export class Simulation {
 
     // Create the rule runner (synchronous path -- always uses TS fallback)
     this.runner = new RuleRunner(this.grid, preset);
+    this.runner.setParamsProvider(() => this.getParamsObject());
   }
 
   /**
@@ -55,6 +65,7 @@ export class Simulation {
     // If the preset requests WASM, try to load it
     if (preset.rule.type === 'wasm') {
       const wasmRunner = await RuleRunner.create(sim.grid, preset);
+      wasmRunner.setParamsProvider(() => sim.getParamsObject());
       // Replace the runner with the WASM-enabled one
       (sim as { runner: RuleRunner }).runner = wasmRunner;
     }
@@ -110,5 +121,48 @@ export class Simulation {
    */
   getCellDirect(propertyName: string, index: number, channel: number = 0): number {
     return this.grid.getCellValue(propertyName, index, channel);
+  }
+
+  /**
+   * Set a runtime parameter value.
+   */
+  setParam(name: string, value: number): void {
+    this.params.set(name, value);
+  }
+
+  /**
+   * Get a runtime parameter value.
+   */
+  getParam(name: string): number | undefined {
+    return this.params.get(name);
+  }
+
+  /**
+   * Get all params as a plain object (for passing to RuleContext).
+   */
+  getParamsObject(): Record<string, number> {
+    const obj: Record<string, number> = {};
+    for (const [k, v] of this.params) {
+      obj[k] = v;
+    }
+    return obj;
+  }
+
+  /**
+   * Replace the compute body and recompile the rule runner.
+   */
+  updateRule(newBody: string): void {
+    // Validate that it compiles
+    compileRule(newBody);
+    // Create updated preset config with new compute body
+    const updatedPreset = {
+      ...this.preset,
+      rule: { ...this.preset.rule, compute: newBody },
+    };
+    // Replace runner with recompiled one
+    const gen = this.getGeneration();
+    this.runner = new RuleRunner(this.grid, updatedPreset);
+    this.runner.setGeneration(gen);
+    this.runner.setParamsProvider(() => this.getParamsObject());
   }
 }

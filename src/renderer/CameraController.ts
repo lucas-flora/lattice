@@ -151,10 +151,12 @@ export class CameraController {
     const halfW = this.viewportWidth / (2 * this.zoom);
     const halfH = this.viewportHeight / (2 * this.zoom);
 
-    this.camera.left = this.panX - halfW;
-    this.camera.right = this.panX + halfW;
-    this.camera.top = this.panY + halfH;
-    this.camera.bottom = this.panY - halfH;
+    // Frustum bounds are in camera-local space (relative to camera.position).
+    // camera.position already handles the world-space translation via panX/panY.
+    this.camera.left = -halfW;
+    this.camera.right = halfW;
+    this.camera.top = halfH;
+    this.camera.bottom = -halfH;
     this.camera.updateProjectionMatrix();
   }
 

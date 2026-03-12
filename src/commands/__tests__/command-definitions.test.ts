@@ -68,7 +68,18 @@ describe('Command Definitions', () => {
     expect(names).toContain('ui.toggleHotkeyHelp');
     expect(names).toContain('viewport.screenshot');
 
-    expect(list.length).toBe(26);
+    // Parameter controls commands
+    expect(names).toContain('param.set');
+    expect(names).toContain('param.get');
+    expect(names).toContain('param.list');
+    expect(names).toContain('param.reset');
+    expect(names).toContain('grid.resize');
+    expect(names).toContain('grid.info');
+    expect(names).toContain('rule.show');
+    expect(names).toContain('rule.edit');
+    expect(names).toContain('view.gridLines');
+
+    expect(list.length).toBe(35);
   });
 
   it('TestCommandDefinitions_SimPlay_StartsSimulation', async () => {

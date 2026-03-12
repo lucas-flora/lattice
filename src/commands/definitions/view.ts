@@ -30,6 +30,10 @@ const ScreenshotParams = z.object({
   filename: z.string().optional(),
 }).describe('{ filename?: string }');
 
+const GridLinesParams = z.object({
+  visible: z.enum(['on', 'off', 'toggle']).optional(),
+}).describe('{ visible?: "on" | "off" | "toggle" }');
+
 export function registerViewCommands(
   registry: CommandRegistry,
   eventBus: EventBus,
@@ -120,6 +124,25 @@ export function registerViewCommands(
       const name = filename ?? generateScreenshotFilename();
       downloadDataUrl(dataUrl, name);
       return { success: true, data: { filename: name } };
+    },
+  });
+
+  registry.register({
+    name: 'view.gridLines',
+    description: 'Toggle grid lines on/off',
+    category: 'view',
+    params: GridLinesParams,
+    execute: async (params) => {
+      const { visible } = params as z.infer<typeof GridLinesParams>;
+      if (visible === 'on') {
+        uiStoreActions.setGridLines(true);
+      } else if (visible === 'off') {
+        uiStoreActions.setGridLines(false);
+      } else {
+        uiStoreActions.toggleGridLines();
+      }
+      const { useUiStore: uiStore } = await import('../../store/uiStore');
+      return { success: true, data: { visible: uiStore.getState().gridLinesVisible } };
     },
   });
 }

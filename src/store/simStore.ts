@@ -9,6 +9,16 @@
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
 
+export interface ParamDef {
+  name: string;
+  label?: string;
+  type: string;
+  default: number;
+  min?: number;
+  max?: number;
+  step?: number;
+}
+
 export interface SimState {
   /** Current simulation generation */
   generation: number;
@@ -26,6 +36,10 @@ export interface SimState {
   speed: number;
   /** Maximum generation reached (for timeline scrubber range) */
   maxGeneration: number;
+  /** Parameter definitions for the current preset */
+  paramDefs: ParamDef[];
+  /** Current parameter values */
+  params: Record<string, number>;
 }
 
 /** Default initial state */
@@ -38,6 +52,8 @@ const initialSimState: SimState = {
   liveCellCount: 0,
   speed: 10,
   maxGeneration: 0,
+  paramDefs: [],
+  params: {},
 };
 
 export const useSimStore = create<SimState>()(
@@ -66,5 +82,17 @@ export const simStoreActions = {
   },
   setSpeed: (speed: number): void => {
     useSimStore.setState({ speed });
+  },
+  setParamDefs: (paramDefs: ParamDef[], params: Record<string, number>): void => {
+    useSimStore.setState({ paramDefs, params });
+  },
+  setParam: (name: string, value: number): void => {
+    useSimStore.setState((s) => ({ params: { ...s.params, [name]: value } }));
+  },
+  resetParams: (defaults: Record<string, number>): void => {
+    useSimStore.setState({ params: { ...defaults } });
+  },
+  getParamDefs: (): ParamDef[] => {
+    return useSimStore.getState().paramDefs;
   },
 };

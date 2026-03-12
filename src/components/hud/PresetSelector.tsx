@@ -9,7 +9,7 @@
 import { useCallback } from 'react';
 import { useSimStore } from '@/store/simStore';
 import { commandRegistry } from '@/commands/CommandRegistry';
-import { BUILTIN_PRESET_NAMES } from '@/engine/preset/builtinPresets';
+import { BUILTIN_PRESET_NAMES_CLIENT as BUILTIN_PRESET_NAMES } from '@/engine/preset/builtinPresetsClient';
 
 /** Display names for built-in presets */
 const PRESET_DISPLAY_NAMES: Record<string, string> = {
@@ -37,7 +37,7 @@ export function PresetSelector() {
   }, []);
 
   return (
-    <div className="absolute top-4 right-4 z-10" data-testid="preset-selector">
+    <div className="absolute top-4 right-4 z-20 pointer-events-auto" data-testid="preset-selector">
       <select
         value={activeKey}
         onChange={handleChange}

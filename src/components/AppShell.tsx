@@ -22,7 +22,6 @@ import { KeyboardShortcutManager } from '@/commands/KeyboardShortcutManager';
 import { SimulationViewport } from '@/components/viewport/SimulationViewport';
 import { HUD } from '@/components/hud/HUD';
 import { ControlBar } from '@/components/hud/ControlBar';
-import { PresetSelector } from '@/components/hud/PresetSelector';
 import { HotkeyHelp } from '@/components/hud/HotkeyHelp';
 import { Terminal } from '@/components/terminal/Terminal';
 import { ParamPanel } from '@/components/panels/ParamPanel';
@@ -41,15 +40,87 @@ export function getController(): SimulationController | null {
 /**
  * Initialize simulation with appropriate starting state per dimensionality.
  */
+/**
+ * Initialize simulation with appropriate starting state per preset.
+ * Each preset needs domain-specific initialization — random binary isn't
+ * meaningful for reaction-diffusion or fluid systems.
+ */
 function initializeSimulation(controller: SimulationController): void {
   const sim = controller.getSimulation();
   if (!sim) return;
 
+  const presetName = sim.preset.meta.name;
   const dim = sim.preset.grid.dimensionality;
   const firstProp = sim.preset.cell_properties[0].name;
+  const w = sim.preset.grid.width;
+  const h = sim.preset.grid.height ?? 1;
 
+  if (presetName === 'Gray-Scott') {
+    // Reaction-diffusion: u=1.0 everywhere, v=0.25 in a small center square
+    const uBuf = sim.grid.getCurrentBuffer('u');
+    const vBuf = sim.grid.getCurrentBuffer('v');
+    uBuf.fill(1.0);
+    vBuf.fill(0.0);
+    const cx = Math.floor(w / 2);
+    const cy = Math.floor(h / 2);
+    const r = Math.max(4, Math.floor(w / 16));
+    for (let y = cy - r; y <= cy + r; y++) {
+      for (let x = cx - r; x <= cx + r; x++) {
+        if (x >= 0 && x < w && y >= 0 && y < h) {
+          const idx = y * w + x;
+          uBuf[idx] = 0.5 + (Math.random() - 0.5) * 0.1;
+          vBuf[idx] = 0.25 + (Math.random() - 0.5) * 0.1;
+        }
+      }
+    }
+    return;
+  }
+
+  if (presetName === 'Navier-Stokes') {
+    // Fluid dynamics: density blob in center with initial velocity
+    const densityBuf = sim.grid.getCurrentBuffer('density');
+    densityBuf.fill(0.0);
+    const cx = Math.floor(w / 2);
+    const cy = Math.floor(h / 2);
+    const r = Math.max(3, Math.floor(w / 8));
+    for (let y = cy - r; y <= cy + r; y++) {
+      for (let x = cx - r; x <= cx + r; x++) {
+        if (x >= 0 && x < w && y >= 0 && y < h) {
+          const idx = y * w + x;
+          densityBuf[idx] = 1.0;
+        }
+      }
+    }
+    // Small initial velocity perturbation
+    try {
+      const vxBuf = sim.grid.getCurrentBuffer('vx');
+      const vyBuf = sim.grid.getCurrentBuffer('vy');
+      for (let y = cy - r; y <= cy + r; y++) {
+        for (let x = cx - r; x <= cx + r; x++) {
+          if (x >= 0 && x < w && y >= 0 && y < h) {
+            const idx = y * w + x;
+            vxBuf[idx] = (Math.random() - 0.5) * 0.1;
+            vyBuf[idx] = (Math.random() - 0.5) * 0.1;
+          }
+        }
+      }
+    } catch { /* velocity properties may not exist */ }
+    return;
+  }
+
+  if (presetName === "Langton's Ant") {
+    // Place ant at center with direction=0
+    const cx = Math.floor(w / 2);
+    const cy = Math.floor(h / 2);
+    const centerIdx = cy * w + cx;
+    sim.setCellDirect('ant', centerIdx, 1);
+    sim.setCellDirect('ant_dir', centerIdx, 0);
+    return;
+  }
+
+  // Default initialization based on dimensionality
   if (dim === '1d') {
-    const centerX = Math.floor(sim.preset.grid.width / 2);
+    const centerX = Math.floor(w / 2);
     sim.setCellDirect(firstProp, centerX, 1);
   } else if (dim === '2d') {
     for (let i = 0; i < sim.grid.cellCount; i++) {
@@ -58,7 +129,6 @@ function initializeSimulation(controller: SimulationController): void {
       }
     }
   } else if (dim === '3d') {
-    // Sparse random initialization for 3D
     for (let i = 0; i < sim.grid.cellCount; i++) {
       if (Math.random() < 0.1) {
         sim.setCellDirect(firstProp, i, 1);
@@ -72,6 +142,10 @@ export function AppShell() {
   const activePreset = useSimStore((s) => s.activePreset);
   const viewportCount = useUiStore((s) => s.viewportCount);
   const fullscreenViewportId = useUiStore((s) => s.fullscreenViewportId);
+  const isTerminalOpen = useUiStore((s) => s.isTerminalOpen);
+  const terminalMode = useUiStore((s) => s.terminalMode);
+  const isParamPanelOpen = useUiStore((s) => s.isParamPanelOpen);
+  const paramPanelMode = useUiStore((s) => s.paramPanelMode);
 
   // Initialize command infrastructure once
   useEffect(() => {
@@ -93,12 +167,21 @@ export function AppShell() {
     shortcutManager = new KeyboardShortcutManager(commandRegistry);
     shortcutManager.attach(window);
 
+    // Re-initialize grid data on every preset load, then capture for seek/reset
+    const onPresetLoaded = () => {
+      initializeSimulation(controller);
+      controller.captureInitialState();
+    };
+    eventBus.on('sim:presetLoaded', onPresetLoaded);
+
     // Load default preset (Conway's GoL) using client-safe loader
     const config = loadBuiltinPresetClient('conways-gol');
     controller.loadPresetConfig(config);
     initializeSimulation(controller);
+    controller.captureInitialState();
 
     return () => {
+      eventBus.off('sim:presetLoaded', onPresetLoaded);
       if (shortcutManager) {
         shortcutManager.detach(window);
         shortcutManager = null;
@@ -113,49 +196,52 @@ export function AppShell() {
   }, []);
 
   const isAnyFullscreen = fullscreenViewportId !== null;
+  const terminalDocked = terminalMode === 'docked' && isTerminalOpen && !isAnyFullscreen;
+  const paramDocked = paramPanelMode === 'docked' && isParamPanelOpen && !isAnyFullscreen;
 
   return (
-    <div className="relative w-screen h-screen bg-black overflow-hidden">
-      {/* Viewport area */}
-      <div className="flex w-full h-full">
-        {/* Primary viewport: always visible unless a different viewport is fullscreen */}
-        {(!isAnyFullscreen || fullscreenViewportId === 'viewport-1') && (
-          <div
-            className={`${viewportCount === 2 && !isAnyFullscreen ? 'w-1/2 border-r border-zinc-700' : 'w-full'} h-full`}
-          >
-            <SimulationViewport viewportId="viewport-1" />
-          </div>
-        )}
-
-        {/* Secondary viewport: only visible in split mode or when it's fullscreen */}
-        {(viewportCount === 2 || fullscreenViewportId === 'viewport-2') &&
-          (!isAnyFullscreen || fullscreenViewportId === 'viewport-2') && (
+    <div className="relative w-screen h-screen bg-black overflow-hidden flex flex-col">
+      {/* Main content row: viewports + optional docked param panel */}
+      <div className="flex flex-1 min-h-0">
+        {/* Viewport area — z-0 so HUD overlays (z-10) render above the WebGL canvas */}
+        <div className="flex flex-1 min-w-0 h-full relative z-0">
+          {/* Primary viewport */}
+          {(!isAnyFullscreen || fullscreenViewportId === 'viewport-1') && (
             <div
-              className={`${viewportCount === 2 && !isAnyFullscreen ? 'w-1/2' : 'w-full'} h-full`}
+              className={`${viewportCount === 2 && !isAnyFullscreen ? 'w-1/2 border-r border-zinc-700' : 'w-full'} h-full`}
             >
-              <SimulationViewport viewportId="viewport-2" />
+              <SimulationViewport viewportId="viewport-1" />
             </div>
           )}
+
+          {/* Secondary viewport */}
+          {(viewportCount === 2 || fullscreenViewportId === 'viewport-2') &&
+            (!isAnyFullscreen || fullscreenViewportId === 'viewport-2') && (
+              <div
+                className={`${viewportCount === 2 && !isAnyFullscreen ? 'w-1/2' : 'w-full'} h-full`}
+              >
+                <SimulationViewport viewportId="viewport-2" />
+              </div>
+            )}
+        </div>
+
+        {/* Docked param panel (right side) */}
+        {paramDocked && <ParamPanel docked />}
       </div>
 
-      {/* HUD and controls: hidden when any viewport is fullscreen */}
+      {/* Docked terminal (bottom, full width) */}
+      {terminalDocked && <Terminal docked />}
+
+      {/* Floating overlay: HUD, controls, and floating panels */}
       {!isAnyFullscreen && (
-        <>
-          {/* HUD overlay - top left */}
+        <div className="absolute inset-0 z-10" style={{ isolation: 'isolate', pointerEvents: 'none' }}>
           <HUD />
-
-          {/* Preset selector - top right */}
-          <PresetSelector />
-
-          {/* Parameter panel - right side */}
-          <ParamPanel />
-
-          {/* Control bar - bottom center */}
+          {/* Floating param panel: shown when NOT docked+open */}
+          {!paramDocked && <ParamPanel />}
           <ControlBar />
-
-          {/* Terminal - bottom slide-up */}
-          <Terminal />
-        </>
+          {/* Floating terminal: shown when NOT docked+open */}
+          {!terminalDocked && <Terminal />}
+        </div>
       )}
 
       {/* Hotkey help overlay -- always rendered (visibility controlled internally) */}

@@ -9,11 +9,25 @@
 
 'use client';
 
+import { useEffect } from 'react';
 import { useUiStore } from '@/store/uiStore';
 import { DEFAULT_SHORTCUTS } from '@/commands/KeyboardShortcutManager';
 
 export function HotkeyHelp() {
   const isOpen = useUiStore((s) => s.isHotkeyHelpOpen);
+
+  // Close on Escape key
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        useUiStore.setState({ isHotkeyHelpOpen: false });
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
