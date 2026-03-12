@@ -16,7 +16,8 @@ import { detectPossibleTypo } from './typoDetector';
 import { commandRegistry } from '@/commands/CommandRegistry';
 import { useSimStore } from '@/store/simStore';
 import { useAiStore, aiStoreActions } from '@/store/aiStore';
-import type { LogEntryType } from '@/components/terminal/useTerminal';
+import type { LogEntryType, StructuredData } from '@/components/terminal/useTerminal';
+import { formatCommandResult } from '@/components/terminal/formatCommandResult';
 
 /**
  * Client-side AI service that manages communication with the AI API route,
@@ -174,7 +175,7 @@ export class AiService {
    */
   async handleTerminalInput(
     input: string,
-    addLogEntry: (type: LogEntryType, message: string) => void,
+    addLogEntry: (type: LogEntryType, message: string, data?: StructuredData) => void,
   ): Promise<void> {
     // Check for typo first
     const commandNames = commandRegistry.list().map((c) => c.name);
@@ -214,7 +215,8 @@ export class AiService {
         const cmdResult = await commandRegistry.execute(cmd.name, cmd.params);
         if (cmdResult.success) {
           if (cmdResult.data) {
-            addLogEntry('info', JSON.stringify(cmdResult.data));
+            const formatted = formatCommandResult(cmd.name, cmdResult.data);
+            addLogEntry('info', formatted.message, formatted.structured);
           }
         } else {
           addLogEntry('error', cmdResult.error ?? 'Command failed');

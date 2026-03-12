@@ -24,12 +24,18 @@ export function registerUiCommands(
     execute: async (params: unknown) => {
       const p = params as { docked?: boolean } | undefined;
       const { isTerminalOpen, terminalMode } = useUiStore.getState();
-      const requestedMode = p?.docked ? 'docked' : 'floating';
 
-      if (isTerminalOpen && terminalMode === requestedMode) {
-        useUiStore.setState({ isTerminalOpen: false });
+      if (p?.docked !== undefined) {
+        // Explicit mode request: switch mode or toggle off if already in that mode
+        const requestedMode = p.docked ? 'docked' : 'floating';
+        if (isTerminalOpen && terminalMode === requestedMode) {
+          useUiStore.setState({ isTerminalOpen: false });
+        } else {
+          useUiStore.setState({ isTerminalOpen: true, terminalMode: requestedMode });
+        }
       } else {
-        useUiStore.setState({ isTerminalOpen: true, terminalMode: requestedMode });
+        // No mode specified: just toggle visibility, keep current mode
+        useUiStore.setState({ isTerminalOpen: !isTerminalOpen });
       }
       return { success: true, data: { isTerminalOpen: useUiStore.getState().isTerminalOpen } };
     },
@@ -43,12 +49,16 @@ export function registerUiCommands(
     execute: async (params: unknown) => {
       const p = params as { docked?: boolean } | undefined;
       const { isParamPanelOpen, paramPanelMode } = useUiStore.getState();
-      const requestedMode = p?.docked ? 'docked' : 'floating';
 
-      if (isParamPanelOpen && paramPanelMode === requestedMode) {
-        useUiStore.setState({ isParamPanelOpen: false });
+      if (p?.docked !== undefined) {
+        const requestedMode = p.docked ? 'docked' : 'floating';
+        if (isParamPanelOpen && paramPanelMode === requestedMode) {
+          useUiStore.setState({ isParamPanelOpen: false });
+        } else {
+          useUiStore.setState({ isParamPanelOpen: true, paramPanelMode: requestedMode });
+        }
       } else {
-        useUiStore.setState({ isParamPanelOpen: true, paramPanelMode: requestedMode });
+        useUiStore.setState({ isParamPanelOpen: !isParamPanelOpen });
       }
       return { success: true, data: { isParamPanelOpen: useUiStore.getState().isParamPanelOpen } };
     },

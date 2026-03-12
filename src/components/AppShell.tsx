@@ -21,8 +21,8 @@ import { loadBuiltinPresetClient } from '@/engine/preset/builtinPresetsClient';
 import { KeyboardShortcutManager } from '@/commands/KeyboardShortcutManager';
 import { SimulationViewport } from '@/components/viewport/SimulationViewport';
 import { HUD } from '@/components/hud/HUD';
-import { ControlBar } from '@/components/hud/ControlBar';
 import { HotkeyHelp } from '@/components/hud/HotkeyHelp';
+import { BottomTray } from '@/components/layout/BottomTray';
 import { Terminal } from '@/components/terminal/Terminal';
 import { ParamPanel } from '@/components/panels/ParamPanel';
 import { useSimStore } from '@/store/simStore';
@@ -37,9 +37,6 @@ export function getController(): SimulationController | null {
   return controllerSingleton;
 }
 
-/**
- * Initialize simulation with appropriate starting state per dimensionality.
- */
 /**
  * Initialize simulation with appropriate starting state per preset.
  * Each preset needs domain-specific initialization — random binary isn't
@@ -196,14 +193,13 @@ export function AppShell() {
   }, []);
 
   const isAnyFullscreen = fullscreenViewportId !== null;
-  const terminalDocked = terminalMode === 'docked' && isTerminalOpen && !isAnyFullscreen;
   const paramDocked = paramPanelMode === 'docked' && isParamPanelOpen && !isAnyFullscreen;
+  const terminalFloating = terminalMode === 'floating';
 
   return (
-    <div className="relative w-screen h-screen bg-black overflow-hidden flex flex-col">
-      {/* Main content row: viewports + optional docked param panel */}
+    <div className="w-screen h-screen bg-black overflow-hidden flex flex-col">
+      {/* Main content: viewport + optional right panel */}
       <div className="flex flex-1 min-h-0">
-        {/* Viewport area — z-0 so HUD overlays (z-10) render above the WebGL canvas */}
         <div className="flex flex-1 min-w-0 h-full relative z-0">
           {/* Primary viewport */}
           {(!isAnyFullscreen || fullscreenViewportId === 'viewport-1') && (
@@ -229,18 +225,17 @@ export function AppShell() {
         {paramDocked && <ParamPanel docked />}
       </div>
 
-      {/* Docked terminal (bottom, full width) */}
-      {terminalDocked && <Terminal docked />}
+      {/* Bottom tray: ControlBar (always) + Terminal (when open, docked mode) */}
+      {!isAnyFullscreen && terminalMode === 'docked' && <BottomTray />}
 
-      {/* Floating overlay: HUD, controls, and floating panels */}
+      {/* HUD overlay — pointer-events: none status display */}
       {!isAnyFullscreen && (
-        <div className="absolute inset-0 z-10" style={{ isolation: 'isolate', pointerEvents: 'none' }}>
+        <div className="absolute inset-0 z-10 pointer-events-none">
           <HUD />
-          {/* Floating param panel: shown when NOT docked+open */}
+          {/* Floating param panel */}
           {!paramDocked && <ParamPanel />}
-          <ControlBar />
-          {/* Floating terminal: shown when NOT docked+open */}
-          {!terminalDocked && <Terminal />}
+          {/* Floating terminal */}
+          {terminalFloating && <Terminal />}
         </div>
       )}
 

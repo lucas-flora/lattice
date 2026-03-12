@@ -14,14 +14,22 @@ import { commandRegistry } from '@/commands/CommandRegistry';
 import { eventBus } from '@/engine/core/EventBus';
 import { parseCommand, isCommand, getGhostText, getCycleCandidates, learningModel } from './commandParser';
 import { aiService } from '@/ai/aiService';
+import { formatCommandResult } from './formatCommandResult';
 
 export type LogEntryType = 'command' | 'info' | 'error' | 'ai';
+
+export type StructuredData =
+  | { kind: 'code'; language: string; content: string }
+  | { kind: 'table'; columns: string[]; rows: string[][] }
+  | { kind: 'kv'; pairs: [string, string][] }
+  | { kind: 'json'; content: unknown };
 
 export interface LogEntry {
   id: number;
   type: LogEntryType;
   message: string;
   timestamp: Date;
+  data?: StructuredData;
 }
 
 const MAX_SCROLLBACK = 500;
@@ -36,13 +44,14 @@ export function useTerminal() {
   const historyIndexRef = useRef(-1);
   const cycleRef = useRef<{ baseInput: string; candidates: string[]; index: number } | null>(null);
 
-  const addLogEntry = useCallback((type: LogEntryType, message: string) => {
+  const addLogEntry = useCallback((type: LogEntryType, message: string, data?: StructuredData) => {
     setOutput((prev) => {
       const entry: LogEntry = {
         id: nextId++,
         type,
         message,
         timestamp: new Date(),
+        data,
       };
       const next = [...prev, entry];
       if (next.length > MAX_SCROLLBACK) {
@@ -101,7 +110,8 @@ export function useTerminal() {
 
       if (result.success) {
         if (result.data) {
-          addLogEntry('info', JSON.stringify(result.data));
+          const formatted = formatCommandResult(parsed.commandName, result.data);
+          addLogEntry('info', formatted.message, formatted.structured);
         }
       } else {
         addLogEntry('error', result.error ?? 'Command failed');

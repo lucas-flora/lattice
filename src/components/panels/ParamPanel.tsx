@@ -18,6 +18,8 @@ import { commandRegistry } from '@/commands/CommandRegistry';
 import { ParamGraph } from './ParamGraph';
 import { ParamGraphBuffer } from '@/lib/paramGraphData';
 import { BUILTIN_PRESET_NAMES_CLIENT as BUILTIN_PRESET_NAMES } from '@/engine/preset/builtinPresetsClient';
+import { ResizeHandle } from '@/components/ui/ResizeHandle';
+import { uiStoreActions } from '@/store/uiStore';
 
 const PRESET_DISPLAY_NAMES: Record<string, string> = {
   'conways-gol': "Conway's GoL",
@@ -43,6 +45,7 @@ interface ParamPanelProps {
 
 export function ParamPanel({ docked = false }: ParamPanelProps) {
   const isOpen = useUiStore((s) => s.isParamPanelOpen);
+  const paramPanelWidth = useUiStore((s) => s.paramPanelWidth);
   const activePreset = useSimStore((s) => s.activePreset);
   const gridWidth = useSimStore((s) => s.gridWidth);
   const gridHeight = useSimStore((s) => s.gridHeight);
@@ -121,6 +124,11 @@ export function ParamPanel({ docked = false }: ParamPanelProps) {
       commandRegistry.execute('grid.resize', { width: w, height: h });
     }
   }, [editWidth, editHeight]);
+
+  const handlePanelResize = useCallback((delta: number) => {
+    // Drag left = negative delta = increase width
+    uiStoreActions.setParamPanelWidth(paramPanelWidth - delta);
+  }, [paramPanelWidth]);
 
   const handleRuleApply = useCallback(() => {
     commandRegistry.execute('rule.edit', { body: ruleBody }).then((result) => {
@@ -349,8 +357,11 @@ export function ParamPanel({ docked = false }: ParamPanelProps) {
 
   if (docked) {
     return (
-      <div className="w-[300px] shrink-0 h-full" data-testid="param-panel">
-        {panelContent}
+      <div className="shrink-0 h-full flex" data-testid="param-panel">
+        <ResizeHandle direction="horizontal" onResize={handlePanelResize} />
+        <div style={{ width: paramPanelWidth }} className="h-full">
+          {panelContent}
+        </div>
       </div>
     );
   }

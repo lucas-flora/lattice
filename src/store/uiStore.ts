@@ -28,6 +28,10 @@ export interface UiState {
   fullscreenViewportId: string | null;
   /** Whether grid lines are displayed */
   gridLinesVisible: boolean;
+  /** Terminal panel height in pixels (docked mode) */
+  terminalHeight: number;
+  /** Parameter panel width in pixels (docked mode) */
+  paramPanelWidth: number;
 }
 
 export const useUiStore = create<UiState>()(
@@ -35,12 +39,14 @@ export const useUiStore = create<UiState>()(
     isTerminalOpen: false,
     isParamPanelOpen: false,
     isHotkeyHelpOpen: false,
-    terminalMode: 'floating',
-    paramPanelMode: 'floating',
+    terminalMode: 'docked',
+    paramPanelMode: 'docked',
     brushSize: 1,
     viewportCount: 1,
     fullscreenViewportId: null,
     gridLinesVisible: false,
+    terminalHeight: 250,
+    paramPanelWidth: 300,
   })),
 );
 
@@ -75,5 +81,13 @@ export const uiStoreActions = {
   },
   setGridLines: (visible: boolean): void => {
     useUiStore.setState({ gridLinesVisible: visible });
+  },
+  setTerminalHeight: (h: number): void => {
+    const maxH = typeof window !== 'undefined' ? window.innerHeight * 0.6 : 600;
+    useUiStore.setState({ terminalHeight: Math.max(100, Math.min(h, maxH)) });
+  },
+  setParamPanelWidth: (w: number): void => {
+    const maxW = typeof window !== 'undefined' ? window.innerWidth * 0.5 : 800;
+    useUiStore.setState({ paramPanelWidth: Math.max(200, Math.min(w, maxW)) });
   },
 };

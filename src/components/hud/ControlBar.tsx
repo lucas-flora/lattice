@@ -1,7 +1,8 @@
 /**
- * ControlBar: simulation control toolbar at the bottom-center of the viewport.
+ * ControlBar: simulation control toolbar.
  *
- * All buttons invoke commands through CommandRegistry.
+ * Inline flex row — no absolute positioning. Embedded by BottomTray.
+ *
  * Play/Pause toggle, Step Forward, Step Back, Reset, Clear, Speed slider,
  * Timeline scrubber, Split viewport toggle, and Screenshot export.
  *
@@ -32,7 +33,6 @@ export function ControlBar() {
   const isRunning = useSimStore((s) => s.isRunning);
   const speed = useSimStore((s) => s.speed);
   const viewportCount = useUiStore((s) => s.viewportCount);
-  const isTerminalOpen = useUiStore((s) => s.isTerminalOpen);
 
   const handlePlayPause = useCallback(() => {
     if (isRunning) {
@@ -74,8 +74,7 @@ export function ControlBar() {
 
   return (
     <div
-      className="absolute left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 bg-zinc-800/90 backdrop-blur-sm rounded-lg px-3 py-2 border border-zinc-700 pointer-events-auto transition-[bottom] duration-200"
-      style={{ bottom: isTerminalOpen ? 'calc(30vh + 1rem)' : '1rem' }}
+      className="flex items-center gap-2 px-1 py-1.5"
       data-testid="control-bar"
     >
       {/* Step Back */}

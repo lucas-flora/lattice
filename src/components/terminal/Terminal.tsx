@@ -2,8 +2,8 @@
  * Terminal: CLI panel for command input and log output.
  *
  * Supports two display modes:
- * - floating: absolute-positioned overlay (default, toggled via T or `)
- * - docked: flex-child that takes layout space (toggled via Ctrl+`)
+ * - floating: absolute-positioned overlay (toggled via T or `)
+ * - docked: flex-child that fills its parent (BottomTray controls the height)
  */
 
 'use client';
@@ -20,6 +20,7 @@ interface TerminalProps {
 
 export function Terminal({ docked = false }: TerminalProps) {
   const isOpen = useUiStore((s) => s.isTerminalOpen);
+  const terminalHeight = useUiStore((s) => s.terminalHeight);
   const {
     output,
     inputValue,
@@ -31,7 +32,7 @@ export function Terminal({ docked = false }: TerminalProps) {
   } = useTerminal();
 
   const terminalContent = (
-    <div className="h-full flex flex-col bg-zinc-900/95 border-t border-zinc-700 backdrop-blur-sm">
+    <div className="h-full flex flex-col bg-zinc-900/95 backdrop-blur-sm">
       {/* Header bar */}
       <div className="flex items-center justify-between px-3 py-1 border-b border-zinc-800">
         <span className="text-[11px] font-mono text-zinc-500 uppercase tracking-wider">Terminal</span>
@@ -60,8 +61,9 @@ export function Terminal({ docked = false }: TerminalProps) {
   );
 
   if (docked) {
+    // Fills parent container — height controlled by BottomTray
     return (
-      <div className="shrink-0" style={{ height: '30vh' }} data-testid="terminal-panel">
+      <div className="h-full" data-testid="terminal-panel">
         {terminalContent}
       </div>
     );
@@ -71,7 +73,7 @@ export function Terminal({ docked = false }: TerminalProps) {
   return (
     <div
       className={`absolute bottom-0 left-0 right-0 z-20 pointer-events-auto ${isOpen ? '' : 'hidden'}`}
-      style={{ height: '30vh' }}
+      style={{ height: terminalHeight }}
       data-testid="terminal-panel"
     >
       {terminalContent}
