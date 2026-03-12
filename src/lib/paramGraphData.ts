@@ -141,3 +141,96 @@ export function samplesToSparklinePoints(
     return [x, y] as [number, number];
   });
 }
+
+/**
+ * Timeline-indexed data buffer for generation-locked visualizations.
+ *
+ * Unlike ParamGraphBuffer (ring buffer, recent-data-only), this stores
+ * values indexed by generation number for timeline-synced charts.
+ */
+export class TimelineDataBuffer {
+  private data: Map<number, number> = new Map();
+
+  record(generation: number, value: number): void {
+    this.data.set(generation, value);
+  }
+
+  getValueAt(generation: number): number | undefined {
+    return this.data.get(generation);
+  }
+
+  getSamplesInRange(startGen: number, endGen: number): GraphSample[] {
+    const result: GraphSample[] = [];
+    for (const [gen, value] of this.data) {
+      if (gen >= startGen && gen <= endGen) {
+        result.push({ generation: gen, value });
+      }
+    }
+    result.sort((a, b) => a.generation - b.generation);
+    return result;
+  }
+
+  getAllSamples(): GraphSample[] {
+    const result: GraphSample[] = [];
+    for (const [gen, value] of this.data) {
+      result.push({ generation: gen, value });
+    }
+    result.sort((a, b) => a.generation - b.generation);
+    return result;
+  }
+
+  getValueRange(): { min: number; max: number } {
+    if (this.data.size === 0) return { min: 0, max: 0 };
+    let min = Infinity;
+    let max = -Infinity;
+    for (const value of this.data.values()) {
+      if (value < min) min = value;
+      if (value > max) max = value;
+    }
+    return { min, max };
+  }
+
+  clear(): void {
+    this.data.clear();
+  }
+
+  get size(): number {
+    return this.data.size;
+  }
+}
+
+/**
+ * Convert samples to canvas points with x-axis mapped to a generation range.
+ * Used by TimelineGraph for generation-locked visualizations.
+ */
+export function samplesToTimelinePoints(
+  samples: GraphSample[],
+  width: number,
+  height: number,
+  genStart: number,
+  genEnd: number,
+): Array<[number, number]> {
+  if (samples.length === 0) return [];
+  if (samples.length === 1) {
+    return [[width / 2, height / 2]];
+  }
+
+  const genRange = Math.max(genEnd - genStart, 1);
+
+  let min = Infinity;
+  let max = -Infinity;
+  for (const s of samples) {
+    if (s.value < min) min = s.value;
+    if (s.value > max) max = s.value;
+  }
+
+  const range = max - min || 1;
+  const padding = height * 0.1;
+  const drawHeight = height - 2 * padding;
+
+  return samples.map((s) => {
+    const x = ((s.generation - genStart) / genRange) * width;
+    const y = padding + drawHeight * (1 - (s.value - min) / range);
+    return [x, y] as [number, number];
+  });
+}

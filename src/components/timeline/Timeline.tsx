@@ -164,9 +164,9 @@ function MiniMap({
       {/* Background */}
       <div className="absolute inset-0 bg-zinc-800/60" />
 
-      {/* Computed region */}
+      {/* Computed region — green tint shows cached frames */}
       <div
-        className="absolute top-0 bottom-0 bg-zinc-700/40"
+        className="absolute top-0 bottom-0 bg-green-500/20"
         style={{ left: 0, width: computedWidth }}
       />
 
@@ -260,8 +260,9 @@ export function Timeline() {
   const playheadInView = generation >= zoomStart && generation <= zoomEnd;
   const playheadX = ((generation - zoomStart) / zoomSpan) * containerWidth;
 
-  // Computed extent bar in zoomed view
-  const computedEndX = ((Math.min(maxGeneration, zoomEnd) - zoomStart) / zoomSpan) * containerWidth;
+  // Computed extent bar in zoomed view — shows actual cache frontier, not playhead history
+  const computedExtent = Math.max(computedGeneration, maxGeneration);
+  const computedEndX = ((Math.min(computedExtent, zoomEnd) - zoomStart) / zoomSpan) * containerWidth;
   const computedStartX = ((Math.max(0, zoomStart) - zoomStart) / zoomSpan) * containerWidth;
 
   // Seek to pixel position in the zoomed ruler
@@ -370,10 +371,10 @@ export function Timeline() {
           onWheel={onWheel}
           data-testid="timeline-ruler"
         >
-          {/* Computed region background */}
-          {maxGeneration > 0 && computedEndX > 0 && (
+          {/* Computed region background — green tint shows cached frames */}
+          {computedExtent > 0 && computedEndX > 0 && (
             <div
-              className="absolute top-0 bottom-0 bg-zinc-800/30 pointer-events-none"
+              className="absolute top-0 bottom-0 bg-green-500/12 pointer-events-none"
               style={{ left: Math.max(0, computedStartX), width: Math.max(0, computedEndX - Math.max(0, computedStartX)) }}
             />
           )}

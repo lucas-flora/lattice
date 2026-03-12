@@ -16,7 +16,8 @@ import { useSimStore } from '@/store/simStore';
 import { useUiStore } from '@/store/uiStore';
 import { commandRegistry } from '@/commands/CommandRegistry';
 import { ParamGraph } from './ParamGraph';
-import { ParamGraphBuffer } from '@/lib/paramGraphData';
+import { TimelineGraph } from './TimelineGraph';
+import { ParamGraphBuffer, TimelineDataBuffer } from '@/lib/paramGraphData';
 import { BUILTIN_PRESET_NAMES_CLIENT as BUILTIN_PRESET_NAMES } from '@/engine/preset/builtinPresetsClient';
 import { ResizeHandle } from '@/components/ui/ResizeHandle';
 import { uiStoreActions } from '@/store/uiStore';
@@ -33,6 +34,10 @@ const PRESET_DISPLAY_NAMES: Record<string, string> = {
 // Module-level graph buffers (persist across re-renders)
 const cellCountBuffer = new ParamGraphBuffer(200);
 const tickRateBuffer = new ParamGraphBuffer(200);
+
+// Timeline-indexed buffers (generation → value, for timeline-synced charts)
+const tlCellCountBuffer = new TimelineDataBuffer();
+const tlTickRateBuffer = new TimelineDataBuffer();
 
 let lastTickTime = 0;
 let tickCount = 0;
@@ -53,6 +58,7 @@ export function ParamPanel({ docked = false }: ParamPanelProps) {
   const liveCellCount = useSimStore((s) => s.liveCellCount);
   const speed = useSimStore((s) => s.speed);
   const isRunning = useSimStore((s) => s.isRunning);
+  const maxGeneration = useSimStore((s) => s.maxGeneration);
   const paramDefs = useSimStore((s) => s.paramDefs);
   const params = useSimStore((s) => s.params);
 
@@ -88,8 +94,9 @@ export function ParamPanel({ docked = false }: ParamPanelProps) {
 
     const now = performance.now();
 
-    // Cell count sample
+    // Cell count sample — live + timeline
     cellCountBuffer.push({ generation, value: liveCellCount });
+    tlCellCountBuffer.record(generation, liveCellCount);
 
     // Tick rate calculation
     tickCount++;
@@ -101,12 +108,15 @@ export function ParamPanel({ docked = false }: ParamPanelProps) {
     lastTickTime = now;
 
     tickRateBuffer.push({ generation, value: currentTickRate });
+    tlTickRateBuffer.record(generation, currentTickRate);
   }, [generation, liveCellCount]);
 
   // Reset buffers when preset changes
   useEffect(() => {
     cellCountBuffer.clear();
     tickRateBuffer.clear();
+    tlCellCountBuffer.clear();
+    tlTickRateBuffer.clear();
     tickCount = 0;
     currentTickRate = 0;
     lastRateCalc = performance.now();
@@ -273,11 +283,12 @@ export function ParamPanel({ docked = false }: ParamPanelProps) {
           </section>
         )}
 
-        {/* Live Parameter Graphs */}
+        {/* Live Metrics — ring buffer, real-time, not synced to playhead */}
         <section data-testid="param-graphs">
-          <h3 className="text-xs font-mono text-zinc-500 uppercase tracking-wider mb-3">
-            Live Metrics
+          <h3 className="text-xs font-mono text-zinc-500 uppercase tracking-wider mb-1">
+            Live
           </h3>
+          <p className="text-[9px] font-mono text-zinc-600 mb-3">Real-time values as they occur</p>
           <div className="space-y-3">
             <ParamGraph
               label="Cell Count"
@@ -291,6 +302,33 @@ export function ParamPanel({ docked = false }: ParamPanelProps) {
               currentValue={currentTickRate}
               formatValue={(v) => `${v} t/s`}
               testId="param-graph-tick-rate"
+            />
+          </div>
+        </section>
+
+        {/* Timeline Metrics — indexed by generation, scrubs with playhead */}
+        <section data-testid="timeline-graphs">
+          <h3 className="text-xs font-mono text-zinc-500 uppercase tracking-wider mb-1">
+            Timeline
+          </h3>
+          <p className="text-[9px] font-mono text-zinc-600 mb-3">Synced to playhead position</p>
+          <div className="space-y-3">
+            <TimelineGraph
+              label="Cell Count"
+              samples={tlCellCountBuffer.getAllSamples()}
+              currentGeneration={generation}
+              maxGeneration={maxGeneration}
+              valueAtPlayhead={tlCellCountBuffer.getValueAt(generation)}
+              testId="timeline-graph-cell-count"
+            />
+            <TimelineGraph
+              label="Tick Rate"
+              samples={tlTickRateBuffer.getAllSamples()}
+              currentGeneration={generation}
+              maxGeneration={maxGeneration}
+              valueAtPlayhead={tlTickRateBuffer.getValueAt(generation)}
+              formatValue={(v) => `${v} t/s`}
+              testId="timeline-graph-tick-rate"
             />
           </div>
         </section>
