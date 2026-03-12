@@ -20,6 +20,8 @@ function makeSimState(overrides: Partial<SimState> = {}): SimState {
     liveCellCount: 500,
     speed: 10,
     maxGeneration: 42,
+    paramDefs: [],
+    params: {},
     ...overrides,
   };
 }
