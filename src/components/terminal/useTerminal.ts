@@ -12,7 +12,7 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
 import { commandRegistry } from '@/commands/CommandRegistry';
 import { eventBus } from '@/engine/core/EventBus';
-import { parseCommand, isCommand, getGhostText } from './commandParser';
+import { parseCommand, isCommand, getGhostText, getCycleCandidates, learningModel } from './commandParser';
 import { aiService } from '@/ai/aiService';
 
 export type LogEntryType = 'command' | 'info' | 'error' | 'ai';
@@ -34,6 +34,7 @@ export function useTerminal() {
   const [ghostText, setGhostText] = useState('');
   const commandHistoryRef = useRef<string[]>([]);
   const historyIndexRef = useRef(-1);
+  const cycleRef = useRef<{ baseInput: string; candidates: string[]; index: number } | null>(null);
 
   const addLogEntry = useCallback((type: LogEntryType, message: string) => {
     setOutput((prev) => {
@@ -59,6 +60,7 @@ export function useTerminal() {
     const onPresetLoaded = (payload: { name: string }) => addLogEntry('info', `Preset loaded: ${payload.name}`);
     const onClear = () => addLogEntry('info', 'Grid cleared');
     const onSpeedChange = (payload: { fps: number }) => addLogEntry('info', `Speed set to ${payload.fps === 0 ? 'max' : payload.fps + ' FPS'}`);
+    const onParamChanged = (payload: { name: string; value: number }) => addLogEntry('info', `${payload.name} = ${payload.value}`);
 
     eventBus.on('sim:play', onPlay);
     eventBus.on('sim:pause', onPause);
@@ -66,6 +68,7 @@ export function useTerminal() {
     eventBus.on('sim:presetLoaded', onPresetLoaded);
     eventBus.on('sim:clear', onClear);
     eventBus.on('sim:speedChange', onSpeedChange);
+    eventBus.on('sim:paramChanged', onParamChanged);
 
     return () => {
       eventBus.off('sim:play', onPlay);
@@ -74,6 +77,7 @@ export function useTerminal() {
       eventBus.off('sim:presetLoaded', onPresetLoaded);
       eventBus.off('sim:clear', onClear);
       eventBus.off('sim:speedChange', onSpeedChange);
+      eventBus.off('sim:paramChanged', onParamChanged);
     };
   }, [addLogEntry]);
 
@@ -91,6 +95,7 @@ export function useTerminal() {
     if (parsed && isCommand(trimmed, commandRegistry)) {
       addLogEntry('command', `> ${trimmed}`);
       aiService.addRecentAction(trimmed);
+      learningModel.record(parsed.commandName);
 
       const result = await commandRegistry.execute(parsed.commandName, parsed.params);
 
@@ -113,6 +118,7 @@ export function useTerminal() {
   }, [addLogEntry]);
 
   const handleInputChange = useCallback((value: string) => {
+    cycleRef.current = null;
     setInputValue(value);
     // Update ghost text
     const ghost = getGhostText(value, commandRegistry);
@@ -143,13 +149,47 @@ export function useTerminal() {
   }, []);
 
   const acceptGhostText = useCallback(() => {
+    const cycle = cycleRef.current;
+
+    // Active cycle: advance to next candidate
+    if (cycle && inputValue === cycle.candidates[cycle.index]) {
+      const nextIndex = (cycle.index + 1) % cycle.candidates.length;
+      cycleRef.current = { ...cycle, index: nextIndex };
+      const candidate = cycle.candidates[nextIndex];
+      setInputValue(candidate);
+      const ghost = getGhostText(candidate + ' ', commandRegistry);
+      setGhostText(ghost ? ' ' + ghost : '');
+      return;
+    }
+
+    // Accept ghost text if present
+    let newValue = inputValue;
     if (ghostText) {
-      const newValue = inputValue + ghostText;
+      newValue = inputValue + ghostText;
+    } else if (!inputValue.trim()) {
+      return;
+    }
+
+    // Get cycle candidates for the completed input
+    const candidates = getCycleCandidates(newValue, commandRegistry);
+    if (candidates.length > 1) {
+      const currentIndex = candidates.indexOf(newValue);
+      const firstIndex = currentIndex >= 0 ? (currentIndex + 1) % candidates.length : 0;
+      cycleRef.current = { baseInput: newValue, candidates, index: firstIndex };
+      const candidate = candidates[firstIndex];
+      setInputValue(candidate);
+      const ghost = getGhostText(candidate + ' ', commandRegistry);
+      setGhostText(ghost ? ' ' + ghost : '');
+    } else if (candidates.length === 1 && candidates[0] !== newValue) {
+      setInputValue(candidates[0]);
+      const ghost = getGhostText(candidates[0] + ' ', commandRegistry);
+      setGhostText(ghost ? ' ' + ghost : '');
+      cycleRef.current = null;
+    } else {
       setInputValue(newValue);
-      setGhostText('');
-      // Re-compute ghost text for the new value
-      const nextGhost = getGhostText(newValue, commandRegistry);
-      setGhostText(nextGhost);
+      const ghost = getGhostText(newValue, commandRegistry);
+      setGhostText(ghost);
+      cycleRef.current = null;
     }
   }, [inputValue, ghostText]);
 

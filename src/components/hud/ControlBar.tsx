@@ -32,6 +32,7 @@ export function ControlBar() {
   const isRunning = useSimStore((s) => s.isRunning);
   const speed = useSimStore((s) => s.speed);
   const viewportCount = useUiStore((s) => s.viewportCount);
+  const isTerminalOpen = useUiStore((s) => s.isTerminalOpen);
 
   const handlePlayPause = useCallback(() => {
     if (isRunning) {
@@ -73,7 +74,8 @@ export function ControlBar() {
 
   return (
     <div
-      className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 bg-zinc-800/90 backdrop-blur-sm rounded-lg px-3 py-2 border border-zinc-700"
+      className="absolute left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 bg-zinc-800/90 backdrop-blur-sm rounded-lg px-3 py-2 border border-zinc-700 pointer-events-auto transition-[bottom] duration-200"
+      style={{ bottom: isTerminalOpen ? 'calc(30vh + 1rem)' : '1rem' }}
       data-testid="control-bar"
     >
       {/* Step Back */}

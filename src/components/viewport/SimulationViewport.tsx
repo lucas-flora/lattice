@@ -22,6 +22,7 @@ import { eventBus } from '@/engine/core/EventBus';
 import { commandRegistry } from '@/commands/CommandRegistry';
 import { useUiStore } from '@/store/uiStore';
 import { uiStoreActions } from '@/store/uiStore';
+import { useSimStore } from '@/store/simStore';
 
 /** Props for multi-viewport support */
 interface SimulationViewportProps {
@@ -51,6 +52,8 @@ export function SimulationViewport({ viewportId = 'viewport-1' }: SimulationView
   const rafRef = useRef<number>(0);
   const fullscreenViewportId = useUiStore((s) => s.fullscreenViewportId);
   const isFullscreen = fullscreenViewportId === viewportId;
+  const activePreset = useSimStore((s) => s.activePreset);
+  const viewportCount = useUiStore((s) => s.viewportCount);
 
   const handleFullscreenToggle = useCallback(() => {
     const container = containerRef.current;
@@ -92,8 +95,15 @@ export function SimulationViewport({ viewportId = 'viewport-1' }: SimulationView
     const sim = simController.getSimulation();
     if (!sim) return;
 
-    // Create canvas
+    // Create canvas — absolute positioning ensures it fills the container
+    // and participates in normal CSS stacking (prevents WebGL compositing issues)
     const canvas = document.createElement('canvas');
+    canvas.setAttribute('data-testid', 'viewport-canvas');
+    canvas.style.display = 'block';
+    canvas.style.position = 'absolute';
+    canvas.style.top = '0';
+    canvas.style.left = '0';
+    canvas.style.zIndex = '0';
     container.appendChild(canvas);
     const rect = container.getBoundingClientRect();
     const width = rect.width || 800;
@@ -339,6 +349,47 @@ export function SimulationViewport({ viewportId = 'viewport-1' }: SimulationView
     };
     eventBus.on('sim:presetLoaded', onPresetLoaded);
 
+    // Subscribe to view:change events so CLI commands (view.zoom, view.pan, view.fit) move the camera
+    const onViewChange = (payload: { zoom?: number; cameraX?: number; cameraY?: number }) => {
+      if (!cameraController || !latticeRenderer) return;
+
+      const hasZoom = payload.zoom !== undefined;
+      const hasPan = payload.cameraX !== undefined || payload.cameraY !== undefined;
+
+      if (!hasZoom && !hasPan) {
+        // view.fit — re-fit to grid
+        const currentSim = simController.getSimulation();
+        if (currentSim) {
+          const gw = currentSim.preset.grid.width;
+          const gh = currentSim.preset.grid.height ?? 1;
+          const fh = currentSim.preset.grid.dimensionality === '1d' ? latticeRenderer.getMaxHistory() : gh;
+          cameraController.zoomToFit(gw, fh);
+        }
+      } else {
+        if (hasZoom) {
+          cameraController.setZoom(payload.zoom!);
+        }
+        if (hasPan) {
+          const state = cameraController.getState();
+          cameraController.setState({
+            x: payload.cameraX ?? state.x,
+            y: payload.cameraY ?? state.y,
+            zoom: cameraController.getZoom(),
+          });
+        }
+      }
+      syncCamera(latticeRenderer, cameraController);
+    };
+    eventBus.on('view:change', onViewChange);
+
+    // Wire grid lines toggle from uiStore
+    const unsubGridLines = useUiStore.subscribe(
+      (s) => s.gridLinesVisible,
+      (visible) => { latticeRenderer.setGridLines(visible); },
+    );
+    // Initialize grid lines state
+    latticeRenderer.setGridLines(useUiStore.getState().gridLinesVisible);
+
     // Animation loop
     const animate = () => {
       rafRef.current = requestAnimationFrame(animate);
@@ -362,6 +413,8 @@ export function SimulationViewport({ viewportId = 'viewport-1' }: SimulationView
       canvas.removeEventListener('contextmenu', onContextMenu);
       resizeObserver.disconnect();
       eventBus.off('sim:presetLoaded', onPresetLoaded);
+      eventBus.off('view:change', onViewChange);
+      unsubGridLines();
 
       latticeRenderer.dispose();
       rendererRef.current = null;
@@ -372,7 +425,7 @@ export function SimulationViewport({ viewportId = 'viewport-1' }: SimulationView
         container.removeChild(canvas);
       }
     };
-  }, []);
+  }, [activePreset]);
 
   return (
     <div
@@ -381,10 +434,12 @@ export function SimulationViewport({ viewportId = 'viewport-1' }: SimulationView
       style={{ minHeight: '200px' }}
       data-testid={`simulation-viewport-${viewportId}`}
     >
-      {/* Viewport label */}
-      <div className="absolute top-2 left-2 z-10 text-xs font-mono text-zinc-500 pointer-events-none select-none">
-        {viewportId.replace('-', ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
-      </div>
+      {/* Viewport label — only shown in split view */}
+      {viewportCount > 1 && (
+        <div className="absolute top-2 left-2 z-10 text-xs font-mono text-zinc-500 pointer-events-none select-none">
+          {viewportId.replace('-', ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
+        </div>
+      )}
 
       {/* Fullscreen toggle */}
       <button

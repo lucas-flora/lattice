@@ -69,6 +69,16 @@ const VisualMappingSchema = z.object({
   mapping: z.record(z.unknown()),
 });
 
+const ParamDefSchema = z.object({
+  name: z.string().min(1),
+  label: z.string().optional(),
+  type: z.enum(['float', 'int']),
+  default: z.number(),
+  min: z.number().optional(),
+  max: z.number().optional(),
+  step: z.number().optional(),
+});
+
 const AiContextSchema = z.object({
   description: z.string().optional(),
   hints: z.array(z.string()).optional(),
@@ -84,6 +94,7 @@ export const PresetSchema = z.object({
   grid: GridSchema,
   cell_properties: z.array(CellPropertySchema).min(1, 'At least one cell property is required'),
   rule: RuleSchema,
+  params: z.array(ParamDefSchema).optional(),
   visual_mappings: z.array(VisualMappingSchema).optional(),
   ai_context: AiContextSchema.optional(),
 });

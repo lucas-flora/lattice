@@ -14,6 +14,9 @@ import { registerPresetCommands } from './preset';
 import { registerViewCommands } from './view';
 import { registerEditCommands } from './edit';
 import { registerUiCommands } from './ui';
+import { registerParamCommands } from './param';
+import { registerGridCommands } from './grid';
+import { registerRuleCommands } from './rule';
 
 /**
  * Register all commands in the registry.
@@ -29,4 +32,7 @@ export function registerAllCommands(
   registerViewCommands(registry, eventBus);
   registerEditCommands(registry, controller, eventBus);
   registerUiCommands(registry, eventBus);
+  registerParamCommands(registry, controller);
+  registerGridCommands(registry, controller);
+  registerRuleCommands(registry, controller);
 }

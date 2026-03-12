@@ -41,15 +41,40 @@ cell_properties:
     type: "bool"
     default: 0
     role: "input_output"
+params:
+  - name: "surviveMin"
+    label: "Survive Min"
+    type: "int"
+    default: 2
+    min: 0
+    max: 8
+    step: 1
+  - name: "surviveMax"
+    label: "Survive Max"
+    type: "int"
+    default: 3
+    min: 0
+    max: 8
+    step: 1
+  - name: "birthCount"
+    label: "Birth Count"
+    type: "int"
+    default: 3
+    min: 0
+    max: 8
+    step: 1
 rule:
   type: "typescript"
   compute: |
     const alive = ctx.cell.alive;
+    const sMin = ctx.params.surviveMin ?? 2;
+    const sMax = ctx.params.surviveMax ?? 3;
+    const birth = ctx.params.birthCount ?? 3;
     const liveNeighbors = ctx.neighbors.filter(n => n.alive === 1).length;
     if (alive === 1) {
-      return { alive: (liveNeighbors === 2 || liveNeighbors === 3) ? 1 : 0 };
+      return { alive: (liveNeighbors >= sMin && liveNeighbors <= sMax) ? 1 : 0 };
     }
-    return { alive: liveNeighbors === 3 ? 1 : 0 };
+    return { alive: liveNeighbors === birth ? 1 : 0 };
 visual_mappings:
   - property: "alive"
     channel: "color"
@@ -73,6 +98,14 @@ cell_properties:
     type: "bool"
     default: 0
     role: "input_output"
+params:
+  - name: "ruleNumber"
+    label: "Rule Number"
+    type: "int"
+    default: 110
+    min: 0
+    max: 255
+    step: 1
 rule:
   type: "typescript"
   compute: |
@@ -80,8 +113,8 @@ rule:
     const left = ctx.neighbors.length > 0 ? (ctx.neighbors[0].state ? 1 : 0) : 0;
     const right = ctx.neighbors.length > 1 ? (ctx.neighbors[1].state ? 1 : 0) : 0;
     const pattern = (left << 2) | (c << 1) | right;
-    const rule110 = 0b01101110;
-    return { state: (rule110 >> pattern) & 1 };
+    const ruleNum = ctx.params.ruleNumber ?? 110;
+    return { state: (ruleNum >> pattern) & 1 };
 visual_mappings:
   - property: "state"
     channel: "color"
@@ -215,10 +248,47 @@ cell_properties:
     type: "float"
     default: 0.0
     role: "input_output"
+params:
+  - name: "Du"
+    label: "Diffusion U"
+    type: "float"
+    default: 0.2097
+    min: 0.0
+    max: 1.0
+    step: 0.001
+  - name: "Dv"
+    label: "Diffusion V"
+    type: "float"
+    default: 0.105
+    min: 0.0
+    max: 1.0
+    step: 0.001
+  - name: "F"
+    label: "Feed Rate"
+    type: "float"
+    default: 0.037
+    min: 0.0
+    max: 0.1
+    step: 0.001
+  - name: "k"
+    label: "Kill Rate"
+    type: "float"
+    default: 0.06
+    min: 0.0
+    max: 0.1
+    step: 0.001
+  - name: "dt"
+    label: "Time Step"
+    type: "float"
+    default: 1.0
+    min: 0.1
+    max: 2.0
+    step: 0.1
 rule:
   type: "typescript"
   compute: |
-    const Du = 0.2097; const Dv = 0.105; const F = 0.037; const k = 0.06; const dt = 1.0;
+    const Du = ctx.params.Du ?? 0.2097; const Dv = ctx.params.Dv ?? 0.105;
+    const F = ctx.params.F ?? 0.037; const k = ctx.params.k ?? 0.06; const dt = ctx.params.dt ?? 1.0;
     const u = ctx.cell.u; const v = ctx.cell.v;
     let lapU = 0; let lapV = 0;
     const nc = ctx.neighbors.length;
@@ -264,10 +334,32 @@ cell_properties:
     type: "float"
     default: 0.0
     role: "input_output"
+params:
+  - name: "viscosity"
+    label: "Viscosity"
+    type: "float"
+    default: 0.1
+    min: 0.0
+    max: 1.0
+    step: 0.01
+  - name: "diffusion"
+    label: "Diffusion"
+    type: "float"
+    default: 0.0001
+    min: 0.0
+    max: 0.01
+    step: 0.0001
+  - name: "dt"
+    label: "Time Step"
+    type: "float"
+    default: 0.1
+    min: 0.01
+    max: 1.0
+    step: 0.01
 rule:
   type: "typescript"
   compute: |
-    const viscosity = 0.1; const diffusion = 0.0001; const dt = 0.1;
+    const viscosity = ctx.params.viscosity ?? 0.1; const diffusion = ctx.params.diffusion ?? 0.0001; const dt = ctx.params.dt ?? 0.1;
     const vx = ctx.cell.vx; const vy = ctx.cell.vy;
     const density = ctx.cell.density; const pressure = ctx.cell.pressure;
     let lapVx = 0; let lapVy = 0; let lapDensity = 0;

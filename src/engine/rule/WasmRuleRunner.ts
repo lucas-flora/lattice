@@ -17,6 +17,7 @@ export class WasmRuleRunner implements IRuleRunner {
   private wasmModule: WasmModule;
   private wasmFnName: string;
   private generation: number = 0;
+  private paramsProvider: (() => Record<string, number>) | null = null;
 
   constructor(grid: Grid, preset: PresetConfig, wasmModule: WasmModule) {
     this.grid = grid;
@@ -62,12 +63,13 @@ export class WasmRuleRunner implements IRuleRunner {
 
     const { width, height } = this.grid.config;
 
-    // Default Gray-Scott parameters (matching the YAML preset)
-    const Du = 0.2097;
-    const Dv = 0.105;
-    const F = 0.037;
-    const k = 0.06;
-    const dt = 1.0;
+    // Read params from provider or use defaults
+    const p = this.paramsProvider ? this.paramsProvider() : {};
+    const Du = p.Du ?? 0.2097;
+    const Dv = p.Dv ?? 0.105;
+    const F = p.F ?? 0.037;
+    const k = p.k ?? 0.06;
+    const dt = p.dt ?? 1.0;
 
     this.wasmModule.gray_scott_tick(
       uCurrent,
@@ -96,10 +98,11 @@ export class WasmRuleRunner implements IRuleRunner {
 
     const { width, height } = this.grid.config;
 
-    // Default Navier-Stokes parameters (matching the YAML preset)
-    const viscosity = 0.1;
-    const diffusion = 0.0001;
-    const dt = 0.1;
+    // Read params from provider or use defaults
+    const p = this.paramsProvider ? this.paramsProvider() : {};
+    const viscosity = p.viscosity ?? 0.1;
+    const diffusion = p.diffusion ?? 0.0001;
+    const dt = p.dt ?? 0.1;
 
     this.wasmModule.navier_stokes_tick(
       vxCurrent,
@@ -133,5 +136,12 @@ export class WasmRuleRunner implements IRuleRunner {
 
   setGeneration(gen: number): void {
     this.generation = gen;
+  }
+
+  /**
+   * Set a function that provides runtime params for each tick.
+   */
+  setParamsProvider(provider: () => Record<string, number>): void {
+    this.paramsProvider = provider;
   }
 }

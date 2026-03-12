@@ -171,11 +171,11 @@ visual_mappings:
 
     ctrl.zoomToFit(preset.grid.width, preset.grid.height!);
 
-    // Camera frustum should contain the full grid
-    expect(ctrl.camera.left).toBeLessThan(0);
-    expect(ctrl.camera.right).toBeGreaterThan(preset.grid.width - 1);
-    expect(ctrl.camera.bottom).toBeLessThan(0);
-    expect(ctrl.camera.top).toBeGreaterThan(preset.grid.height! - 1);
+    // Camera frustum should contain the full grid in world space (position + frustum)
+    expect(ctrl.camera.position.x + ctrl.camera.left).toBeLessThan(0);
+    expect(ctrl.camera.position.x + ctrl.camera.right).toBeGreaterThan(preset.grid.width - 1);
+    expect(ctrl.camera.position.y + ctrl.camera.bottom).toBeLessThan(0);
+    expect(ctrl.camera.position.y + ctrl.camera.top).toBeGreaterThan(preset.grid.height! - 1);
   });
 
   it('TestIntegration_SimulationTick_UpdatesBuffer', () => {

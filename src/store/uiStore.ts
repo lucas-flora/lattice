@@ -7,6 +7,8 @@
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
 
+export type PanelMode = 'floating' | 'docked';
+
 export interface UiState {
   /** Whether the terminal panel is visible */
   isTerminalOpen: boolean;
@@ -14,12 +16,18 @@ export interface UiState {
   isParamPanelOpen: boolean;
   /** Whether the hotkey help overlay is visible */
   isHotkeyHelpOpen: boolean;
+  /** Terminal display mode */
+  terminalMode: PanelMode;
+  /** Parameter panel display mode */
+  paramPanelMode: PanelMode;
   /** Current brush size for drawing (1, 3, 5, 7) */
   brushSize: number;
   /** Number of viewport panels (1 = single, 2 = split) */
   viewportCount: 1 | 2;
   /** ID of viewport currently in fullscreen, or null */
   fullscreenViewportId: string | null;
+  /** Whether grid lines are displayed */
+  gridLinesVisible: boolean;
 }
 
 export const useUiStore = create<UiState>()(
@@ -27,9 +35,12 @@ export const useUiStore = create<UiState>()(
     isTerminalOpen: false,
     isParamPanelOpen: false,
     isHotkeyHelpOpen: false,
+    terminalMode: 'floating',
+    paramPanelMode: 'floating',
     brushSize: 1,
     viewportCount: 1,
     fullscreenViewportId: null,
+    gridLinesVisible: false,
   })),
 );
 
@@ -58,5 +69,11 @@ export const uiStoreActions = {
   },
   setFullscreenViewport: (viewportId: string | null): void => {
     useUiStore.setState({ fullscreenViewportId: viewportId });
+  },
+  toggleGridLines: (): void => {
+    useUiStore.setState((s) => ({ gridLinesVisible: !s.gridLinesVisible }));
+  },
+  setGridLines: (visible: boolean): void => {
+    useUiStore.setState({ gridLinesVisible: visible });
   },
 };

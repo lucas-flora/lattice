@@ -39,6 +39,10 @@ export class LatticeRenderer {
   private ambientLight: THREE.AmbientLight | null = null;
   private directionalLight: THREE.DirectionalLight | null = null;
 
+  // Grid lines overlay
+  private gridLinesMesh: THREE.LineSegments | null = null;
+  private gridLinesVisible: boolean = false;
+
   constructor(config: RendererConfig) {
     // Scene
     this.scene = new THREE.Scene();
@@ -130,6 +134,11 @@ export class LatticeRenderer {
     this.initializeColors();
 
     this.scene.add(this.instancedMesh);
+
+    // Recreate grid lines if they were visible
+    if (this.gridLinesVisible) {
+      this.createGridLines();
+    }
   }
 
   /**
@@ -389,6 +398,7 @@ export class LatticeRenderer {
    * Dispose all GPU resources. Must be called on component unmount (RNDR-11).
    */
   dispose(): void {
+    this.removeGridLines();
     disposeObject(this.scene);
     if (this._renderer) {
       disposeRenderer(this._renderer);
@@ -433,5 +443,59 @@ export class LatticeRenderer {
    */
   setMaxHistory(depth: number): void {
     this.maxHistory = Math.max(1, depth);
+  }
+
+  /**
+   * Show or hide grid lines overlay.
+   */
+  setGridLines(visible: boolean): void {
+    this.gridLinesVisible = visible;
+    if (visible && !this.gridLinesMesh && this.grid) {
+      this.createGridLines();
+    }
+    if (this.gridLinesMesh) {
+      this.gridLinesMesh.visible = visible;
+    }
+  }
+
+  /**
+   * Create grid lines geometry for the current grid.
+   */
+  private createGridLines(): void {
+    if (!this.grid) return;
+    this.removeGridLines();
+
+    const { width, height } = this.grid.config;
+    const points: number[] = [];
+
+    // Vertical lines
+    for (let x = -0.5; x <= width - 0.5; x++) {
+      points.push(x, -0.5, 0.01, x, height - 0.5, 0.01);
+    }
+    // Horizontal lines
+    for (let y = -0.5; y <= height - 0.5; y++) {
+      points.push(-0.5, y, 0.01, width - 0.5, y, 0.01);
+    }
+
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(points, 3));
+    const material = new THREE.LineBasicMaterial({ color: 0x444444, transparent: true, opacity: 0.3 });
+    this.gridLinesMesh = new THREE.LineSegments(geometry, material);
+    this.gridLinesMesh.visible = this.gridLinesVisible;
+    this.scene.add(this.gridLinesMesh);
+  }
+
+  /**
+   * Remove grid lines from the scene.
+   */
+  private removeGridLines(): void {
+    if (this.gridLinesMesh) {
+      this.scene.remove(this.gridLinesMesh);
+      this.gridLinesMesh.geometry.dispose();
+      if (this.gridLinesMesh.material instanceof THREE.Material) {
+        this.gridLinesMesh.material.dispose();
+      }
+      this.gridLinesMesh = null;
+    }
   }
 }

@@ -106,11 +106,11 @@ describe('CameraController', () => {
     const expectedZoom = Math.min(expectedZoomX, expectedZoomY);
     expect(state.zoom).toBeCloseTo(expectedZoom);
 
-    // Verify the entire grid is visible within the frustum
-    expect(ctrl.camera.left).toBeLessThan(0);
-    expect(ctrl.camera.right).toBeGreaterThan(127);
-    expect(ctrl.camera.bottom).toBeLessThan(0);
-    expect(ctrl.camera.top).toBeGreaterThan(127);
+    // Verify the entire grid is visible in world space (position + frustum)
+    expect(ctrl.camera.position.x + ctrl.camera.left).toBeLessThan(0);
+    expect(ctrl.camera.position.x + ctrl.camera.right).toBeGreaterThan(127);
+    expect(ctrl.camera.position.y + ctrl.camera.bottom).toBeLessThan(0);
+    expect(ctrl.camera.position.y + ctrl.camera.top).toBeGreaterThan(127);
   });
 
   it('TestCameraController_ZoomToFit_RectangularGrid', () => {
@@ -139,11 +139,11 @@ describe('CameraController', () => {
     expect(state.x).toBeCloseTo(127.5);
     expect(state.y).toBeCloseTo(63.5);
 
-    // Grid should be fully visible
-    expect(ctrl.camera.left).toBeLessThan(0);
-    expect(ctrl.camera.right).toBeGreaterThan(255);
-    expect(ctrl.camera.bottom).toBeLessThan(0);
-    expect(ctrl.camera.top).toBeGreaterThan(127);
+    // Grid should be fully visible in world space (position + frustum)
+    expect(ctrl.camera.position.x + ctrl.camera.left).toBeLessThan(0);
+    expect(ctrl.camera.position.x + ctrl.camera.right).toBeGreaterThan(255);
+    expect(ctrl.camera.position.y + ctrl.camera.bottom).toBeLessThan(0);
+    expect(ctrl.camera.position.y + ctrl.camera.top).toBeGreaterThan(127);
   });
 
   it('TestCameraController_ResizeUpdatesFrustum', () => {
