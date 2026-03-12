@@ -165,9 +165,11 @@ export function AppShell() {
     shortcutManager.attach(window);
 
     // Re-initialize grid data on every preset load, then capture for seek/reset
+    // and aggressively start caching ahead
     const onPresetLoaded = () => {
       initializeSimulation(controller);
-      controller.captureInitialState();
+      const { timelineDuration } = useUiStore.getState();
+      controller.captureInitialState(timelineDuration);
     };
     eventBus.on('sim:presetLoaded', onPresetLoaded);
 
@@ -175,7 +177,8 @@ export function AppShell() {
     const config = loadBuiltinPresetClient('conways-gol');
     controller.loadPresetConfig(config);
     initializeSimulation(controller);
-    controller.captureInitialState();
+    const { timelineDuration } = useUiStore.getState();
+    controller.captureInitialState(timelineDuration);
 
     return () => {
       eventBus.off('sim:presetLoaded', onPresetLoaded);

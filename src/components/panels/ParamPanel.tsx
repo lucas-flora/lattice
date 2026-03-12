@@ -90,26 +90,34 @@ export function ParamPanel({ docked = false }: ParamPanelProps) {
   // Track tick rate and push samples when generation changes
   useEffect(() => {
     if (generation === prevGenRef.current) return;
+    const isForwardStep = generation === prevGenRef.current + 1;
     prevGenRef.current = generation;
 
     const now = performance.now();
 
-    // Cell count sample — live + timeline
+    // Live buffers always update (they're a rolling window of recent activity)
     cellCountBuffer.push({ generation, value: liveCellCount });
+
+    // Timeline cell count: always record — cell count is deterministic per generation
     tlCellCountBuffer.record(generation, liveCellCount);
 
-    // Tick rate calculation
-    tickCount++;
-    if (now - lastRateCalc >= 1000) {
-      currentTickRate = tickCount;
-      tickCount = 0;
-      lastRateCalc = now;
-    }
-    lastTickTime = now;
+    // Tick rate: only meaningful during forward playback, not scrubbing
+    if (isForwardStep && isRunning) {
+      tickCount++;
+      if (now - lastRateCalc >= 1000) {
+        currentTickRate = tickCount;
+        tickCount = 0;
+        lastRateCalc = now;
+      }
+      lastTickTime = now;
 
-    tickRateBuffer.push({ generation, value: currentTickRate });
-    tlTickRateBuffer.record(generation, currentTickRate);
-  }, [generation, liveCellCount]);
+      tickRateBuffer.push({ generation, value: currentTickRate });
+      tlTickRateBuffer.record(generation, currentTickRate);
+    } else {
+      // During scrub: update live buffer with last known rate but don't record to timeline
+      tickRateBuffer.push({ generation, value: currentTickRate });
+    }
+  }, [generation, liveCellCount, isRunning]);
 
   // Reset buffers when preset changes
   useEffect(() => {

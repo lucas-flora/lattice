@@ -132,7 +132,7 @@ export class SimulationController {
     this.playing = false;
 
     this.stopPlaybackLoop();
-    this.stopComputeAhead();
+    // Don't stop compute-ahead — keep caching aggressively even when paused
 
     this.eventBus.emit('sim:pause', {});
   }
@@ -259,6 +259,7 @@ export class SimulationController {
    */
   reset(): void {
     if (!this.simulation) return;
+    this.stopComputeAhead();
     if (this.initialSnapshot) {
       this.restoreInitialState();
     } else {
@@ -267,7 +268,12 @@ export class SimulationController {
     this.frameCache.clear();
     this.computedGeneration = 0;
     this.playbackGeneration = 0;
+    this.cacheCurrentFrame();
     this.eventBus.emit('sim:reset', {});
+    // Restart aggressive compute-ahead
+    if (this.computeAheadTarget > 0) {
+      this.computeAhead(this.computeAheadTarget);
+    }
   }
 
   /**
@@ -350,8 +356,9 @@ export class SimulationController {
   /**
    * Capture the current grid state as the "initial state" for seek/reset.
    * Call after initializeSimulation() to preserve the starting pattern.
+   * Immediately starts aggressive compute-ahead to fill the cache.
    */
-  captureInitialState(): void {
+  captureInitialState(cacheTarget?: number): void {
     if (!this.simulation) return;
     this.initialSnapshot = new Map();
     for (const propName of this.simulation.grid.getPropertyNames()) {
@@ -360,6 +367,11 @@ export class SimulationController {
     }
     // Also cache frame 0
     this.cacheCurrentFrame();
+
+    // Aggressively start computing ahead immediately
+    if (cacheTarget && cacheTarget > 0) {
+      this.computeAhead(cacheTarget);
+    }
   }
 
   /**
@@ -587,6 +599,7 @@ export class SimulationController {
 
   /**
    * Invalidate cached frames from a given generation onward.
+   * Automatically restarts compute-ahead to refill the cache.
    */
   private invalidateCacheFrom(fromGeneration: number): void {
     for (const key of this.frameCache.keys()) {
@@ -598,6 +611,12 @@ export class SimulationController {
       this.computedGeneration = fromGeneration;
       // Restore sim to the last valid state
       this.advanceSimTo(Math.max(0, fromGeneration - 1));
+      this.eventBus.emit('sim:computeProgress', { computedGeneration: this.computedGeneration });
+    }
+    // Restart compute-ahead to refill the cache
+    this.stopComputeAhead();
+    if (this.computeAheadTarget > this.computedGeneration) {
+      this.computeAhead(this.computeAheadTarget);
     }
   }
 
