@@ -4,7 +4,9 @@
  * This is the bridge between commands and the engine. Commands call controller
  * methods, which operate on the Simulation and emit events via the EventBus.
  *
- * Extended in Phase 6 with stepBack, clear, speed, seek, live cell count.
+ * Supports compute-ahead: frames are pre-computed into a cache so the timeline
+ * can be scrubbed instantly. Playback is decoupled from computation — the sim
+ * computes as fast as possible while playback runs at display FPS.
  */
 
 import { Simulation } from '../engine/rule/Simulation';
@@ -23,12 +25,16 @@ export interface ParamDef {
   step?: number;
 }
 
-/** Snapshot of grid state at a generation for reverse-step */
+/** Snapshot of grid state at a generation for scrubbing/playback */
 interface TickSnapshot {
   generation: number;
   /** Map of property name -> copy of the current buffer at that generation */
   buffers: Map<string, Float32Array>;
+  liveCellCount: number;
 }
+
+/** How many frames to compute per async chunk during compute-ahead */
+const COMPUTE_CHUNK_SIZE = 50;
 
 export class SimulationController {
   private eventBus: EventBus;
@@ -39,12 +45,22 @@ export class SimulationController {
   private tickIntervalMs: number;
   private activePresetName: string | null = null;
 
-  /** Tick history for reverse-step (circular buffer) */
-  private tickHistory: TickSnapshot[] = [];
-  private maxTickHistory: number = 1000;
+  /** Frame cache: generation -> snapshot. Replaces the old tickHistory array. */
+  private frameCache: Map<number, TickSnapshot> = new Map();
+  private maxCacheSize: number = 2000;
+
+  /** How far ahead the sim has been computed (the frontier). */
+  private computedGeneration: number = 0;
 
   /** Snapshot of the grid state right after initialization (for seek/reset to replay from) */
   private initialSnapshot: Map<string, Float32Array> | null = null;
+
+  /** Compute-ahead state */
+  private computeAheadTimer: ReturnType<typeof setTimeout> | null = null;
+  private computeAheadTarget: number = 0;
+
+  /** Current playback generation (may lag behind computedGeneration) */
+  private playbackGeneration: number = 0;
 
   constructor(eventBus: EventBus, tickIntervalMs: number = 100) {
     this.eventBus = eventBus;
@@ -62,7 +78,9 @@ export class SimulationController {
     this.simulation = new Simulation(config);
     this.commandHistory = new CommandHistory(this.simulation);
     this.activePresetName = config.meta.name;
-    this.tickHistory = [];
+    this.frameCache.clear();
+    this.computedGeneration = 0;
+    this.playbackGeneration = 0;
 
     this.eventBus.emit('sim:presetLoaded', {
       name: config.meta.name,
@@ -81,7 +99,9 @@ export class SimulationController {
     this.simulation = new Simulation(config);
     this.commandHistory = new CommandHistory(this.simulation);
     this.activePresetName = config.meta.name;
-    this.tickHistory = [];
+    this.frameCache.clear();
+    this.computedGeneration = 0;
+    this.playbackGeneration = 0;
 
     this.eventBus.emit('sim:presetLoaded', {
       name: config.meta.name,
@@ -92,24 +112,27 @@ export class SimulationController {
   }
 
   /**
-   * Start the simulation tick loop.
+   * Start simulation playback.
+   * Kicks off compute-ahead to fill the cache, then starts
+   * the playback loop at display FPS.
    */
   play(): void {
     if (this.playing || !this.simulation) return;
     this.playing = true;
     this.eventBus.emit('sim:play', {});
 
-    this.startTickLoop();
+    this.startPlaybackLoop();
   }
 
   /**
-   * Stop the simulation tick loop.
+   * Stop the simulation playback.
    */
   pause(): void {
     if (!this.playing) return;
     this.playing = false;
 
-    this.stopTickLoop();
+    this.stopPlaybackLoop();
+    this.stopComputeAhead();
 
     this.eventBus.emit('sim:pause', {});
   }
@@ -119,29 +142,30 @@ export class SimulationController {
    */
   step(): void {
     if (!this.simulation) return;
-    this.doTick();
+
+    // Ensure the next frame is computed
+    if (this.playbackGeneration >= this.computedGeneration) {
+      this.computeFrames(1);
+    }
+    this.playbackGeneration++;
+    this.restoreFrame(this.playbackGeneration);
   }
 
   /**
-   * Reverse one generation by restoring the previous tick snapshot.
+   * Reverse one generation by restoring the previous cached frame.
    */
   stepBack(): void {
-    if (!this.simulation || this.tickHistory.length === 0) return;
+    if (!this.simulation || this.playbackGeneration <= 0) return;
 
-    const snapshot = this.tickHistory.pop()!;
-
-    // Restore grid buffers from snapshot
-    for (const [propName, buffer] of snapshot.buffers) {
-      const currentBuf = this.simulation.grid.getCurrentBuffer(propName);
-      currentBuf.set(buffer);
+    this.playbackGeneration--;
+    if (this.frameCache.has(this.playbackGeneration)) {
+      this.restoreFrame(this.playbackGeneration);
+    } else {
+      // Frame not in cache — need to recompute from initial state
+      this.recomputeTo(this.playbackGeneration);
+      this.restoreFrame(this.playbackGeneration);
     }
-
-    // Reset the runner's generation counter
-    this.simulation.runner.setGeneration(snapshot.generation);
-
-    const liveCellCount = this.getLiveCellCount();
-    this.eventBus.emit('sim:stepBack', { generation: snapshot.generation });
-    this.eventBus.emit('sim:tick', { generation: snapshot.generation, liveCellCount });
+    this.eventBus.emit('sim:stepBack', { generation: this.playbackGeneration });
   }
 
   /**
@@ -155,14 +179,17 @@ export class SimulationController {
     const buffer = this.simulation.grid.getCurrentBuffer(firstProp);
     buffer.fill(0);
 
-    this.tickHistory = [];
+    this.frameCache.clear();
+    this.computedGeneration = 0;
+    this.playbackGeneration = 0;
+    this.simulation.runner.setGeneration(0);
     this.eventBus.emit('sim:clear', {});
-    this.eventBus.emit('sim:tick', { generation: this.simulation.getGeneration(), liveCellCount: 0 });
+    this.eventBus.emit('sim:tick', { generation: 0, liveCellCount: 0 });
   }
 
   /**
    * Set the simulation speed in FPS. 0 = max speed (1ms interval).
-   * Restarts the tick loop if currently playing.
+   * Restarts the playback loop if currently playing.
    */
   setSpeed(fps: number): void {
     if (fps <= 0) {
@@ -173,44 +200,58 @@ export class SimulationController {
 
     this.eventBus.emit('sim:speedChange', { fps });
 
-    // Restart tick loop with new interval if currently playing
+    // Restart playback loop with new interval if currently playing
     if (this.playing) {
-      this.stopTickLoop();
-      this.startTickLoop();
+      this.stopPlaybackLoop();
+      this.startPlaybackLoop();
     }
   }
 
   /**
-   * Seek to a specific generation. If target > current, step forward.
-   * If target < current, reset and replay.
+   * Seek to a specific generation. Uses frame cache for instant access.
    */
   seek(generation: number): void {
     if (!this.simulation) return;
 
-    const current = this.simulation.getGeneration();
+    const targetGen = Math.max(0, generation);
 
-    if (generation < current) {
-      // Restore to initial state (captured snapshot or engine reset) and replay
-      if (this.initialSnapshot) {
-        this.restoreInitialState();
-      } else {
-        this.simulation.reset();
-      }
-      this.tickHistory = [];
-      for (let i = 0; i < generation; i++) {
-        this.captureSnapshot();
-        this.simulation.tick();
-      }
-    } else if (generation > current) {
-      for (let i = current; i < generation; i++) {
-        this.captureSnapshot();
-        this.simulation.tick();
-      }
+    // If target is already cached, instant restore
+    if (this.frameCache.has(targetGen)) {
+      this.playbackGeneration = targetGen;
+      this.applySnapshot(this.frameCache.get(targetGen)!);
+      const liveCellCount = this.frameCache.get(targetGen)!.liveCellCount;
+      this.eventBus.emit('sim:seek', { generation: targetGen });
+      this.eventBus.emit('sim:tick', { generation: targetGen, liveCellCount });
+      return;
     }
 
-    const liveCellCount = this.getLiveCellCount();
-    this.eventBus.emit('sim:seek', { generation: this.simulation.getGeneration() });
-    this.eventBus.emit('sim:tick', { generation: this.simulation.getGeneration(), liveCellCount });
+    // If target is beyond computed, compute up to it
+    if (targetGen > this.computedGeneration) {
+      this.computeFrames(targetGen - this.computedGeneration);
+    } else {
+      // Target is before computed but not in cache (evicted) — recompute
+      this.recomputeTo(targetGen);
+    }
+
+    this.playbackGeneration = targetGen;
+    this.restoreFrame(targetGen);
+  }
+
+  /**
+   * Compute ahead to a target generation asynchronously (non-blocking).
+   * Computes in chunks to avoid freezing the UI.
+   */
+  computeAhead(targetGeneration: number): void {
+    this.computeAheadTarget = targetGeneration;
+    if (this.computeAheadTimer) return; // Already running
+    this.runComputeAheadChunk();
+  }
+
+  /**
+   * Get the computed generation frontier.
+   */
+  getComputedGeneration(): number {
+    return this.computedGeneration;
   }
 
   /**
@@ -223,7 +264,9 @@ export class SimulationController {
     } else {
       this.simulation.reset();
     }
-    this.tickHistory = [];
+    this.frameCache.clear();
+    this.computedGeneration = 0;
+    this.playbackGeneration = 0;
     this.eventBus.emit('sim:reset', {});
   }
 
@@ -250,13 +293,15 @@ export class SimulationController {
     isRunning: boolean;
     activePreset: string | null;
     speed: number;
+    computedGeneration: number;
   } {
     return {
-      generation: this.simulation?.getGeneration() ?? 0,
+      generation: this.playbackGeneration,
       liveCellCount: this.getLiveCellCount(),
       isRunning: this.playing,
       activePreset: this.activePresetName,
       speed: this.tickIntervalMs <= 1 ? 0 : Math.round(1000 / this.tickIntervalMs),
+      computedGeneration: this.computedGeneration,
     };
   }
 
@@ -268,15 +313,14 @@ export class SimulationController {
   }
 
   /**
-   * Get the current generation number.
+   * Get the current playback generation number.
    */
   getGeneration(): number {
-    return this.simulation?.getGeneration() ?? 0;
+    return this.playbackGeneration;
   }
 
   /**
    * Get the underlying Simulation instance.
-   * Used for direct comparison in tests (Success Criterion #3).
    */
   getSimulation(): Simulation | null {
     return this.simulation;
@@ -314,6 +358,8 @@ export class SimulationController {
       const buf = this.simulation.grid.getCurrentBuffer(propName);
       this.initialSnapshot.set(propName, new Float32Array(buf));
     }
+    // Also cache frame 0
+    this.cacheCurrentFrame();
   }
 
   /**
@@ -329,58 +375,189 @@ export class SimulationController {
   }
 
   /**
-   * Capture a snapshot of the current grid state before a tick.
+   * Cache the current frame in the frame cache.
    */
-  private captureSnapshot(): void {
+  private cacheCurrentFrame(): void {
     if (!this.simulation) return;
 
+    const generation = this.simulation.getGeneration();
     const buffers = new Map<string, Float32Array>();
     for (const propName of this.simulation.grid.getPropertyNames()) {
       const buf = this.simulation.grid.getCurrentBuffer(propName);
       buffers.set(propName, new Float32Array(buf));
     }
 
-    const snapshot: TickSnapshot = {
-      generation: this.simulation.getGeneration(),
-      buffers,
-    };
+    const liveCellCount = this.getLiveCellCount();
+    this.frameCache.set(generation, { generation, buffers, liveCellCount });
 
-    this.tickHistory.push(snapshot);
-    if (this.tickHistory.length > this.maxTickHistory) {
-      this.tickHistory.shift();
+    // Evict oldest if over capacity
+    if (this.frameCache.size > this.maxCacheSize) {
+      const firstKey = this.frameCache.keys().next().value;
+      if (firstKey !== undefined) {
+        this.frameCache.delete(firstKey);
+      }
     }
   }
 
   /**
-   * Internal: run one tick and emit the event.
+   * Compute N frames ahead from the current computed frontier.
+   * Synchronous — use computeAhead() for async chunked computation.
    */
-  private doTick(): void {
+  private computeFrames(count: number): void {
     if (!this.simulation) return;
 
-    // Capture snapshot before tick for reverse-step
-    this.captureSnapshot();
+    // Ensure the sim is at the computed frontier
+    if (this.simulation.getGeneration() !== this.computedGeneration) {
+      this.advanceSimTo(this.computedGeneration);
+    }
 
-    const result = this.simulation.tick();
-    const liveCellCount = this.getLiveCellCount();
-    this.eventBus.emit('sim:tick', { generation: result.generation, liveCellCount });
+    for (let i = 0; i < count; i++) {
+      this.cacheCurrentFrame();
+      this.simulation.tick();
+      this.computedGeneration = this.simulation.getGeneration();
+    }
+    // Cache the final frame too
+    this.cacheCurrentFrame();
+
+    // Emit progress
+    this.eventBus.emit('sim:computeProgress', { computedGeneration: this.computedGeneration });
   }
 
   /**
-   * Start the tick loop with the current interval.
+   * Advance the sim engine to a specific generation (for internal use).
+   * If the target is cached, restores from cache. Otherwise replays from initial state.
    */
-  private startTickLoop(): void {
+  private advanceSimTo(targetGen: number): void {
+    if (!this.simulation) return;
+
+    const currentGen = this.simulation.getGeneration();
+    if (currentGen === targetGen) return;
+
+    // Check cache
+    if (this.frameCache.has(targetGen)) {
+      this.applySnapshot(this.frameCache.get(targetGen)!);
+      return;
+    }
+
+    // Need to replay
+    if (targetGen < currentGen || !this.frameCache.has(currentGen)) {
+      this.restoreInitialState();
+      for (let i = 0; i < targetGen; i++) {
+        this.simulation.tick();
+      }
+    } else {
+      for (let i = currentGen; i < targetGen; i++) {
+        this.simulation.tick();
+      }
+    }
+  }
+
+  /**
+   * Recompute from initial state to target, populating cache along the way.
+   */
+  private recomputeTo(targetGen: number): void {
+    if (!this.simulation) return;
+    this.restoreInitialState();
+    for (let i = 0; i < targetGen; i++) {
+      this.cacheCurrentFrame();
+      this.simulation.tick();
+    }
+    this.cacheCurrentFrame();
+    if (targetGen > this.computedGeneration) {
+      this.computedGeneration = targetGen;
+    }
+  }
+
+  /**
+   * Apply a snapshot to the live grid (for rendering).
+   */
+  private applySnapshot(snapshot: TickSnapshot): void {
+    if (!this.simulation) return;
+    for (const [propName, buffer] of snapshot.buffers) {
+      const currentBuf = this.simulation.grid.getCurrentBuffer(propName);
+      currentBuf.set(buffer);
+    }
+    this.simulation.runner.setGeneration(snapshot.generation);
+  }
+
+  /**
+   * Restore a cached frame and emit events.
+   */
+  private restoreFrame(generation: number): void {
+    const snapshot = this.frameCache.get(generation);
+    if (!snapshot) return;
+
+    this.applySnapshot(snapshot);
+    this.eventBus.emit('sim:tick', { generation: snapshot.generation, liveCellCount: snapshot.liveCellCount });
+  }
+
+  /**
+   * Playback loop: advances playbackGeneration at display FPS,
+   * restoring cached frames. Also kicks off compute-ahead as needed.
+   */
+  private startPlaybackLoop(): void {
     this.tickInterval = setInterval(() => {
-      this.doTick();
+      this.playbackTick();
     }, this.tickIntervalMs);
   }
 
+  private playbackTick(): void {
+    if (!this.simulation) return;
+
+    // If we've caught up to the computed frontier, compute more
+    if (this.playbackGeneration >= this.computedGeneration) {
+      // Compute a small burst to stay ahead
+      this.computeFrames(Math.min(COMPUTE_CHUNK_SIZE, 10));
+    }
+
+    // Advance playback
+    if (this.playbackGeneration < this.computedGeneration) {
+      this.playbackGeneration++;
+      this.restoreFrame(this.playbackGeneration);
+    }
+
+    // Keep computing ahead in the background
+    if (this.computedGeneration < this.computeAheadTarget) {
+      this.computeFrames(Math.min(COMPUTE_CHUNK_SIZE, this.computeAheadTarget - this.computedGeneration));
+    }
+  }
+
   /**
-   * Stop the tick loop.
+   * Stop the playback loop.
    */
-  private stopTickLoop(): void {
+  private stopPlaybackLoop(): void {
     if (this.tickInterval) {
       clearInterval(this.tickInterval);
       this.tickInterval = null;
+    }
+  }
+
+  /**
+   * Async compute-ahead: computes frames in chunks to avoid blocking.
+   */
+  private runComputeAheadChunk(): void {
+    if (this.computedGeneration >= this.computeAheadTarget) {
+      this.computeAheadTimer = null;
+      return;
+    }
+
+    const remaining = this.computeAheadTarget - this.computedGeneration;
+    const chunkSize = Math.min(COMPUTE_CHUNK_SIZE, remaining);
+    this.computeFrames(chunkSize);
+
+    // Schedule next chunk
+    this.computeAheadTimer = setTimeout(() => {
+      this.runComputeAheadChunk();
+    }, 0);
+  }
+
+  /**
+   * Stop compute-ahead.
+   */
+  private stopComputeAhead(): void {
+    if (this.computeAheadTimer) {
+      clearTimeout(this.computeAheadTimer);
+      this.computeAheadTimer = null;
     }
   }
 
@@ -388,6 +565,7 @@ export class SimulationController {
 
   /**
    * Set a runtime parameter value. Validates range and emits event.
+   * Invalidates cache beyond current playback generation since params changed.
    */
   setParam(name: string, value: number): void {
     if (!this.simulation) return;
@@ -402,6 +580,25 @@ export class SimulationController {
 
     this.simulation.setParam(name, clamped);
     this.eventBus.emit('sim:paramChanged', { name, value: clamped });
+
+    // Invalidate cache beyond current playback position since params changed
+    this.invalidateCacheFrom(this.playbackGeneration + 1);
+  }
+
+  /**
+   * Invalidate cached frames from a given generation onward.
+   */
+  private invalidateCacheFrom(fromGeneration: number): void {
+    for (const key of this.frameCache.keys()) {
+      if (key >= fromGeneration) {
+        this.frameCache.delete(key);
+      }
+    }
+    if (this.computedGeneration > fromGeneration) {
+      this.computedGeneration = fromGeneration;
+      // Restore sim to the last valid state
+      this.advanceSimTo(Math.max(0, fromGeneration - 1));
+    }
   }
 
   /**
@@ -442,6 +639,7 @@ export class SimulationController {
     for (const p of this.simulation.preset.params) {
       this.simulation.setParam(p.name, p.default);
     }
+    this.invalidateCacheFrom(this.playbackGeneration + 1);
     this.eventBus.emit('sim:paramsReset', {});
   }
 
@@ -496,6 +694,8 @@ export class SimulationController {
   updateRule(newBody: string): void {
     if (!this.simulation) return;
     this.simulation.updateRule(newBody);
+    // Invalidate cache since rule changed
+    this.invalidateCacheFrom(this.playbackGeneration + 1);
   }
 
   /**
@@ -510,8 +710,9 @@ export class SimulationController {
    */
   dispose(): void {
     this.pause();
+    this.stopComputeAhead();
     this.simulation = null;
     this.commandHistory = null;
-    this.tickHistory = [];
+    this.frameCache.clear();
   }
 }

@@ -7,6 +7,7 @@
 import { z } from 'zod';
 import type { CommandRegistry } from '../CommandRegistry';
 import type { SimulationController } from '../SimulationController';
+import { useUiStore } from '../../store/uiStore';
 
 const NoParams = z.object({}).describe('none');
 
@@ -28,6 +29,9 @@ export function registerSimCommands(
     category: 'sim',
     params: NoParams,
     execute: async () => {
+      // Kick off compute-ahead to timeline duration before starting playback
+      const { timelineDuration } = useUiStore.getState();
+      controller.computeAhead(timelineDuration);
       controller.play();
       return { success: true };
     },
@@ -132,6 +136,8 @@ export function registerSimCommands(
       if (controller.isPlaying()) {
         controller.pause();
       } else {
+        const { timelineDuration } = useUiStore.getState();
+        controller.computeAhead(timelineDuration);
         controller.play();
       }
       return { success: true, data: { isRunning: controller.isPlaying() } };

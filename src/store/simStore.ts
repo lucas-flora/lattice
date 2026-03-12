@@ -36,6 +36,8 @@ export interface SimState {
   speed: number;
   /** Maximum generation reached (for timeline scrubber range) */
   maxGeneration: number;
+  /** How far ahead the sim has been computed (frame cache frontier) */
+  computedGeneration: number;
   /** Parameter definitions for the current preset */
   paramDefs: ParamDef[];
   /** Current parameter values */
@@ -52,6 +54,7 @@ const initialSimState: SimState = {
   liveCellCount: 0,
   speed: 10,
   maxGeneration: 0,
+  computedGeneration: 0,
   paramDefs: [],
   params: {},
 };
@@ -74,8 +77,11 @@ export const simStoreActions = {
   setActivePreset: (name: string, width: number, height: number): void => {
     useSimStore.setState({ activePreset: name, gridWidth: width, gridHeight: height });
   },
+  setComputedGeneration: (computedGeneration: number): void => {
+    useSimStore.setState({ computedGeneration });
+  },
   resetState: (): void => {
-    useSimStore.setState({ generation: 0, isRunning: false, liveCellCount: 0, maxGeneration: 0 });
+    useSimStore.setState({ generation: 0, isRunning: false, liveCellCount: 0, maxGeneration: 0, computedGeneration: 0 });
   },
   setLiveCellCount: (liveCellCount: number): void => {
     useSimStore.setState({ liveCellCount });

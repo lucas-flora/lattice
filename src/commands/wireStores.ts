@@ -49,6 +49,10 @@ export function wireStores(eventBus: EventBus): () => void {
     simStoreActions.setLiveCellCount(0);
   };
 
+  const onComputeProgress = (payload: { computedGeneration: number }) => {
+    simStoreActions.setComputedGeneration(payload.computedGeneration);
+  };
+
   // --- viewStore wiring ---
   const onViewChange = (payload: { zoom?: number; cameraX?: number; cameraY?: number }) => {
     viewStoreActions.updateView(payload);
@@ -86,6 +90,7 @@ export function wireStores(eventBus: EventBus): () => void {
   eventBus.on('sim:reset', onReset);
   eventBus.on('sim:speedChange', onSpeedChange);
   eventBus.on('sim:clear', onClear);
+  eventBus.on('sim:computeProgress', onComputeProgress);
   eventBus.on('sim:paramChanged', onParamChanged);
   eventBus.on('sim:paramsReset', onParamsReset);
   eventBus.on('sim:paramDefsChanged', onParamDefsChanged);
@@ -103,6 +108,7 @@ export function wireStores(eventBus: EventBus): () => void {
     eventBus.off('sim:reset', onReset);
     eventBus.off('sim:speedChange', onSpeedChange);
     eventBus.off('sim:clear', onClear);
+    eventBus.off('sim:computeProgress', onComputeProgress);
     eventBus.off('sim:paramChanged', onParamChanged);
     eventBus.off('sim:paramsReset', onParamsReset);
     eventBus.off('sim:paramDefsChanged', onParamDefsChanged);

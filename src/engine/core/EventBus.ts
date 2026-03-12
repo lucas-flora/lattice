@@ -25,6 +25,7 @@ export interface EngineEventMap {
   'edit:redo': Record<string, never>;
   'edit:draw': { x: number; y: number };
   'edit:erase': { x: number; y: number };
+  'sim:computeProgress': { computedGeneration: number };
 }
 
 /** Valid event names */

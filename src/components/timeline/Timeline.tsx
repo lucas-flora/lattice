@@ -190,6 +190,7 @@ function MiniMap({
 export function Timeline() {
   const generation = useSimStore((s) => s.generation);
   const maxGeneration = useSimStore((s) => s.maxGeneration);
+  const computedGeneration = useSimStore((s) => s.computedGeneration);
   const speed = useSimStore((s) => s.speed);
   const isRunning = useSimStore((s) => s.isRunning);
   const displayMode = useUiStore((s) => s.timelineDisplayMode);
@@ -270,7 +271,7 @@ export function Timeline() {
     const rect = el.getBoundingClientRect();
     const x = Math.max(0, Math.min(clientX - rect.left, containerWidth));
     const targetGen = Math.round(zoomStart + (x / containerWidth) * zoomSpan);
-    const clampedGen = Math.max(0, Math.min(targetGen, maxGeneration));
+    const clampedGen = Math.max(0, Math.min(targetGen, Math.max(computedGeneration, maxGeneration)));
 
     if (seekTimeoutRef.current) clearTimeout(seekTimeoutRef.current);
     seekTimeoutRef.current = setTimeout(() => {
@@ -280,7 +281,7 @@ export function Timeline() {
 
   // Seek from mini-map click
   const seekToFrame = useCallback((frame: number) => {
-    const clampedGen = Math.max(0, Math.min(frame, maxGeneration));
+    const clampedGen = Math.max(0, Math.min(frame, Math.max(computedGeneration, maxGeneration)));
     commandRegistry.execute('sim.seek', { generation: clampedGen });
   }, [maxGeneration]);
 
@@ -339,7 +340,7 @@ export function Timeline() {
       <MiniMap
         containerWidth={containerWidth}
         duration={duration}
-        computedFrames={maxGeneration}
+        computedFrames={Math.max(computedGeneration, maxGeneration)}
         generation={generation}
         zoomStart={zoomStart}
         zoomEnd={zoomEnd}
