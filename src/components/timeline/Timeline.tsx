@@ -65,7 +65,7 @@ function formatLabel(frame: number, mode: TimelineDisplayMode, fps: number): str
 
 export { niceInterval, formatLabel };
 
-const MINIMAP_HEIGHT = 16;
+const MINIMAP_HEIGHT = 12;
 const RULER_HEIGHT = 24;
 const MAJOR_TICK_HEIGHT = 10;
 const MINOR_TICK_HEIGHT = 5;
@@ -163,47 +163,46 @@ function MiniMap({
       onPointerUp={handlePointerUp}
       data-testid="timeline-minimap"
     >
-      {/* Background */}
-      <div className="absolute inset-0 bg-zinc-800/80" />
+      {/* Background — dark outside zoom region */}
+      <div className="absolute inset-0 bg-zinc-950" />
 
-      {/* Computed region — green tint shows cached frames */}
+      {/* Computed region — subtle green tint in the dark area */}
       <div
-        className="absolute top-0 bottom-0 bg-green-500/20"
+        className="absolute top-0 bottom-0 bg-green-500/10"
         style={{ left: 0, width: computedWidth }}
       />
 
-      {/* Zoom region highlight */}
+      {/* Zoom region — much brighter to contrast with dark outside */}
       <div
-        className="absolute top-0 bottom-0 bg-zinc-500/15"
+        className="absolute top-0 bottom-0 bg-zinc-700"
         style={{ left: zoomLeftX, width: Math.max(zoomWidth, 2) }}
       />
+
+      {/* Computed region inside zoom — brighter green */}
+      {computedWidth > zoomLeftX && (
+        <div
+          className="absolute top-0 bottom-0 bg-green-500/25"
+          style={{
+            left: zoomLeftX,
+            width: Math.min(computedWidth, zoomLeftX + zoomWidth) - zoomLeftX,
+          }}
+        />
+      )}
 
       {/* Left grip */}
       <div
         className="absolute top-0 bottom-0 cursor-ew-resize"
-        style={{ left: zoomLeftX - 1, width: 3 }}
+        style={{ left: zoomLeftX - 3, width: 6 }}
       >
-        <div className="absolute inset-y-[2px] left-0 w-[3px] rounded-sm bg-zinc-400/70" />
-        {/* Grip dots */}
-        <div className="absolute top-1/2 -translate-y-1/2 left-0 w-[3px] flex flex-col items-center gap-[2px]">
-          <div className="w-[1px] h-[1px] rounded-full bg-zinc-300" />
-          <div className="w-[1px] h-[1px] rounded-full bg-zinc-300" />
-          <div className="w-[1px] h-[1px] rounded-full bg-zinc-300" />
-        </div>
+        <div className="absolute inset-y-0 left-[2px] w-[2px] bg-zinc-400" />
       </div>
 
       {/* Right grip */}
       <div
         className="absolute top-0 bottom-0 cursor-ew-resize"
-        style={{ left: zoomLeftX + zoomWidth - 2, width: 3 }}
+        style={{ left: zoomLeftX + zoomWidth - 3, width: 6 }}
       >
-        <div className="absolute inset-y-[2px] left-0 w-[3px] rounded-sm bg-zinc-400/70" />
-        {/* Grip dots */}
-        <div className="absolute top-1/2 -translate-y-1/2 left-0 w-[3px] flex flex-col items-center gap-[2px]">
-          <div className="w-[1px] h-[1px] rounded-full bg-zinc-300" />
-          <div className="w-[1px] h-[1px] rounded-full bg-zinc-300" />
-          <div className="w-[1px] h-[1px] rounded-full bg-zinc-300" />
-        </div>
+        <div className="absolute inset-y-0 right-[2px] w-[2px] bg-zinc-400" />
       </div>
 
       {/* Playhead on mini-map */}
@@ -236,7 +235,8 @@ export function TimelineCounter() {
   return (
     <button
       onClick={cycleDisplayMode}
-      className="shrink-0 px-2 py-1 text-[10px] font-mono tabular-nums text-zinc-400 hover:text-zinc-200 transition-colors whitespace-nowrap bg-zinc-800/60 rounded border border-zinc-700/50"
+      className="shrink-0 py-1 text-[10px] font-mono tabular-nums text-zinc-400 hover:text-zinc-200 transition-colors whitespace-nowrap bg-zinc-800/60 rounded border border-zinc-700/50 text-center"
+      style={{ width: 90 }}
       title={`Display: ${displayMode} (click to cycle)`}
       data-testid="timeline-display-mode"
     >
@@ -262,7 +262,8 @@ export function Timeline() {
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(0);
   const draggingRef = useRef(false);
-  const seekTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const seekRafRef = useRef<number | null>(null);
+  const pendingSeekRef = useRef<number | null>(null);
 
   // Track container width
   useEffect(() => {
@@ -325,7 +326,7 @@ export function Timeline() {
   const computedEndX = ((Math.min(computedExtent, zoomEnd) - zoomStart) / zoomSpan) * containerWidth;
   const computedStartX = ((Math.max(0, zoomStart) - zoomStart) / zoomSpan) * containerWidth;
 
-  // Seek to pixel position in the zoomed ruler
+  // Seek to pixel position — RAF-coalesced so only one seek per frame
   const seekToX = useCallback((clientX: number) => {
     const el = containerRef.current;
     if (!el) return;
@@ -334,10 +335,16 @@ export function Timeline() {
     const targetGen = Math.round(zoomStart + (x / containerWidth) * zoomSpan);
     const clampedGen = Math.max(0, Math.min(targetGen, Math.max(computedGeneration, maxGeneration)));
 
-    if (seekTimeoutRef.current) clearTimeout(seekTimeoutRef.current);
-    seekTimeoutRef.current = setTimeout(() => {
-      commandRegistry.execute('sim.seek', { generation: clampedGen });
-    }, 16);
+    pendingSeekRef.current = clampedGen;
+    if (seekRafRef.current === null) {
+      seekRafRef.current = requestAnimationFrame(() => {
+        seekRafRef.current = null;
+        if (pendingSeekRef.current !== null) {
+          commandRegistry.execute('sim.seek', { generation: pendingSeekRef.current });
+          pendingSeekRef.current = null;
+        }
+      });
+    }
   }, [containerWidth, zoomStart, zoomSpan, maxGeneration]);
 
   // Seek from mini-map click

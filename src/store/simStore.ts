@@ -65,10 +65,18 @@ export const useSimStore = create<SimState>()(
 
 /** Store actions -- called from wireStores event handlers, not from UI directly */
 export const simStoreActions = {
+  /** Batched tick update — sets generation + liveCellCount in one setState to avoid double render */
+  setTick: (generation: number, liveCellCount: number): void => {
+    useSimStore.setState((s) => ({
+      generation,
+      liveCellCount,
+      maxGeneration: generation > s.maxGeneration ? generation : s.maxGeneration,
+    }));
+  },
   setGeneration: (generation: number): void => {
     useSimStore.setState((s) => ({
       generation,
-      maxGeneration: Math.max(s.maxGeneration, generation),
+      maxGeneration: generation > s.maxGeneration ? generation : s.maxGeneration,
     }));
   },
   setIsRunning: (isRunning: boolean): void => {

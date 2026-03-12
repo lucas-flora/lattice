@@ -21,8 +21,7 @@ import { uiStoreActions } from '../store/uiStore';
 export function wireStores(eventBus: EventBus): () => void {
   // --- simStore wiring ---
   const onTick = (payload: { generation: number; liveCellCount: number }) => {
-    simStoreActions.setGeneration(payload.generation);
-    simStoreActions.setLiveCellCount(payload.liveCellCount);
+    simStoreActions.setTick(payload.generation, payload.liveCellCount);
   };
 
   const onPlay = () => {

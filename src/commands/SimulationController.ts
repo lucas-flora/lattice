@@ -218,28 +218,21 @@ export class SimulationController {
 
   /**
    * Seek to a specific generation. Uses frame cache for instant access.
+   * Emits a single sim:tick event (via restoreFrame) — no redundant emissions.
    */
   seek(generation: number): void {
     if (!this.simulation) return;
 
     const targetGen = Math.max(0, generation);
 
-    // If target is already cached, instant restore
-    if (this.frameCache.has(targetGen)) {
-      this.playbackGeneration = targetGen;
-      this.applySnapshot(this.frameCache.get(targetGen)!);
-      const liveCellCount = this.frameCache.get(targetGen)!.liveCellCount;
-      this.eventBus.emit('sim:seek', { generation: targetGen });
-      this.eventBus.emit('sim:tick', { generation: targetGen, liveCellCount });
-      return;
-    }
-
-    // If target is beyond computed, compute up to it
-    if (targetGen > this.computedGeneration) {
-      this.computeFrames(targetGen - this.computedGeneration);
-    } else {
-      // Target is before computed but not in cache (evicted) — recompute
-      this.recomputeTo(targetGen);
+    // Ensure the target frame is available in cache
+    if (!this.frameCache.has(targetGen)) {
+      if (targetGen > this.computedGeneration) {
+        this.computeFrames(targetGen - this.computedGeneration);
+      } else {
+        // Before computed but evicted — recompute
+        this.recomputeTo(targetGen);
+      }
     }
 
     this.playbackGeneration = targetGen;

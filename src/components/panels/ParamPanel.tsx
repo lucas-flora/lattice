@@ -214,7 +214,7 @@ export function ParamPanel({ docked = false }: ParamPanelProps) {
                 onBlur={handleGridResize}
                 onKeyDown={(e) => { if (e.key === 'Enter') handleGridResize(); }}
                 min={1}
-                className="w-16 bg-zinc-800 text-zinc-200 text-xs font-mono tabular-nums rounded px-1.5 py-0.5 border border-zinc-700 outline-none text-right"
+                className="w-20 bg-zinc-800 text-zinc-200 text-xs font-mono tabular-nums rounded px-2 py-1 border border-zinc-700 outline-none text-right [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                 data-testid="param-grid-width"
               />
             </div>
@@ -227,7 +227,7 @@ export function ParamPanel({ docked = false }: ParamPanelProps) {
                 onBlur={handleGridResize}
                 onKeyDown={(e) => { if (e.key === 'Enter') handleGridResize(); }}
                 min={1}
-                className="w-16 bg-zinc-800 text-zinc-200 text-xs font-mono tabular-nums rounded px-1.5 py-0.5 border border-zinc-700 outline-none text-right"
+                className="w-20 bg-zinc-800 text-zinc-200 text-xs font-mono tabular-nums rounded px-2 py-1 border border-zinc-700 outline-none text-right [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                 data-testid="param-grid-height"
               />
             </div>
