@@ -1,12 +1,13 @@
 /**
- * BottomTray: unified bottom panel containing ControlBar, Timeline,
- * and Terminal content.
+ * BottomTray: unified bottom panel. Timeline is the topmost control
+ * (closest to the viewport edge), then transport controls, then terminal.
  *
- * Layout (all in document flow):
+ * Layout:
  * ┌────────────────────────────────────────────────┐
- * │ [⏮ ▶ ⏭ | ↺ ✕ | ──●── FPS | 📷 ≡]     [▾]  │ ControlBar
+ * │ ═══[====]════════════════════════════════════  │ Mini-map
+ * │ ▼  50   60   70   ...  | Gen/Dur              │ Timeline ruler
  * ├────────────────────────────────────────────────┤
- * │ ▼  0    50    100    150  ...  |  Gen/Time     │ Timeline ruler
+ * │ [⏮ ▶ ⏭ | ↺ ✕ | ──●── FPS | 📷 ≡]     [▾]  │ ControlBar
  * ├────────────────────────────────────────────────┤
  * │ Terminal (when open)                           │
  * └────────────────────────────────────────────────┘
@@ -40,8 +41,13 @@ export function BottomTray() {
         <ResizeHandle direction="vertical" onResize={handleResize} />
       )}
 
-      {/* ControlBar row — always visible */}
-      <div className="flex items-center px-2 bg-zinc-900/95 border-t border-zinc-700">
+      {/* Timeline — topmost control, closest to viewport */}
+      <div className="border-t border-zinc-700 bg-zinc-900/95">
+        <Timeline />
+      </div>
+
+      {/* ControlBar row */}
+      <div className="flex items-center px-2 bg-zinc-900/95 border-t border-zinc-800/50">
         <div className="flex-1">
           <ControlBar />
         </div>
@@ -54,11 +60,6 @@ export function BottomTray() {
         >
           {isTerminalOpen ? '\u25BE' : '\u25B4'}
         </button>
-      </div>
-
-      {/* Timeline ruler — always visible */}
-      <div className="bg-zinc-850 border-t border-zinc-800/50">
-        <Timeline />
       </div>
 
       {/* Terminal content — shown when open */}

@@ -35,6 +35,14 @@ export interface UiState {
   paramPanelWidth: number;
   /** Timeline display format */
   timelineDisplayMode: TimelineDisplayMode;
+  /** Timeline total duration in frames */
+  timelineDuration: number;
+  /** Zoom view start frame */
+  timelineZoomStart: number;
+  /** Zoom view end frame */
+  timelineZoomEnd: number;
+  /** Auto-extend timeline when sim reaches the end */
+  timelineAutoExtend: boolean;
 }
 
 export const useUiStore = create<UiState>()(
@@ -51,6 +59,10 @@ export const useUiStore = create<UiState>()(
     terminalHeight: 250,
     paramPanelWidth: 300,
     timelineDisplayMode: 'frames' as TimelineDisplayMode,
+    timelineDuration: 300,
+    timelineZoomStart: 0,
+    timelineZoomEnd: 300,
+    timelineAutoExtend: true,
   })),
 );
 
@@ -93,5 +105,24 @@ export const uiStoreActions = {
   setParamPanelWidth: (w: number): void => {
     const maxW = typeof window !== 'undefined' ? window.innerWidth * 0.5 : 800;
     useUiStore.setState({ paramPanelWidth: Math.max(200, Math.min(w, maxW)) });
+  },
+  setTimelineDuration: (duration: number): void => {
+    const d = Math.max(1, Math.round(duration));
+    useUiStore.setState((s) => ({
+      timelineDuration: d,
+      timelineZoomEnd: Math.min(s.timelineZoomEnd, d),
+      timelineZoomStart: Math.min(s.timelineZoomStart, d - 1),
+    }));
+  },
+  setTimelineZoom: (start: number, end: number): void => {
+    const { timelineDuration } = useUiStore.getState();
+    const s = Math.max(0, Math.round(start));
+    const e = Math.min(timelineDuration, Math.round(end));
+    if (e - s >= 1) {
+      useUiStore.setState({ timelineZoomStart: s, timelineZoomEnd: e });
+    }
+  },
+  setTimelineAutoExtend: (autoExtend: boolean): void => {
+    useUiStore.setState({ timelineAutoExtend: autoExtend });
   },
 };

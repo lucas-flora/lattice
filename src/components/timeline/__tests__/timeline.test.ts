@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { niceInterval, formatLabel } from '../Timeline';
+import { useUiStore, uiStoreActions } from '@/store/uiStore';
 
 describe('Timeline', () => {
   describe('niceInterval', () => {
@@ -50,9 +51,49 @@ describe('Timeline', () => {
     });
 
     it('TestTimeline_FormatLabel_ZeroFps_DefaultsTo60', () => {
-      // speed=0 means "max" — formatLabel uses 60 as fallback
       expect(formatLabel(60, 'time', 0)).toBe('1.0s');
       expect(formatLabel(60, 'timecode', 0)).toBe('0:01:00');
+    });
+  });
+
+  describe('timeline store', () => {
+    beforeEach(() => {
+      useUiStore.setState({
+        timelineDuration: 300,
+        timelineZoomStart: 0,
+        timelineZoomEnd: 300,
+        timelineAutoExtend: true,
+      });
+    });
+
+    it('TestTimeline_Duration_DefaultIs300', () => {
+      expect(useUiStore.getState().timelineDuration).toBe(300);
+    });
+
+    it('TestTimeline_SetDuration_ClampsMinimum', () => {
+      uiStoreActions.setTimelineDuration(0);
+      expect(useUiStore.getState().timelineDuration).toBe(1);
+    });
+
+    it('TestTimeline_SetDuration_AdjustsZoom', () => {
+      uiStoreActions.setTimelineZoom(100, 300);
+      uiStoreActions.setTimelineDuration(200);
+      expect(useUiStore.getState().timelineZoomEnd).toBe(200);
+    });
+
+    it('TestTimeline_SetZoom_ClampsToRange', () => {
+      uiStoreActions.setTimelineZoom(-50, 400);
+      const s = useUiStore.getState();
+      expect(s.timelineZoomStart).toBe(0);
+      expect(s.timelineZoomEnd).toBe(300);
+    });
+
+    it('TestTimeline_SetZoom_EnforcesMinSpan', () => {
+      // Try to set a zero-width zoom — should be rejected
+      uiStoreActions.setTimelineZoom(100, 100);
+      const s = useUiStore.getState();
+      // Original zoom should be preserved since e - s < 1
+      expect(s.timelineZoomEnd - s.timelineZoomStart).toBeGreaterThanOrEqual(1);
     });
   });
 });
