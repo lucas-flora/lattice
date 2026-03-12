@@ -4,10 +4,10 @@
  *
  * Layout:
  * ┌────────────────────────────────────────────────┐
- * │ ═══[====]════════════════════════════════════  │ Mini-map
- * │ ▼  50   60   70   ...  | Gen/Dur              │ Timeline ruler
+ * │ ▐═══[====]════════════════════════════════════▐│ Mini-map
+ * │ ▼  50   60   70   ...                          │ Timeline ruler (full width)
  * ├────────────────────────────────────────────────┤
- * │ [⏮ ▶ ⏭ | ↺ ✕ | ──●── FPS | 📷 ≡]     [▾]  │ ControlBar
+ * │ [100/300] [⏮ ▶ ⏭ | ↺ ✕ | ──●── FPS]   [▾]  │ Counter + ControlBar
  * ├────────────────────────────────────────────────┤
  * │ Terminal (when open)                           │
  * └────────────────────────────────────────────────┘
@@ -18,7 +18,7 @@
 import { useCallback } from 'react';
 import { useUiStore, uiStoreActions } from '@/store/uiStore';
 import { ControlBar } from '@/components/hud/ControlBar';
-import { Timeline } from '@/components/timeline/Timeline';
+import { Timeline, TimelineCounter } from '@/components/timeline/Timeline';
 import { Terminal } from '@/components/terminal/Terminal';
 import { ResizeHandle } from '@/components/ui/ResizeHandle';
 
@@ -46,8 +46,9 @@ export function BottomTray() {
         <Timeline />
       </div>
 
-      {/* ControlBar row */}
-      <div className="flex items-center px-2 bg-zinc-900/95 border-t border-zinc-800/50">
+      {/* ControlBar row with frame counter */}
+      <div className="flex items-center gap-2 px-2 bg-zinc-900/95 border-t border-zinc-800/50">
+        <TimelineCounter />
         <div className="flex-1">
           <ControlBar />
         </div>

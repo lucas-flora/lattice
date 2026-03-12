@@ -59,6 +59,9 @@ export class SimulationController {
   private computeAheadTimer: ReturnType<typeof setTimeout> | null = null;
   private computeAheadTarget: number = 0;
 
+  /** Debounce timer for restarting compute-ahead after grid edits */
+  private editDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
   /** Current playback generation (may lag behind computedGeneration) */
   private playbackGeneration: number = 0;
 
@@ -119,8 +122,14 @@ export class SimulationController {
   play(): void {
     if (this.playing || !this.simulation) return;
     this.playing = true;
-    this.eventBus.emit('sim:play', {});
 
+    // If edits were pending a debounced compute-ahead restart, flush it now
+    if (this.editDebounceTimer) {
+      clearTimeout(this.editDebounceTimer);
+      this.editDebounceTimer = null;
+    }
+
+    this.eventBus.emit('sim:play', {});
     this.startPlaybackLoop();
   }
 
@@ -633,8 +642,8 @@ export class SimulationController {
 
   /**
    * Notify the controller that grid cells have been edited (draw/erase).
-   * Re-snapshots the current state, invalidates future frames, and restarts
-   * compute-ahead so the cache always reflects the edited grid.
+   * Lightweight: only caches the edited frame and deletes stale future frames.
+   * Compute-ahead restart is debounced so rapid drawing stays responsive.
    */
   onGridEdited(): void {
     if (!this.simulation) return;
@@ -645,8 +654,7 @@ export class SimulationController {
     // advanced it far beyond playback, but the grid buffers reflect playback gen).
     this.simulation.runner.setGeneration(gen);
 
-    // Snapshot the current (edited) grid BEFORE invalidating —
-    // invalidation may restore old state via advanceSimTo, so capture first.
+    // Snapshot the current (edited) grid
     this.cacheCurrentFrame();
 
     // Update initial snapshot if at generation 0 so reset preserves edits
@@ -657,14 +665,32 @@ export class SimulationController {
       }
     }
 
-    // Invalidate only future frames (gen+1 onward) — current frame was just re-cached
-    this.invalidateCacheFrom(gen + 1);
+    // Delete future cache entries (fast, no recomputation)
+    this.stopComputeAhead();
+    for (const key of this.frameCache.keys()) {
+      if (key > gen) {
+        this.frameCache.delete(key);
+      }
+    }
+    this.computedGeneration = gen;
+    this.eventBus.emit('sim:computeProgress', { computedGeneration: gen });
 
     // Emit tick to update UI with new cell count
     this.eventBus.emit('sim:tick', {
       generation: gen,
       liveCellCount: this.getLiveCellCount(),
     });
+
+    // Debounce compute-ahead restart — don't block drawing with heavy computation
+    if (this.editDebounceTimer) {
+      clearTimeout(this.editDebounceTimer);
+    }
+    this.editDebounceTimer = setTimeout(() => {
+      this.editDebounceTimer = null;
+      if (this.computeAheadTarget > this.computedGeneration) {
+        this.computeAhead(this.computeAheadTarget);
+      }
+    }, 150);
   }
 
   /**
@@ -777,6 +803,10 @@ export class SimulationController {
   dispose(): void {
     this.pause();
     this.stopComputeAhead();
+    if (this.editDebounceTimer) {
+      clearTimeout(this.editDebounceTimer);
+      this.editDebounceTimer = null;
+    }
     this.simulation = null;
     this.commandHistory = null;
     this.frameCache.clear();

@@ -2,14 +2,16 @@
  * Timeline: Premiere-style full-width timeline with mini-map and zoomed ruler.
  *
  * Layout:
- * ┌──────────────────────────────────────────────┐
- * │ ═══[====]════════════════════════════════════ │ Mini-map (full extent)
- * ├──────────────────────────────────────────────┤
- * │ ▼  50    60    70    80   ...  | Gen/Dur     │ Main ruler (zoomed view)
- * └──────────────────────────────────────────────┘
+ * ┌──────────────────────────────────────────────────┐
+ * │ ▐═══[====]════════════════════════════════════▐  │ Mini-map (full extent)
+ * ├──────────────────────────────────────────────────┤
+ * │ ▼  50    60    70    80   ...                    │ Main ruler (zoomed view)
+ * └──────────────────────────────────────────────────┘
+ *
+ * Frame counter is exported separately for placement below the timeline.
  *
  * Features:
- * - Mini-map always shows 0..timelineDuration, highlights zoom region
+ * - Mini-map always shows 0..timelineDuration, highlights zoom region with grips
  * - Main ruler shows zoomed portion with adaptive ticks
  * - Thin playhead line with triangle marker
  * - Click-to-seek, drag-to-scrub, scroll-to-zoom
@@ -63,7 +65,7 @@ function formatLabel(frame: number, mode: TimelineDisplayMode, fps: number): str
 
 export { niceInterval, formatLabel };
 
-const MINIMAP_HEIGHT = 12;
+const MINIMAP_HEIGHT = 16;
 const RULER_HEIGHT = 24;
 const MAJOR_TICK_HEIGHT = 10;
 const MINOR_TICK_HEIGHT = 5;
@@ -105,11 +107,11 @@ function MiniMap({
     const x = e.clientX - rect.left;
     el.setPointerCapture(e.pointerId);
 
-    // Check if clicking on zoom region edges (6px grab zone)
-    if (Math.abs(x - zoomLeftX) < 6) {
+    // Check if clicking on zoom region edges (8px grab zone for grips)
+    if (Math.abs(x - zoomLeftX) < 8) {
       draggingRef.current = 'left';
       dragStartRef.current = { x: e.clientX, zoomStart, zoomEnd };
-    } else if (Math.abs(x - (zoomLeftX + zoomWidth)) < 6) {
+    } else if (Math.abs(x - (zoomLeftX + zoomWidth)) < 8) {
       draggingRef.current = 'right';
       dragStartRef.current = { x: e.clientX, zoomStart, zoomEnd };
     } else if (x >= zoomLeftX && x <= zoomLeftX + zoomWidth) {
@@ -162,7 +164,7 @@ function MiniMap({
       data-testid="timeline-minimap"
     >
       {/* Background */}
-      <div className="absolute inset-0 bg-zinc-800/60" />
+      <div className="absolute inset-0 bg-zinc-800/80" />
 
       {/* Computed region — green tint shows cached frames */}
       <div
@@ -172,9 +174,37 @@ function MiniMap({
 
       {/* Zoom region highlight */}
       <div
-        className="absolute top-0 bottom-0 border border-zinc-500/60 bg-zinc-600/15"
+        className="absolute top-0 bottom-0 bg-zinc-500/15"
         style={{ left: zoomLeftX, width: Math.max(zoomWidth, 2) }}
       />
+
+      {/* Left grip */}
+      <div
+        className="absolute top-0 bottom-0 cursor-ew-resize"
+        style={{ left: zoomLeftX - 1, width: 3 }}
+      >
+        <div className="absolute inset-y-[2px] left-0 w-[3px] rounded-sm bg-zinc-400/70" />
+        {/* Grip dots */}
+        <div className="absolute top-1/2 -translate-y-1/2 left-0 w-[3px] flex flex-col items-center gap-[2px]">
+          <div className="w-[1px] h-[1px] rounded-full bg-zinc-300" />
+          <div className="w-[1px] h-[1px] rounded-full bg-zinc-300" />
+          <div className="w-[1px] h-[1px] rounded-full bg-zinc-300" />
+        </div>
+      </div>
+
+      {/* Right grip */}
+      <div
+        className="absolute top-0 bottom-0 cursor-ew-resize"
+        style={{ left: zoomLeftX + zoomWidth - 2, width: 3 }}
+      >
+        <div className="absolute inset-y-[2px] left-0 w-[3px] rounded-sm bg-zinc-400/70" />
+        {/* Grip dots */}
+        <div className="absolute top-1/2 -translate-y-1/2 left-0 w-[3px] flex flex-col items-center gap-[2px]">
+          <div className="w-[1px] h-[1px] rounded-full bg-zinc-300" />
+          <div className="w-[1px] h-[1px] rounded-full bg-zinc-300" />
+          <div className="w-[1px] h-[1px] rounded-full bg-zinc-300" />
+        </div>
+      </div>
 
       {/* Playhead on mini-map */}
       <div
@@ -182,6 +212,36 @@ function MiniMap({
         style={{ left: playheadX }}
       />
     </div>
+  );
+}
+
+// ─── Frame Counter (exported for placement in ControlBar row) ─
+
+export function TimelineCounter() {
+  const generation = useSimStore((s) => s.generation);
+  const speed = useSimStore((s) => s.speed);
+  const displayMode = useUiStore((s) => s.timelineDisplayMode);
+  const duration = useUiStore((s) => s.timelineDuration);
+
+  const cycleDisplayMode = useCallback(() => {
+    const modes: TimelineDisplayMode[] = ['frames', 'time', 'timecode'];
+    const currentIdx = modes.indexOf(displayMode);
+    const nextMode = modes[(currentIdx + 1) % modes.length];
+    useUiStore.setState({ timelineDisplayMode: nextMode });
+  }, [displayMode]);
+
+  const currentLabel = formatLabel(generation, displayMode, speed);
+  const durationLabel = formatLabel(duration, displayMode, speed);
+
+  return (
+    <button
+      onClick={cycleDisplayMode}
+      className="shrink-0 px-2 py-1 text-[10px] font-mono tabular-nums text-zinc-400 hover:text-zinc-200 transition-colors whitespace-nowrap bg-zinc-800/60 rounded border border-zinc-700/50"
+      title={`Display: ${displayMode} (click to cycle)`}
+      data-testid="timeline-display-mode"
+    >
+      {currentLabel} / {durationLabel}
+    </button>
   );
 }
 
@@ -324,17 +384,6 @@ export function Timeline() {
     uiStoreActions.setTimelineZoom(clampedStart, clampedStart + newSpan);
   }, [containerWidth, zoomStart, zoomSpan, duration]);
 
-  // Cycle display mode
-  const cycleDisplayMode = useCallback(() => {
-    const modes: TimelineDisplayMode[] = ['frames', 'time', 'timecode'];
-    const currentIdx = modes.indexOf(displayMode);
-    const nextMode = modes[(currentIdx + 1) % modes.length];
-    useUiStore.setState({ timelineDisplayMode: nextMode });
-  }, [displayMode]);
-
-  const currentLabel = formatLabel(generation, displayMode, speed);
-  const durationLabel = formatLabel(duration, displayMode, speed);
-
   return (
     <div className="select-none" data-testid="timeline">
       {/* Mini-map — always shows full 0..duration */}
@@ -348,83 +397,70 @@ export function Timeline() {
         onSeek={seekToFrame}
       />
 
-      {/* Main ruler — zoomed view */}
-      <div className="flex items-center gap-0">
-        {/* Time display */}
-        <button
-          onClick={cycleDisplayMode}
-          className="shrink-0 px-2 py-0.5 text-[10px] font-mono tabular-nums text-zinc-400 hover:text-zinc-200 transition-colors whitespace-nowrap"
-          title={`Display: ${displayMode} (click to cycle)`}
-          data-testid="timeline-display-mode"
-        >
-          {currentLabel} / {durationLabel}
-        </button>
+      {/* Main ruler — zoomed view, full width */}
+      <div
+        ref={containerRef}
+        className={`relative overflow-hidden ${isRunning ? 'cursor-default' : 'cursor-pointer'}`}
+        style={{ height: RULER_HEIGHT }}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onWheel={onWheel}
+        data-testid="timeline-ruler"
+      >
+        {/* Computed region background — green tint shows cached frames */}
+        {computedExtent > 0 && computedEndX > 0 && (
+          <div
+            className="absolute top-0 bottom-0 bg-green-500/8 pointer-events-none"
+            style={{ left: Math.max(0, computedStartX), width: Math.max(0, computedEndX - Math.max(0, computedStartX)) }}
+          />
+        )}
 
-        {/* Ruler */}
-        <div
-          ref={containerRef}
-          className={`relative flex-1 overflow-hidden ${isRunning ? 'cursor-default' : 'cursor-pointer'}`}
-          style={{ height: RULER_HEIGHT }}
-          onPointerDown={onPointerDown}
-          onPointerMove={onPointerMove}
-          onPointerUp={onPointerUp}
-          onWheel={onWheel}
-          data-testid="timeline-ruler"
-        >
-          {/* Computed region background — green tint shows cached frames */}
-          {computedExtent > 0 && computedEndX > 0 && (
+        {/* Tick marks and labels */}
+        {ticks.map((tick, i) => (
+          <div key={i} className="absolute top-0" style={{ left: tick.x }}>
             <div
-              className="absolute top-0 bottom-0 bg-green-500/12 pointer-events-none"
-              style={{ left: Math.max(0, computedStartX), width: Math.max(0, computedEndX - Math.max(0, computedStartX)) }}
+              className={tick.isMajor ? 'bg-zinc-500' : 'bg-zinc-700'}
+              style={{ width: 1, height: tick.isMajor ? MAJOR_TICK_HEIGHT : MINOR_TICK_HEIGHT }}
             />
-          )}
+            {tick.isMajor && (
+              <span
+                className="absolute text-[9px] font-mono text-zinc-500 whitespace-nowrap"
+                style={{ top: MAJOR_TICK_HEIGHT + 1, left: -1, transform: 'translateX(-50%)' }}
+              >
+                {formatLabel(tick.frame, displayMode, speed)}
+              </span>
+            )}
+          </div>
+        ))}
 
-          {/* Tick marks and labels */}
-          {ticks.map((tick, i) => (
-            <div key={i} className="absolute top-0" style={{ left: tick.x }}>
-              <div
-                className={tick.isMajor ? 'bg-zinc-500' : 'bg-zinc-700'}
-                style={{ width: 1, height: tick.isMajor ? MAJOR_TICK_HEIGHT : MINOR_TICK_HEIGHT }}
-              />
-              {tick.isMajor && (
-                <span
-                  className="absolute text-[9px] font-mono text-zinc-500 whitespace-nowrap"
-                  style={{ top: MAJOR_TICK_HEIGHT + 1, left: -1, transform: 'translateX(-50%)' }}
-                >
-                  {formatLabel(tick.frame, displayMode, speed)}
-                </span>
-              )}
-            </div>
-          ))}
-
-          {/* Playhead */}
-          {playheadInView && (
+        {/* Playhead */}
+        {playheadInView && (
+          <div
+            className="absolute top-0 bottom-0 pointer-events-none"
+            style={{ left: playheadX, transform: 'translateX(-0.5px)' }}
+            data-testid="timeline-playhead"
+          >
             <div
-              className="absolute top-0 bottom-0 pointer-events-none"
-              style={{ left: playheadX, transform: 'translateX(-0.5px)' }}
-              data-testid="timeline-playhead"
-            >
-              <div
-                className="absolute -top-[1px] left-1/2 -translate-x-1/2"
-                style={{
-                  width: 0, height: 0,
-                  borderLeft: '5px solid transparent',
-                  borderRight: '5px solid transparent',
-                  borderTop: '6px solid #4ade80',
-                }}
-              />
-              <div className="absolute top-[5px] bottom-0 left-0 w-px bg-green-400" />
-            </div>
-          )}
-
-          {/* Played portion highlight */}
-          {playheadInView && playheadX > 0 && (
-            <div
-              className="absolute bottom-0 left-0 h-[2px] bg-green-400/20 pointer-events-none"
-              style={{ width: playheadX }}
+              className="absolute -top-[1px] left-1/2 -translate-x-1/2"
+              style={{
+                width: 0, height: 0,
+                borderLeft: '5px solid transparent',
+                borderRight: '5px solid transparent',
+                borderTop: '6px solid #4ade80',
+              }}
             />
-          )}
-        </div>
+            <div className="absolute top-[5px] bottom-0 left-0 w-px bg-green-400" />
+          </div>
+        )}
+
+        {/* Played portion highlight */}
+        {playheadInView && playheadX > 0 && (
+          <div
+            className="absolute bottom-0 left-0 h-[2px] bg-green-400/20 pointer-events-none"
+            style={{ width: playheadX }}
+          />
+        )}
       </div>
     </div>
   );
