@@ -1,8 +1,15 @@
 /**
- * BottomTray: unified bottom panel containing ControlBar (always visible)
- * and Terminal content (toggled).
+ * BottomTray: unified bottom panel containing ControlBar, Timeline,
+ * and Terminal content.
  *
- * Lives in document flow — no absolute positioning.
+ * Layout (all in document flow):
+ * ┌────────────────────────────────────────────────┐
+ * │ [⏮ ▶ ⏭ | ↺ ✕ | ──●── FPS | 📷 ≡]     [▾]  │ ControlBar
+ * ├────────────────────────────────────────────────┤
+ * │ ▼  0    50    100    150  ...  |  Gen/Time     │ Timeline ruler
+ * ├────────────────────────────────────────────────┤
+ * │ Terminal (when open)                           │
+ * └────────────────────────────────────────────────┘
  */
 
 'use client';
@@ -10,6 +17,7 @@
 import { useCallback } from 'react';
 import { useUiStore, uiStoreActions } from '@/store/uiStore';
 import { ControlBar } from '@/components/hud/ControlBar';
+import { Timeline } from '@/components/timeline/Timeline';
 import { Terminal } from '@/components/terminal/Terminal';
 import { ResizeHandle } from '@/components/ui/ResizeHandle';
 
@@ -22,7 +30,6 @@ export function BottomTray() {
   }, [isTerminalOpen]);
 
   const handleResize = useCallback((delta: number) => {
-    // Drag up = negative delta = increase height
     uiStoreActions.setTerminalHeight(terminalHeight - delta);
   }, [terminalHeight]);
 
@@ -47,6 +54,11 @@ export function BottomTray() {
         >
           {isTerminalOpen ? '\u25BE' : '\u25B4'}
         </button>
+      </div>
+
+      {/* Timeline ruler — always visible */}
+      <div className="bg-zinc-850 border-t border-zinc-800/50">
+        <Timeline />
       </div>
 
       {/* Terminal content — shown when open */}

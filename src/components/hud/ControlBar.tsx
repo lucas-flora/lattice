@@ -16,7 +16,6 @@ import { useCallback } from 'react';
 import { useSimStore } from '@/store/simStore';
 import { useUiStore } from '@/store/uiStore';
 import { commandRegistry } from '@/commands/CommandRegistry';
-import { TimelineScrubber } from './TimelineScrubber';
 
 const SPEED_VALUES = [1, 5, 10, 30, 60, 0]; // 0 = max
 
@@ -106,12 +105,6 @@ export function ControlBar() {
       >
         {'\u23ED'}
       </button>
-
-      {/* Divider */}
-      <div className="w-px h-5 bg-zinc-700" />
-
-      {/* Timeline Scrubber */}
-      <TimelineScrubber />
 
       {/* Divider */}
       <div className="w-px h-5 bg-zinc-700" />

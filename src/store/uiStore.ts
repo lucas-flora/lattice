@@ -8,6 +8,7 @@ import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
 
 export type PanelMode = 'floating' | 'docked';
+export type TimelineDisplayMode = 'frames' | 'time' | 'timecode';
 
 export interface UiState {
   /** Whether the terminal panel is visible */
@@ -32,6 +33,8 @@ export interface UiState {
   terminalHeight: number;
   /** Parameter panel width in pixels (docked mode) */
   paramPanelWidth: number;
+  /** Timeline display format */
+  timelineDisplayMode: TimelineDisplayMode;
 }
 
 export const useUiStore = create<UiState>()(
@@ -47,6 +50,7 @@ export const useUiStore = create<UiState>()(
     gridLinesVisible: false,
     terminalHeight: 250,
     paramPanelWidth: 300,
+    timelineDisplayMode: 'frames' as TimelineDisplayMode,
   })),
 );
 
