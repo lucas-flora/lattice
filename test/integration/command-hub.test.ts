@@ -14,6 +14,7 @@ import { wireStores } from '../../src/commands/wireStores';
 import { useSimStore } from '../../src/store/simStore';
 import { useViewStore } from '../../src/store/viewStore';
 import { useUiStore } from '../../src/store/uiStore';
+import { useLayoutStore } from '../../src/store/layoutStore';
 import { Simulation } from '../../src/engine/rule/Simulation';
 import { loadBuiltinPreset } from '../../src/engine/preset/builtinPresets';
 
@@ -41,7 +42,8 @@ describe('Command Hub Integration', () => {
       speed: 10,
     });
     useViewStore.setState({ zoom: 1, cameraX: 0, cameraY: 0 });
-    useUiStore.setState({ isTerminalOpen: false, isParamPanelOpen: false, brushSize: 1 });
+    useLayoutStore.setState({ isTerminalOpen: false, isParamPanelOpen: false });
+    useUiStore.setState({ brushSize: 1 });
   });
 
   afterEach(() => {

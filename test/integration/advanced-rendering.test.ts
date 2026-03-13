@@ -13,6 +13,7 @@ import { registerAllCommands } from '../../src/commands/definitions';
 import { wireStores } from '../../src/commands/wireStores';
 import { useSimStore } from '../../src/store/simStore';
 import { useUiStore } from '../../src/store/uiStore';
+import { useLayoutStore } from '../../src/store/layoutStore';
 
 describe('Advanced Rendering Integration', () => {
   let bus: EventBus;
@@ -37,13 +38,15 @@ describe('Advanced Rendering Integration', () => {
       speed: 10,
       maxGeneration: 0,
     });
-    useUiStore.setState({
+    useLayoutStore.setState({
       isTerminalOpen: false,
       isParamPanelOpen: false,
-      isHotkeyHelpOpen: false,
-      brushSize: 1,
       viewportCount: 1,
       fullscreenViewportId: null,
+    });
+    useUiStore.setState({
+      isHotkeyHelpOpen: false,
+      brushSize: 1,
     });
   });
 
@@ -55,27 +58,27 @@ describe('Advanced Rendering Integration', () => {
   });
 
   it('TestAdvancedRendering_ViewSplitCommand', async () => {
-    expect(useUiStore.getState().viewportCount).toBe(1);
+    expect(useLayoutStore.getState().viewportCount).toBe(1);
 
     const result = await registry.execute('view.split', {});
     expect(result.success).toBe(true);
-    expect(useUiStore.getState().viewportCount).toBe(2);
+    expect(useLayoutStore.getState().viewportCount).toBe(2);
 
     // Toggle back
     const result2 = await registry.execute('view.split', {});
     expect(result2.success).toBe(true);
-    expect(useUiStore.getState().viewportCount).toBe(1);
+    expect(useLayoutStore.getState().viewportCount).toBe(1);
   });
 
   it('TestAdvancedRendering_ViewFullscreenCommand', async () => {
     const result = await registry.execute('view.fullscreen', { viewportId: 'viewport-1' });
     expect(result.success).toBe(true);
-    expect(useUiStore.getState().fullscreenViewportId).toBe('viewport-1');
+    expect(useLayoutStore.getState().fullscreenViewportId).toBe('viewport-1');
 
     // Toggle off
     const result2 = await registry.execute('view.fullscreen', { viewportId: 'viewport-1' });
     expect(result2.success).toBe(true);
-    expect(useUiStore.getState().fullscreenViewportId).toBeNull();
+    expect(useLayoutStore.getState().fullscreenViewportId).toBeNull();
   });
 
   it('TestAdvancedRendering_TimelineScrubViaSeek', async () => {
@@ -104,10 +107,10 @@ describe('Advanced Rendering Integration', () => {
     // When fullscreen is active, HUD should be hidden
     // We verify this through store state
     await registry.execute('view.fullscreen', { viewportId: 'viewport-1' });
-    expect(useUiStore.getState().fullscreenViewportId).toBe('viewport-1');
+    expect(useLayoutStore.getState().fullscreenViewportId).toBe('viewport-1');
 
     // In AppShell, when fullscreenViewportId is not null, HUD is hidden
-    const isAnyFullscreen = useUiStore.getState().fullscreenViewportId !== null;
+    const isAnyFullscreen = useLayoutStore.getState().fullscreenViewportId !== null;
     expect(isAnyFullscreen).toBe(true);
   });
 
@@ -121,17 +124,17 @@ describe('Advanced Rendering Integration', () => {
   it('TestAdvancedRendering_SplitThenFullscreen_WorksCorrectly', async () => {
     // Split viewport
     await registry.execute('view.split', {});
-    expect(useUiStore.getState().viewportCount).toBe(2);
+    expect(useLayoutStore.getState().viewportCount).toBe(2);
 
     // Fullscreen viewport-2
     await registry.execute('view.fullscreen', { viewportId: 'viewport-2' });
-    expect(useUiStore.getState().fullscreenViewportId).toBe('viewport-2');
+    expect(useLayoutStore.getState().fullscreenViewportId).toBe('viewport-2');
 
     // Exit fullscreen
     await registry.execute('view.fullscreen', { viewportId: 'viewport-2' });
-    expect(useUiStore.getState().fullscreenViewportId).toBeNull();
+    expect(useLayoutStore.getState().fullscreenViewportId).toBeNull();
 
     // Still in split mode
-    expect(useUiStore.getState().viewportCount).toBe(2);
+    expect(useLayoutStore.getState().viewportCount).toBe(2);
   });
 });

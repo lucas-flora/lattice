@@ -16,22 +16,22 @@
 'use client';
 
 import { useCallback } from 'react';
-import { useUiStore, uiStoreActions } from '@/store/uiStore';
+import { useLayoutStore, layoutStoreActions } from '@/store/layoutStore';
 import { ControlBar } from '@/components/hud/ControlBar';
 import { Timeline, TimelineCounter } from '@/components/timeline/Timeline';
 import { Terminal } from '@/components/terminal/Terminal';
 import { ResizeHandle } from '@/components/ui/ResizeHandle';
 
 export function BottomTray() {
-  const isTerminalOpen = useUiStore((s) => s.isTerminalOpen);
-  const terminalHeight = useUiStore((s) => s.terminalHeight);
+  const isTerminalOpen = useLayoutStore((s) => s.isTerminalOpen);
+  const terminalHeight = useLayoutStore((s) => s.terminalHeight);
 
   const handleToggleTerminal = useCallback(() => {
-    uiStoreActions.setTerminalOpen(!isTerminalOpen);
+    layoutStoreActions.setTerminalOpen(!isTerminalOpen);
   }, [isTerminalOpen]);
 
   const handleResize = useCallback((delta: number) => {
-    uiStoreActions.setTerminalHeight(terminalHeight - delta);
+    layoutStoreActions.setTerminalHeight(terminalHeight - delta);
   }, [terminalHeight]);
 
   return (

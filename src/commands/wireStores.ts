@@ -12,6 +12,7 @@ import type { EventBus } from '../engine/core/EventBus';
 import { simStoreActions } from '../store/simStore';
 import { viewStoreActions } from '../store/viewStore';
 import { uiStoreActions } from '../store/uiStore';
+import { layoutStoreActions } from '../store/layoutStore';
 // aiStore wiring deferred to Phase 8
 
 /**
@@ -57,9 +58,18 @@ export function wireStores(eventBus: EventBus): () => void {
     viewStoreActions.updateView(payload);
   };
 
-  // --- uiStore wiring ---
+  // --- uiStore + layoutStore wiring ---
   const onUiChange = (payload: { isTerminalOpen?: boolean; isParamPanelOpen?: boolean; isHotkeyHelpOpen?: boolean }) => {
-    uiStoreActions.updateUi(payload);
+    // Panel visibility lives in layoutStore; hotkey help stays in uiStore
+    if (payload.isTerminalOpen !== undefined) {
+      layoutStoreActions.setTerminalOpen(payload.isTerminalOpen);
+    }
+    if (payload.isParamPanelOpen !== undefined) {
+      layoutStoreActions.setParamPanelOpen(payload.isParamPanelOpen);
+    }
+    if (payload.isHotkeyHelpOpen !== undefined) {
+      uiStoreActions.updateUi({ isHotkeyHelpOpen: payload.isHotkeyHelpOpen });
+    }
   };
 
   // --- param wiring ---

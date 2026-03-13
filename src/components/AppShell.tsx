@@ -5,8 +5,8 @@
  * On mount: creates EventBus, SimulationController, registers all commands,
  * wires stores, loads the default preset (Conway's GoL), and attaches keyboard shortcuts.
  *
- * Supports multi-viewport layout (RNDR-08) and per-viewport fullscreen (RNDR-09).
- * GUIP-04: Keyboard shortcuts attached via KeyboardShortcutManager.
+ * Uses zone-based layout: left drawer, center (viewports), right drawer,
+ * pinned Timeline+ControlBar, bottom drawer (terminal).
  */
 
 'use client';
@@ -25,8 +25,8 @@ import { HotkeyHelp } from '@/components/hud/HotkeyHelp';
 import { BottomTray } from '@/components/layout/BottomTray';
 import { Terminal } from '@/components/terminal/Terminal';
 import { ParamPanel } from '@/components/panels/ParamPanel';
-import { useSimStore } from '@/store/simStore';
 import { useUiStore } from '@/store/uiStore';
+import { useLayoutStore } from '@/store/layoutStore';
 
 /** Module-level singleton for the simulation controller */
 let controllerSingleton: SimulationController | null = null;
@@ -136,13 +136,12 @@ function initializeSimulation(controller: SimulationController): void {
 
 export function AppShell() {
   const initializedRef = useRef(false);
-  const activePreset = useSimStore((s) => s.activePreset);
-  const viewportCount = useUiStore((s) => s.viewportCount);
-  const fullscreenViewportId = useUiStore((s) => s.fullscreenViewportId);
-  const isTerminalOpen = useUiStore((s) => s.isTerminalOpen);
-  const terminalMode = useUiStore((s) => s.terminalMode);
-  const isParamPanelOpen = useUiStore((s) => s.isParamPanelOpen);
-  const paramPanelMode = useUiStore((s) => s.paramPanelMode);
+  const viewportCount = useLayoutStore((s) => s.viewportCount);
+  const fullscreenViewportId = useLayoutStore((s) => s.fullscreenViewportId);
+  const isTerminalOpen = useLayoutStore((s) => s.isTerminalOpen);
+  const terminalMode = useLayoutStore((s) => s.terminalMode);
+  const isParamPanelOpen = useLayoutStore((s) => s.isParamPanelOpen);
+  const paramPanelMode = useLayoutStore((s) => s.paramPanelMode);
 
   // Initialize command infrastructure once
   useEffect(() => {

@@ -6,6 +6,7 @@ import { registerAllCommands } from '../definitions';
 import { Simulation } from '../../engine/rule/Simulation';
 import { loadBuiltinPreset } from '../../engine/preset/builtinPresets';
 import { useUiStore } from '../../store/uiStore';
+import { useLayoutStore } from '../../store/layoutStore';
 import { useViewStore } from '../../store/viewStore';
 
 describe('Command Definitions', () => {
@@ -20,7 +21,8 @@ describe('Command Definitions', () => {
     registerAllCommands(registry, controller, bus);
 
     // Reset store state
-    useUiStore.setState({ isTerminalOpen: false, isParamPanelOpen: false, brushSize: 1 });
+    useLayoutStore.setState({ isTerminalOpen: false, isParamPanelOpen: false });
+    useUiStore.setState({ brushSize: 1 });
     useViewStore.setState({ zoom: 1, cameraX: 0, cameraY: 0 });
   });
 
@@ -82,7 +84,7 @@ describe('Command Definitions', () => {
     // Timeline / playback
     expect(names).toContain('sim.setDuration');
 
-    expect(list.length).toBe(38);
+    expect(list.length).toBe(40);
   });
 
   it('TestCommandDefinitions_SimPlay_StartsSimulation', async () => {
@@ -182,18 +184,18 @@ describe('Command Definitions', () => {
   });
 
   it('TestCommandDefinitions_UiToggleTerminal', async () => {
-    expect(useUiStore.getState().isTerminalOpen).toBe(false);
+    expect(useLayoutStore.getState().isTerminalOpen).toBe(false);
     await registry.execute('ui.toggleTerminal', {});
-    expect(useUiStore.getState().isTerminalOpen).toBe(true);
+    expect(useLayoutStore.getState().isTerminalOpen).toBe(true);
     await registry.execute('ui.toggleTerminal', {});
-    expect(useUiStore.getState().isTerminalOpen).toBe(false);
+    expect(useLayoutStore.getState().isTerminalOpen).toBe(false);
   });
 
   it('TestCommandDefinitions_UiToggleParamPanel', async () => {
-    expect(useUiStore.getState().isParamPanelOpen).toBe(false);
+    expect(useLayoutStore.getState().isParamPanelOpen).toBe(false);
     await registry.execute('ui.toggleParamPanel', {});
-    expect(useUiStore.getState().isParamPanelOpen).toBe(true);
+    expect(useLayoutStore.getState().isParamPanelOpen).toBe(true);
     await registry.execute('ui.toggleParamPanel', {});
-    expect(useUiStore.getState().isParamPanelOpen).toBe(false);
+    expect(useLayoutStore.getState().isParamPanelOpen).toBe(false);
   });
 });

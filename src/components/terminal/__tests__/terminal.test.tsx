@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { useUiStore } from '@/store/uiStore';
+import { useLayoutStore } from '@/store/layoutStore';
 import { commandRegistry } from '@/commands/CommandRegistry';
 import { EventBus } from '@/engine/core/EventBus';
 import { SimulationController } from '@/commands/SimulationController';
@@ -20,7 +21,8 @@ describe('Terminal Component', () => {
     controller = new SimulationController(bus, 10000);
     commandRegistry.clear();
     registerAllCommands(commandRegistry, controller, bus);
-    useUiStore.setState({ isTerminalOpen: false, isParamPanelOpen: false, brushSize: 1 });
+    useLayoutStore.setState({ isTerminalOpen: false, isParamPanelOpen: false });
+    useUiStore.setState({ brushSize: 1 });
   });
 
   afterEach(() => {
@@ -35,16 +37,16 @@ describe('Terminal Component', () => {
   });
 
   it('TestTerminal_ToggleCommand_Works', async () => {
-    expect(useUiStore.getState().isTerminalOpen).toBe(false);
+    expect(useLayoutStore.getState().isTerminalOpen).toBe(false);
     await commandRegistry.execute('ui.toggleTerminal', {});
-    expect(useUiStore.getState().isTerminalOpen).toBe(true);
+    expect(useLayoutStore.getState().isTerminalOpen).toBe(true);
     await commandRegistry.execute('ui.toggleTerminal', {});
-    expect(useUiStore.getState().isTerminalOpen).toBe(false);
+    expect(useLayoutStore.getState().isTerminalOpen).toBe(false);
   });
 
   it('TestTerminal_StoreControlsVisibility', () => {
-    useUiStore.setState({ isTerminalOpen: true });
-    expect(useUiStore.getState().isTerminalOpen).toBe(true);
+    useLayoutStore.setState({ isTerminalOpen: true });
+    expect(useLayoutStore.getState().isTerminalOpen).toBe(true);
   });
 
   it('TestTerminal_TerminalInputExports', async () => {

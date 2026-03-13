@@ -32,3 +32,29 @@ Use semantic names: `Test<Component>_<Behavior>[_<Condition>]`
 - **Keyboard Shortcuts**: Space=play/pause, N=step, B=step-back, R=reset, C=clear, T=terminal, P=params, F=fullscreen, S=split, ?=hotkey help. Displayed as `kbd` elements with zinc-700 background and zinc-300 text.
 - **Screenshot Button**: Camera icon in ControlBar, triggers canvas.toDataURL('image/png') and downloads via anchor click.
 - **Typography**: font-mono throughout for data display. tabular-nums for counters.
+
+## Architecture & Scripting
+
+See `docs/ARCHITECTURE.md` for the full system architecture document (north star).
+
+### Key Architecture Decisions
+- **Layout**: Custom recursive tree (no library). `LayoutNode` = split | tabs | panel. JSON-serializable, stored in Zustand.
+- **App Shell**: 4 zones (left drawer, center, right drawer, bottom drawer) + pinned Timeline/ControlBar. Each zone has its own layout subtree.
+- **Cell Types**: Inheritance via property union. Base type has inherent properties (alive, lifetime, alpha, _cellType). Child types inherit + extend.
+- **Scripting**: Python via Pyodide (WASM) in Web Worker. Lazy-loaded. Three modes: per-property expressions, global scripts, global variable store.
+- **Performance**: Python rules operate on entire grid via numpy vectorized ops. No per-cell Python loops. Built-in presets keep JS/WASM fast paths.
+- **Parameter Addressing**: Dot-path strings (`cell.alive`, `env.feedRate`, `global.myVar`).
+- **Linking**: C4D-style property-to-property with range mapping and easing.
+- **YAML**: Universal format. Presets, layout, scripts — everything serializes to YAML. URL hash sharing.
+- **Independent Viewports**: Each viewport can be its own SimulationInstance with separate Grid/Rule/state.
+
+### Tick Pipeline Order
+1. Evaluate expressions (topological order from dependency graph)
+2. Resolve parameter links
+3. Execute rule (TS/WASM built-in or Python custom)
+4. Run tags (per-cell post-processing)
+5. Run global scripts (per-frame)
+6. Swap buffers → emit sim:tick
+
+### Existing YAML Presets
+The 6 built-in presets (`src/engine/preset/builtins/`) use TypeScript `compute` bodies. These remain as-is (JS/WASM fast path). Python rules are for user-authored custom logic — both paths coexist.

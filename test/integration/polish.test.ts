@@ -13,6 +13,7 @@ import { registerAllCommands } from '../../src/commands/definitions';
 import { wireStores } from '../../src/commands/wireStores';
 import { useSimStore } from '../../src/store/simStore';
 import { useUiStore } from '../../src/store/uiStore';
+import { useLayoutStore } from '../../src/store/layoutStore';
 import { KeyboardShortcutManager, DEFAULT_SHORTCUTS } from '../../src/commands/KeyboardShortcutManager';
 import { ParamGraphBuffer } from '../../src/lib/paramGraphData';
 import { LATTICE_APP_DOCS } from '../../src/lib/ragDocuments';
@@ -40,13 +41,15 @@ describe('Polish Integration', () => {
       speed: 10,
       maxGeneration: 0,
     });
-    useUiStore.setState({
+    useLayoutStore.setState({
       isTerminalOpen: false,
       isParamPanelOpen: false,
-      isHotkeyHelpOpen: false,
-      brushSize: 1,
       viewportCount: 1,
       fullscreenViewportId: null,
+    });
+    useUiStore.setState({
+      isHotkeyHelpOpen: false,
+      brushSize: 1,
     });
   });
 

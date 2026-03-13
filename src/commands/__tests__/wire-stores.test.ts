@@ -4,6 +4,7 @@ import { wireStores } from '../wireStores';
 import { useSimStore } from '../../store/simStore';
 import { useViewStore } from '../../store/viewStore';
 import { useUiStore } from '../../store/uiStore';
+import { useLayoutStore } from '../../store/layoutStore';
 
 describe('wireStores', () => {
   let bus: EventBus;
@@ -24,7 +25,8 @@ describe('wireStores', () => {
       speed: 10,
     });
     useViewStore.setState({ zoom: 1, cameraX: 0, cameraY: 0 });
-    useUiStore.setState({ isTerminalOpen: false, isParamPanelOpen: false, brushSize: 1 });
+    useLayoutStore.setState({ isTerminalOpen: false, isParamPanelOpen: false });
+    useUiStore.setState({ brushSize: 1 });
   });
 
   afterEach(() => {
@@ -92,13 +94,13 @@ describe('wireStores', () => {
     expect(useViewStore.getState().zoom).toBe(3.5);
   });
 
-  it('TestWireStores_UiChange_UpdatesUiStore', () => {
+  it('TestWireStores_UiChange_UpdatesLayoutStore', () => {
     bus.emit('ui:change', { isTerminalOpen: true });
-    expect(useUiStore.getState().isTerminalOpen).toBe(true);
-    expect(useUiStore.getState().isParamPanelOpen).toBe(false);
+    expect(useLayoutStore.getState().isTerminalOpen).toBe(true);
+    expect(useLayoutStore.getState().isParamPanelOpen).toBe(false);
 
     bus.emit('ui:change', { isParamPanelOpen: true });
-    expect(useUiStore.getState().isParamPanelOpen).toBe(true);
+    expect(useLayoutStore.getState().isParamPanelOpen).toBe(true);
   });
 
   it('TestWireStores_AllStoresReactive_EventSequence', () => {
@@ -120,7 +122,7 @@ describe('wireStores', () => {
       (state) => state.zoom,
       (zoom) => eventLog.push(`view:zoom=${zoom}`),
     );
-    const unsubUi = useUiStore.subscribe(
+    const unsubUi = useLayoutStore.subscribe(
       (state) => state.isTerminalOpen,
       (open) => eventLog.push(`ui:terminal=${open}`),
     );
@@ -148,7 +150,7 @@ describe('wireStores', () => {
     expect(useSimStore.getState().activePreset).toBe('gol');
     expect(useSimStore.getState().liveCellCount).toBe(60);
     expect(useViewStore.getState().zoom).toBe(2);
-    expect(useUiStore.getState().isTerminalOpen).toBe(true);
+    expect(useLayoutStore.getState().isTerminalOpen).toBe(true);
 
     unsubSim();
     unsubRunning();

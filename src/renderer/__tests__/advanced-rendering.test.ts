@@ -10,7 +10,7 @@ import * as THREE from 'three';
 import { Grid } from '@/engine/grid/Grid';
 import { CameraController } from '../CameraController';
 import { useSimStore, simStoreActions } from '@/store/simStore';
-import { useUiStore, uiStoreActions } from '@/store/uiStore';
+import { useLayoutStore, layoutStoreActions } from '@/store/layoutStore';
 import type { GridConfig } from '@/engine/grid/types';
 
 // Helper: create a 3D grid
@@ -167,15 +167,15 @@ describe('Advanced Rendering - Phase 9', () => {
     });
 
     it('TestMultiViewport_ViewportCountToggle', () => {
-      useUiStore.setState({ viewportCount: 1, fullscreenViewportId: null });
+      useLayoutStore.setState({ viewportCount: 1, fullscreenViewportId: null });
 
-      uiStoreActions.toggleSplitView();
-      expect(useUiStore.getState().viewportCount).toBe(2);
+      layoutStoreActions.toggleSplitView();
+      expect(useLayoutStore.getState().viewportCount).toBe(2);
 
-      uiStoreActions.toggleSplitView();
-      expect(useUiStore.getState().viewportCount).toBe(1);
+      layoutStoreActions.toggleSplitView();
+      expect(useLayoutStore.getState().viewportCount).toBe(1);
 
-      useUiStore.setState({ viewportCount: 1, fullscreenViewportId: null });
+      useLayoutStore.setState({ viewportCount: 1, fullscreenViewportId: null });
     });
   });
 
@@ -207,25 +207,25 @@ describe('Advanced Rendering - Phase 9', () => {
 
   describe('Fullscreen Mode (RNDR-09)', () => {
     it('TestFullscreen_StoreToggle', () => {
-      useUiStore.setState({ fullscreenViewportId: null });
+      useLayoutStore.setState({ fullscreenViewportId: null });
 
-      uiStoreActions.setFullscreenViewport('viewport-1');
-      expect(useUiStore.getState().fullscreenViewportId).toBe('viewport-1');
+      layoutStoreActions.setFullscreenViewport('viewport-1');
+      expect(useLayoutStore.getState().fullscreenViewportId).toBe('viewport-1');
 
-      uiStoreActions.setFullscreenViewport(null);
-      expect(useUiStore.getState().fullscreenViewportId).toBeNull();
+      layoutStoreActions.setFullscreenViewport(null);
+      expect(useLayoutStore.getState().fullscreenViewportId).toBeNull();
 
-      useUiStore.setState({ fullscreenViewportId: null, viewportCount: 1 });
+      useLayoutStore.setState({ fullscreenViewportId: null, viewportCount: 1 });
     });
 
     it('TestFullscreen_SplitToggleExitsFullscreen', () => {
-      uiStoreActions.setFullscreenViewport('viewport-1');
-      expect(useUiStore.getState().fullscreenViewportId).toBe('viewport-1');
+      layoutStoreActions.setFullscreenViewport('viewport-1');
+      expect(useLayoutStore.getState().fullscreenViewportId).toBe('viewport-1');
 
-      uiStoreActions.toggleSplitView();
-      expect(useUiStore.getState().fullscreenViewportId).toBeNull();
+      layoutStoreActions.toggleSplitView();
+      expect(useLayoutStore.getState().fullscreenViewportId).toBeNull();
 
-      useUiStore.setState({ fullscreenViewportId: null, viewportCount: 1 });
+      useLayoutStore.setState({ fullscreenViewportId: null, viewportCount: 1 });
     });
   });
 });

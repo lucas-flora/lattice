@@ -15,6 +15,7 @@
 import { useCallback } from 'react';
 import { useSimStore } from '@/store/simStore';
 import { useUiStore } from '@/store/uiStore';
+import { useLayoutStore } from '@/store/layoutStore';
 import { commandRegistry } from '@/commands/CommandRegistry';
 
 const SPEED_VALUES = [1, 5, 10, 30, 60, 0]; // 0 = max
@@ -37,7 +38,7 @@ const PLAYBACK_MODE_ICONS: Record<string, string> = {
 export function ControlBar() {
   const isRunning = useSimStore((s) => s.isRunning);
   const speed = useSimStore((s) => s.speed);
-  const viewportCount = useUiStore((s) => s.viewportCount);
+  const viewportCount = useLayoutStore((s) => s.viewportCount);
   const playbackMode = useUiStore((s) => s.playbackMode);
 
   const handlePlayPause = useCallback(() => {

@@ -13,14 +13,13 @@
 
 import { useRef, useCallback, useEffect, useState } from 'react';
 import { useSimStore } from '@/store/simStore';
-import { useUiStore } from '@/store/uiStore';
+import { useLayoutStore, layoutStoreActions } from '@/store/layoutStore';
 import { commandRegistry } from '@/commands/CommandRegistry';
 import { ParamGraph } from './ParamGraph';
 import { TimelineGraph } from './TimelineGraph';
 import { ParamGraphBuffer, TimelineDataBuffer } from '@/lib/paramGraphData';
 import { BUILTIN_PRESET_NAMES_CLIENT as BUILTIN_PRESET_NAMES } from '@/engine/preset/builtinPresetsClient';
 import { ResizeHandle } from '@/components/ui/ResizeHandle';
-import { uiStoreActions } from '@/store/uiStore';
 
 const PRESET_DISPLAY_NAMES: Record<string, string> = {
   'conways-gol': "Conway's GoL",
@@ -49,8 +48,8 @@ interface ParamPanelProps {
 }
 
 export function ParamPanel({ docked = false }: ParamPanelProps) {
-  const isOpen = useUiStore((s) => s.isParamPanelOpen);
-  const paramPanelWidth = useUiStore((s) => s.paramPanelWidth);
+  const isOpen = useLayoutStore((s) => s.isParamPanelOpen);
+  const paramPanelWidth = useLayoutStore((s) => s.paramPanelWidth);
   const activePreset = useSimStore((s) => s.activePreset);
   const gridWidth = useSimStore((s) => s.gridWidth);
   const gridHeight = useSimStore((s) => s.gridHeight);
@@ -145,7 +144,7 @@ export function ParamPanel({ docked = false }: ParamPanelProps) {
 
   const handlePanelResize = useCallback((delta: number) => {
     // Drag left = negative delta = increase width
-    uiStoreActions.setParamPanelWidth(paramPanelWidth - delta);
+    layoutStoreActions.setParamPanelWidth(paramPanelWidth - delta);
   }, [paramPanelWidth]);
 
   const handleRuleApply = useCallback(() => {

@@ -13,6 +13,7 @@ import { registerAllCommands } from '../../src/commands/definitions';
 import { wireStores } from '../../src/commands/wireStores';
 import { useSimStore } from '../../src/store/simStore';
 import { useUiStore } from '../../src/store/uiStore';
+import { useLayoutStore } from '../../src/store/layoutStore';
 
 describe('Surfaces Integration', () => {
   let bus: EventBus;
@@ -36,7 +37,8 @@ describe('Surfaces Integration', () => {
       liveCellCount: 0,
       speed: 10,
     });
-    useUiStore.setState({ isTerminalOpen: false, isParamPanelOpen: false, brushSize: 1 });
+    useLayoutStore.setState({ isTerminalOpen: false, isParamPanelOpen: false });
+    useUiStore.setState({ brushSize: 1 });
   });
 
   afterEach(() => {

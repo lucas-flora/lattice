@@ -20,8 +20,8 @@ import { OrbitCameraController } from '@/renderer/OrbitCameraController';
 import { getController } from '@/components/AppShell';
 import { eventBus } from '@/engine/core/EventBus';
 import { commandRegistry } from '@/commands/CommandRegistry';
+import { useLayoutStore, layoutStoreActions } from '@/store/layoutStore';
 import { useUiStore } from '@/store/uiStore';
-import { uiStoreActions } from '@/store/uiStore';
 import { useSimStore } from '@/store/simStore';
 
 /** Props for multi-viewport support */
@@ -50,10 +50,10 @@ export function SimulationViewport({ viewportId = 'viewport-1' }: SimulationView
   const cameraRef = useRef<CameraController | null>(null);
   const orbitCameraRef = useRef<OrbitCameraController | null>(null);
   const rafRef = useRef<number>(0);
-  const fullscreenViewportId = useUiStore((s) => s.fullscreenViewportId);
+  const fullscreenViewportId = useLayoutStore((s) => s.fullscreenViewportId);
   const isFullscreen = fullscreenViewportId === viewportId;
   const activePreset = useSimStore((s) => s.activePreset);
-  const viewportCount = useUiStore((s) => s.viewportCount);
+  const viewportCount = useLayoutStore((s) => s.viewportCount);
 
   const handleFullscreenToggle = useCallback(() => {
     const container = containerRef.current;
@@ -61,13 +61,13 @@ export function SimulationViewport({ viewportId = 'viewport-1' }: SimulationView
 
     if (isFullscreen) {
       // Exit fullscreen
-      uiStoreActions.setFullscreenViewport(null);
+      layoutStoreActions.setFullscreenViewport(null);
       if (document.fullscreenElement) {
         document.exitFullscreen().catch(() => {});
       }
     } else {
       // Enter fullscreen
-      uiStoreActions.setFullscreenViewport(viewportId);
+      layoutStoreActions.setFullscreenViewport(viewportId);
       container.requestFullscreen().catch(() => {
         // Fullscreen not supported, just toggle the state
       });
@@ -78,7 +78,7 @@ export function SimulationViewport({ viewportId = 'viewport-1' }: SimulationView
     // Listen for Escape key to exit fullscreen
     const handleFullscreenChange = () => {
       if (!document.fullscreenElement && fullscreenViewportId === viewportId) {
-        uiStoreActions.setFullscreenViewport(null);
+        layoutStoreActions.setFullscreenViewport(null);
       }
     };
     document.addEventListener('fullscreenchange', handleFullscreenChange);

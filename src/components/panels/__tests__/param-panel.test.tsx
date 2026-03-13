@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useSimStore } from '@/store/simStore';
 import { useUiStore } from '@/store/uiStore';
+import { useLayoutStore } from '@/store/layoutStore';
 
 /**
  * ParamPanel component tests.
@@ -19,7 +20,8 @@ describe('ParamPanel Component', () => {
       liveCellCount: 0,
       speed: 10,
     });
-    useUiStore.setState({ isTerminalOpen: false, isParamPanelOpen: false, brushSize: 1 });
+    useLayoutStore.setState({ isTerminalOpen: false, isParamPanelOpen: false });
+    useUiStore.setState({ brushSize: 1 });
   });
 
   it('TestParamPanel_ComponentExports', async () => {
@@ -28,11 +30,11 @@ describe('ParamPanel Component', () => {
   });
 
   it('TestParamPanel_StoreControlsVisibility', () => {
-    useUiStore.setState({ isParamPanelOpen: true });
-    expect(useUiStore.getState().isParamPanelOpen).toBe(true);
+    useLayoutStore.setState({ isParamPanelOpen: true });
+    expect(useLayoutStore.getState().isParamPanelOpen).toBe(true);
 
-    useUiStore.setState({ isParamPanelOpen: false });
-    expect(useUiStore.getState().isParamPanelOpen).toBe(false);
+    useLayoutStore.setState({ isParamPanelOpen: false });
+    expect(useLayoutStore.getState().isParamPanelOpen).toBe(false);
   });
 
   it('TestParamPanel_StoreProvidesPresetInfo', () => {

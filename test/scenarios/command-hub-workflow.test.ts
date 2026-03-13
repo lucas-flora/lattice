@@ -14,6 +14,7 @@ import { wireStores } from '../../src/commands/wireStores';
 import { useSimStore } from '../../src/store/simStore';
 import { useViewStore } from '../../src/store/viewStore';
 import { useUiStore } from '../../src/store/uiStore';
+import { useLayoutStore } from '../../src/store/layoutStore';
 
 describe('Command Hub Workflow Scenarios', () => {
   let bus: EventBus;
@@ -39,7 +40,8 @@ describe('Command Hub Workflow Scenarios', () => {
       speed: 10,
     });
     useViewStore.setState({ zoom: 1, cameraX: 0, cameraY: 0 });
-    useUiStore.setState({ isTerminalOpen: false, isParamPanelOpen: false, brushSize: 1 });
+    useLayoutStore.setState({ isTerminalOpen: false, isParamPanelOpen: false });
+    useUiStore.setState({ brushSize: 1 });
   });
 
   afterEach(() => {
@@ -80,7 +82,7 @@ describe('Command Hub Workflow Scenarios', () => {
 
     // 6. Toggle UI panels
     await registry.execute('ui.toggleTerminal', {});
-    expect(useUiStore.getState().isTerminalOpen).toBe(true);
+    expect(useLayoutStore.getState().isTerminalOpen).toBe(true);
 
     // 7. Reset simulation
     await registry.execute('sim.reset', {});

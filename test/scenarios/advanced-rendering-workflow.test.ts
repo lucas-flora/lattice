@@ -13,6 +13,7 @@ import { registerAllCommands } from '../../src/commands/definitions';
 import { wireStores } from '../../src/commands/wireStores';
 import { useSimStore } from '../../src/store/simStore';
 import { useUiStore } from '../../src/store/uiStore';
+import { useLayoutStore } from '../../src/store/layoutStore';
 import { CameraController } from '../../src/renderer/CameraController';
 import { OrbitCameraController } from '../../src/renderer/OrbitCameraController';
 
@@ -39,13 +40,15 @@ describe('Advanced Rendering Workflow Scenarios', () => {
       speed: 10,
       maxGeneration: 0,
     });
-    useUiStore.setState({
+    useLayoutStore.setState({
       isTerminalOpen: false,
       isParamPanelOpen: false,
-      isHotkeyHelpOpen: false,
-      brushSize: 1,
       viewportCount: 1,
       fullscreenViewportId: null,
+    });
+    useUiStore.setState({
+      isHotkeyHelpOpen: false,
+      brushSize: 1,
     });
   });
 
@@ -63,7 +66,7 @@ describe('Advanced Rendering Workflow Scenarios', () => {
 
     // 2. Open split viewport
     await registry.execute('view.split', {});
-    expect(useUiStore.getState().viewportCount).toBe(2);
+    expect(useLayoutStore.getState().viewportCount).toBe(2);
 
     // 3. Verify each viewport can have independent camera state
     const cam1 = new CameraController(800, 600);
@@ -87,7 +90,7 @@ describe('Advanced Rendering Workflow Scenarios', () => {
 
     // 5. Return to single viewport
     await registry.execute('view.split', {});
-    expect(useUiStore.getState().viewportCount).toBe(1);
+    expect(useLayoutStore.getState().viewportCount).toBe(1);
   });
 
   it('TestScenario_3DGridWithOrbitControls', async () => {
@@ -159,11 +162,11 @@ describe('Advanced Rendering Workflow Scenarios', () => {
   it('TestScenario_FullscreenToggleWorkflow', async () => {
     // 1. Open split viewport
     await registry.execute('view.split', {});
-    expect(useUiStore.getState().viewportCount).toBe(2);
+    expect(useLayoutStore.getState().viewportCount).toBe(2);
 
     // 2. Toggle fullscreen on viewport-1
     await registry.execute('view.fullscreen', { viewportId: 'viewport-1' });
-    const fsState1 = useUiStore.getState();
+    const fsState1 = useLayoutStore.getState();
     expect(fsState1.fullscreenViewportId).toBe('viewport-1');
 
     // 3. When fullscreen is active, HUD should be hidden (checked via store)
@@ -172,18 +175,18 @@ describe('Advanced Rendering Workflow Scenarios', () => {
 
     // 4. Toggle fullscreen off (simulating Escape key)
     await registry.execute('view.fullscreen', { viewportId: 'viewport-1' });
-    expect(useUiStore.getState().fullscreenViewportId).toBeNull();
+    expect(useLayoutStore.getState().fullscreenViewportId).toBeNull();
 
     // 5. HUD should be visible again
-    expect(useUiStore.getState().fullscreenViewportId).toBeNull();
+    expect(useLayoutStore.getState().fullscreenViewportId).toBeNull();
 
     // 6. Toggle fullscreen on viewport-2
     await registry.execute('view.fullscreen', { viewportId: 'viewport-2' });
-    expect(useUiStore.getState().fullscreenViewportId).toBe('viewport-2');
+    expect(useLayoutStore.getState().fullscreenViewportId).toBe('viewport-2');
 
     // 7. Exit
     await registry.execute('view.fullscreen', { viewportId: 'viewport-2' });
-    expect(useUiStore.getState().fullscreenViewportId).toBeNull();
+    expect(useLayoutStore.getState().fullscreenViewportId).toBeNull();
   });
 
   it('TestScenario_FullWorkflowWithAllFeatures', async () => {
@@ -198,7 +201,7 @@ describe('Advanced Rendering Workflow Scenarios', () => {
 
     // Open split viewport
     await registry.execute('view.split', {});
-    expect(useUiStore.getState().viewportCount).toBe(2);
+    expect(useLayoutStore.getState().viewportCount).toBe(2);
 
     // Scrub backward
     await registry.execute('sim.seek', { generation: 2 });
@@ -206,14 +209,14 @@ describe('Advanced Rendering Workflow Scenarios', () => {
 
     // Fullscreen viewport-1
     await registry.execute('view.fullscreen', { viewportId: 'viewport-1' });
-    expect(useUiStore.getState().fullscreenViewportId).toBe('viewport-1');
+    expect(useLayoutStore.getState().fullscreenViewportId).toBe('viewport-1');
 
     // Exit fullscreen
     await registry.execute('view.fullscreen', { viewportId: 'viewport-1' });
-    expect(useUiStore.getState().fullscreenViewportId).toBeNull();
+    expect(useLayoutStore.getState().fullscreenViewportId).toBeNull();
 
     // Close split
     await registry.execute('view.split', {});
-    expect(useUiStore.getState().viewportCount).toBe(1);
+    expect(useLayoutStore.getState().viewportCount).toBe(1);
   });
 });

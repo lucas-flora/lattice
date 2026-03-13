@@ -4,6 +4,7 @@ import { CommandRegistry } from '../CommandRegistry';
 import { SimulationController } from '../SimulationController';
 import { registerAllCommands } from '../definitions';
 import { useUiStore } from '../../store/uiStore';
+import { useLayoutStore } from '../../store/layoutStore';
 import { useViewStore } from '../../store/viewStore';
 
 describe('Extended Commands (Phase 6)', () => {
@@ -18,7 +19,8 @@ describe('Extended Commands (Phase 6)', () => {
     registerAllCommands(registry, controller, bus);
 
     // Reset store state
-    useUiStore.setState({ isTerminalOpen: false, isParamPanelOpen: false, brushSize: 1 });
+    useLayoutStore.setState({ isTerminalOpen: false, isParamPanelOpen: false });
+    useUiStore.setState({ brushSize: 1 });
     useViewStore.setState({ zoom: 1, cameraX: 0, cameraY: 0 });
 
     // Load a preset for most tests

@@ -8,7 +8,7 @@
 
 'use client';
 
-import { useUiStore } from '@/store/uiStore';
+import { useLayoutStore } from '@/store/layoutStore';
 import { commandRegistry } from '@/commands/CommandRegistry';
 import { TerminalOutput } from './TerminalOutput';
 import { TerminalInput } from './TerminalInput';
@@ -19,8 +19,8 @@ interface TerminalProps {
 }
 
 export function Terminal({ docked = false }: TerminalProps) {
-  const isOpen = useUiStore((s) => s.isTerminalOpen);
-  const terminalHeight = useUiStore((s) => s.terminalHeight);
+  const isOpen = useLayoutStore((s) => s.isTerminalOpen);
+  const terminalHeight = useLayoutStore((s) => s.terminalHeight);
   const {
     output,
     inputValue,

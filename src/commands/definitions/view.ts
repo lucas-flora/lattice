@@ -8,6 +8,7 @@ import { z } from 'zod';
 import type { CommandRegistry } from '../CommandRegistry';
 import type { EventBus } from '../../engine/core/EventBus';
 import { useViewStore } from '../../store/viewStore';
+import { layoutStoreActions } from '../../store/layoutStore';
 import { uiStoreActions } from '../../store/uiStore';
 import { captureScreenshot, downloadDataUrl, generateScreenshotFilename } from '../../lib/screenshotExport';
 
@@ -81,7 +82,7 @@ export function registerViewCommands(
     category: 'view',
     params: NoParams,
     execute: async () => {
-      uiStoreActions.toggleSplitView();
+      layoutStoreActions.toggleSplitView();
       return { success: true };
     },
   });
@@ -95,12 +96,12 @@ export function registerViewCommands(
       const { viewportId } = params as z.infer<typeof FullscreenParams>;
       const id = viewportId ?? 'viewport-1';
       // Toggle: if already fullscreen, exit
-      const { useUiStore } = await import('../../store/uiStore');
-      const current = useUiStore.getState().fullscreenViewportId;
+      const { useLayoutStore } = await import('../../store/layoutStore');
+      const current = useLayoutStore.getState().fullscreenViewportId;
       if (current === id) {
-        uiStoreActions.setFullscreenViewport(null);
+        layoutStoreActions.setFullscreenViewport(null);
       } else {
-        uiStoreActions.setFullscreenViewport(id);
+        layoutStoreActions.setFullscreenViewport(id);
       }
       return { success: true, data: { viewportId: id } };
     },

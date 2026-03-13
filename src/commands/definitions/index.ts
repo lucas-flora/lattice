@@ -17,6 +17,7 @@ import { registerUiCommands } from './ui';
 import { registerParamCommands } from './param';
 import { registerGridCommands } from './grid';
 import { registerRuleCommands } from './rule';
+import { registerLayoutCommands } from './layout';
 
 /**
  * Register all commands in the registry.
@@ -35,4 +36,5 @@ export function registerAllCommands(
   registerParamCommands(registry, controller);
   registerGridCommands(registry, controller);
   registerRuleCommands(registry, controller);
+  registerLayoutCommands(registry);
 }

@@ -16,5 +16,8 @@ export type { ViewState } from './viewStore';
 export { useUiStore, uiStoreActions } from './uiStore';
 export type { UiState } from './uiStore';
 
+export { useLayoutStore, layoutStoreActions } from './layoutStore';
+export type { LayoutState } from './layoutStore';
+
 export { useAiStore, aiStoreActions } from './aiStore';
 export type { AiState, ChatMessage } from './aiStore';

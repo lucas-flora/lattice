@@ -13,6 +13,7 @@ import { registerAllCommands } from '../../src/commands/definitions';
 import { wireStores } from '../../src/commands/wireStores';
 import { useSimStore } from '../../src/store/simStore';
 import { useUiStore } from '../../src/store/uiStore';
+import { useLayoutStore } from '../../src/store/layoutStore';
 import { KeyboardShortcutManager, DEFAULT_SHORTCUTS } from '../../src/commands/KeyboardShortcutManager';
 import { ParamGraphBuffer, samplesToSparklinePoints } from '../../src/lib/paramGraphData';
 import { LATTICE_APP_DOCS } from '../../src/lib/ragDocuments';
@@ -42,13 +43,15 @@ describe('Polish Workflow Scenarios', () => {
       speed: 10,
       maxGeneration: 0,
     });
-    useUiStore.setState({
+    useLayoutStore.setState({
       isTerminalOpen: false,
       isParamPanelOpen: false,
-      isHotkeyHelpOpen: false,
-      brushSize: 1,
       viewportCount: 1,
       fullscreenViewportId: null,
+    });
+    useUiStore.setState({
+      isHotkeyHelpOpen: false,
+      brushSize: 1,
     });
   });
 
@@ -84,11 +87,11 @@ describe('Polish Workflow Scenarios', () => {
 
     // Toggle terminal
     await registry.execute('ui.toggleTerminal', {});
-    expect(useUiStore.getState().isTerminalOpen).toBe(true);
+    expect(useLayoutStore.getState().isTerminalOpen).toBe(true);
 
     // Toggle param panel
     await registry.execute('ui.toggleParamPanel', {});
-    expect(useUiStore.getState().isParamPanelOpen).toBe(true);
+    expect(useLayoutStore.getState().isParamPanelOpen).toBe(true);
 
     // Toggle hotkey help
     await registry.execute('ui.toggleHotkeyHelp', {});

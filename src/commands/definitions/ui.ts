@@ -3,10 +3,12 @@
  *
  * Controls UI panel visibility through the CommandRegistry.
  * Supports floating (overlay) and docked (takes layout space) modes.
+ * Panel visibility/mode state lives in layoutStore.
  */
 
 import { z } from 'zod';
 import type { CommandRegistry } from '../CommandRegistry';
+import { useLayoutStore } from '../../store/layoutStore';
 import { useUiStore } from '../../store/uiStore';
 
 const NoParams = z.object({}).describe('none');
@@ -23,21 +25,21 @@ export function registerUiCommands(
     params: ToggleParams,
     execute: async (params: unknown) => {
       const p = params as { docked?: boolean } | undefined;
-      const { isTerminalOpen, terminalMode } = useUiStore.getState();
+      const { isTerminalOpen, terminalMode } = useLayoutStore.getState();
 
       if (p?.docked !== undefined) {
         // Explicit mode request: switch mode or toggle off if already in that mode
         const requestedMode = p.docked ? 'docked' : 'floating';
         if (isTerminalOpen && terminalMode === requestedMode) {
-          useUiStore.setState({ isTerminalOpen: false });
+          useLayoutStore.setState({ isTerminalOpen: false });
         } else {
-          useUiStore.setState({ isTerminalOpen: true, terminalMode: requestedMode });
+          useLayoutStore.setState({ isTerminalOpen: true, terminalMode: requestedMode });
         }
       } else {
         // No mode specified: just toggle visibility, keep current mode
-        useUiStore.setState({ isTerminalOpen: !isTerminalOpen });
+        useLayoutStore.setState({ isTerminalOpen: !isTerminalOpen });
       }
-      return { success: true, data: { isTerminalOpen: useUiStore.getState().isTerminalOpen } };
+      return { success: true, data: { isTerminalOpen: useLayoutStore.getState().isTerminalOpen } };
     },
   });
 
@@ -48,19 +50,19 @@ export function registerUiCommands(
     params: ToggleParams,
     execute: async (params: unknown) => {
       const p = params as { docked?: boolean } | undefined;
-      const { isParamPanelOpen, paramPanelMode } = useUiStore.getState();
+      const { isParamPanelOpen, paramPanelMode } = useLayoutStore.getState();
 
       if (p?.docked !== undefined) {
         const requestedMode = p.docked ? 'docked' : 'floating';
         if (isParamPanelOpen && paramPanelMode === requestedMode) {
-          useUiStore.setState({ isParamPanelOpen: false });
+          useLayoutStore.setState({ isParamPanelOpen: false });
         } else {
-          useUiStore.setState({ isParamPanelOpen: true, paramPanelMode: requestedMode });
+          useLayoutStore.setState({ isParamPanelOpen: true, paramPanelMode: requestedMode });
         }
       } else {
-        useUiStore.setState({ isParamPanelOpen: !isParamPanelOpen });
+        useLayoutStore.setState({ isParamPanelOpen: !isParamPanelOpen });
       }
-      return { success: true, data: { isParamPanelOpen: useUiStore.getState().isParamPanelOpen } };
+      return { success: true, data: { isParamPanelOpen: useLayoutStore.getState().isParamPanelOpen } };
     },
   });
 
