@@ -162,42 +162,89 @@ export function useTerminal() {
     const cycle = cycleRef.current;
 
     // Active cycle: advance to next candidate
-    if (cycle && inputValue === cycle.candidates[cycle.index]) {
+    if (cycle && inputValue.trim() === cycle.candidates[cycle.index]) {
       const nextIndex = (cycle.index + 1) % cycle.candidates.length;
       cycleRef.current = { ...cycle, index: nextIndex };
       const candidate = cycle.candidates[nextIndex];
-      setInputValue(candidate);
-      const ghost = getGhostText(candidate + ' ', commandRegistry);
-      setGhostText(ghost ? ' ' + ghost : '');
+      const withSpace = candidate + ' ';
+      setInputValue(withSpace);
+      const ghost = getGhostText(withSpace, commandRegistry);
+      setGhostText(ghost);
       return;
     }
 
-    // Accept ghost text if present
-    let newValue = inputValue;
     if (ghostText) {
-      newValue = inputValue + ghostText;
-    } else if (!inputValue.trim()) {
+      const trimmedGhost = ghostText.trimStart();
+      const isArgHint = /^[<\[]/.test(trimmedGhost);
+
+      if (isArgHint) {
+        const trimmed = inputValue.trim();
+        const parts = trimmed.split(/\s+/);
+
+        if (parts.length <= 2) {
+          // At command level with arg hints showing — cycle to next subcommand
+          const candidates = getCycleCandidates(trimmed, commandRegistry);
+          if (candidates.length > 1) {
+            const currentIndex = candidates.indexOf(trimmed);
+            const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % candidates.length : 0;
+            cycleRef.current = { baseInput: trimmed, candidates, index: nextIndex };
+            const candidate = candidates[nextIndex];
+            const withSpace = candidate + ' ';
+            setInputValue(withSpace);
+            const ghost = getGhostText(withSpace, commandRegistry);
+            setGhostText(ghost);
+          }
+        } else if (!inputValue.endsWith(' ')) {
+          // Mid-arg — Tab adds space to advance to next param
+          const withSpace = trimmed + ' ';
+          setInputValue(withSpace);
+          const ghost = getGhostText(withSpace, commandRegistry);
+          setGhostText(ghost);
+          cycleRef.current = null;
+        }
+        return;
+      }
+
+      // Regular completion — accept ghost text
+      const newValue = inputValue + ghostText;
+      const parts = newValue.trim().split(/\s+/);
+
+      // Always add trailing space after completion
+      const withSpace = newValue + ' ';
+      setInputValue(withSpace);
+      const ghost = getGhostText(withSpace, commandRegistry);
+      setGhostText(ghost);
+      cycleRef.current = null;
+
+      // If completed a subcommand (not just a category), no special handling needed
+      // The trailing space + getGhostText will show arg hints or next subcommand hint
+      void parts; // used for clarity, lint suppression
       return;
     }
 
-    // Get cycle candidates for the completed input
-    const candidates = getCycleCandidates(newValue, commandRegistry);
+    // No ghost text, no active cycle
+    const trimmed = inputValue.trim();
+    if (!trimmed) return;
+    const parts = trimmed.split(/\s+/);
+
+    // Don't cycle if input has args (user is filling params or command is complete)
+    if (parts.length > 2) return;
+
+    // Start cycling for category or command-level inputs
+    const candidates = getCycleCandidates(trimmed, commandRegistry);
     if (candidates.length > 1) {
-      const currentIndex = candidates.indexOf(newValue);
+      const currentIndex = candidates.indexOf(trimmed);
       const firstIndex = currentIndex >= 0 ? (currentIndex + 1) % candidates.length : 0;
-      cycleRef.current = { baseInput: newValue, candidates, index: firstIndex };
+      cycleRef.current = { baseInput: trimmed, candidates, index: firstIndex };
       const candidate = candidates[firstIndex];
-      setInputValue(candidate);
-      const ghost = getGhostText(candidate + ' ', commandRegistry);
-      setGhostText(ghost ? ' ' + ghost : '');
-    } else if (candidates.length === 1 && candidates[0] !== newValue) {
-      setInputValue(candidates[0]);
-      const ghost = getGhostText(candidates[0] + ' ', commandRegistry);
-      setGhostText(ghost ? ' ' + ghost : '');
-      cycleRef.current = null;
-    } else {
-      setInputValue(newValue);
-      const ghost = getGhostText(newValue, commandRegistry);
+      const withSpace = candidate + ' ';
+      setInputValue(withSpace);
+      const ghost = getGhostText(withSpace, commandRegistry);
+      setGhostText(ghost);
+    } else if (candidates.length === 1 && candidates[0] !== trimmed) {
+      const withSpace = candidates[0] + ' ';
+      setInputValue(withSpace);
+      const ghost = getGhostText(withSpace, commandRegistry);
       setGhostText(ghost);
       cycleRef.current = null;
     }

@@ -79,7 +79,10 @@ describe('Command Definitions', () => {
     expect(names).toContain('rule.edit');
     expect(names).toContain('view.gridLines');
 
-    expect(list.length).toBe(37);
+    // Timeline / playback
+    expect(names).toContain('sim.setDuration');
+
+    expect(list.length).toBe(38);
   });
 
   it('TestCommandDefinitions_SimPlay_StartsSimulation', async () => {

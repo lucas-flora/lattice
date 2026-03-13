@@ -255,20 +255,21 @@ export function TimelineCounter() {
   }, [displayMode]);
 
   const startEditDuration = useCallback(() => {
-    setEditValue(String(duration));
+    setEditValue(String(duration - 1));
     setEditingDuration(true);
   }, [duration]);
 
   const commitDuration = useCallback(() => {
     const val = parseInt(editValue, 10);
-    if (val > 0) {
-      uiStoreActions.setTimelineDuration(val);
+    if (val >= 0) {
+      uiStoreActions.setTimelineDuration(val + 1);
     }
     setEditingDuration(false);
   }, [editValue]);
 
   const currentLabel = formatLabel(generation, displayMode, speed);
-  const durationLabel = formatLabel(duration, displayMode, speed);
+  // Display last frame index (0-indexed), not total frame count
+  const durationLabel = formatLabel(duration - 1, displayMode, speed);
 
   // Dynamic width based on display mode
   const counterWidth = displayMode === 'timecode' ? 150 : displayMode === 'time' ? 120 : 90;

@@ -4,7 +4,23 @@
 
 'use client';
 
-import { useRef, useEffect, type KeyboardEvent, type ChangeEvent } from 'react';
+import { useRef, useEffect, type KeyboardEvent, type ChangeEvent, type ReactNode } from 'react';
+
+/** Render ghost text with the first <param> or [param] placeholder highlighted. */
+function renderGhostSegments(ghost: string): ReactNode {
+  const match = ghost.match(/^(\s*)(<[^>]+>|\[[^\]]+\])(.*)/);
+  if (match) {
+    const [, prefix, placeholder, rest] = match;
+    return (
+      <>
+        <span className="text-zinc-600">{prefix}</span>
+        <span className="text-green-500/40">{placeholder}</span>
+        <span className="text-zinc-600">{rest}</span>
+      </>
+    );
+  }
+  return <span className="text-zinc-600">{ghost}</span>;
+}
 
 interface TerminalInputProps {
   value: string;
@@ -75,10 +91,10 @@ export function TerminalInput({
         {/* Ghost text overlay */}
         {ghostText && (
           <span
-            className="absolute left-0 top-0 pointer-events-none text-zinc-600"
+            className="absolute left-0 top-0 pointer-events-none"
             style={{ paddingLeft: `${value.length}ch` }}
           >
-            {ghostText}
+            {renderGhostSegments(ghostText)}
           </span>
         )}
       </div>

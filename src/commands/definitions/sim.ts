@@ -7,7 +7,7 @@
 import { z } from 'zod';
 import type { CommandRegistry } from '../CommandRegistry';
 import type { SimulationController } from '../SimulationController';
-import { useUiStore } from '../../store/uiStore';
+import { useUiStore, uiStoreActions } from '../../store/uiStore';
 
 const NoParams = z.object({}).describe('none');
 
@@ -22,6 +22,10 @@ const SeekParams = z.object({
 const PlaybackModeParams = z.object({
   mode: z.enum(['loop', 'endless', 'once']),
 }).describe('{ mode: "loop" | "endless" | "once" }');
+
+const DurationParams = z.object({
+  frames: z.number().int().min(1),
+}).describe('{ frames: number }');
 
 export function registerSimCommands(
   registry: CommandRegistry,
@@ -162,6 +166,19 @@ export function registerSimCommands(
       controller.setPlaybackMode(mode);
       useUiStore.setState({ playbackMode: mode });
       return { success: true, data: { mode } };
+    },
+  });
+
+  registry.register({
+    name: 'sim.setDuration',
+    description: 'Set timeline duration in frames',
+    category: 'sim',
+    params: DurationParams,
+    execute: async (params) => {
+      const { frames } = params as z.infer<typeof DurationParams>;
+      controller.setTimelineDuration(frames);
+      uiStoreActions.setTimelineDuration(frames);
+      return { success: true, data: { duration: frames } };
     },
   });
 }

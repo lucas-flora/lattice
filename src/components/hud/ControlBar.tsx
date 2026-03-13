@@ -169,7 +169,7 @@ export function ControlBar() {
       {/* Playback Mode */}
       <button
         onClick={handlePlaybackMode}
-        className="text-zinc-300 hover:text-white px-2 py-1 text-sm font-mono"
+        className="text-zinc-300 hover:text-white w-8 h-8 flex items-center justify-center text-xl leading-none"
         title={`Playback: ${playbackMode}`}
         data-testid="btn-playback-mode"
       >

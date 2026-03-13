@@ -32,6 +32,8 @@ function hyphenToCamelCase(str: string): string {
 const PARAM_MAPPINGS: Record<string, string[]> = {
   'sim.speed': ['fps'],
   'sim.seek': ['generation'],
+  'sim.setDuration': ['frames'],
+  'sim.setPlaybackMode': ['mode'],
   'preset.load': ['name'],
   'edit.draw': ['x', 'y'],
   'edit.erase': ['x', 'y'],
@@ -52,6 +54,8 @@ const PARAM_MAPPINGS: Record<string, string[]> = {
 const ARG_HINTS: Record<string, string> = {
   'sim.speed': '<fps>',
   'sim.seek': '<generation>',
+  'sim.setDuration': '<frames>',
+  'sim.setPlaybackMode': '<loop|endless|once>',
   'preset.load': '<name>',
   'edit.draw': '<x> <y>',
   'edit.erase': '<x> <y>',
@@ -346,6 +350,36 @@ export function getGhostText(input: string, registry: CommandRegistry): string {
       return candidates[0].split(' ').slice(1).join(' ');
     }
     return '';
+  }
+
+  // No trailing space, exactly 2 parts — check if it's a complete command → show arg hints
+  if (!hasTrailingSpace && parts.length === 2) {
+    const camelAction = hyphenToCamelCase(parts[1]);
+    const commandName = `${parts[0]}.${camelAction}`;
+    if (registry.has(commandName)) {
+      const hint = ARG_HINTS[commandName];
+      if (hint) {
+        return ' ' + hint;
+      }
+      return '';
+    }
+  }
+
+  // No trailing space, 3+ parts — mid-arg, show remaining param hints
+  if (!hasTrailingSpace && parts.length > 2) {
+    const camelAction = hyphenToCamelCase(parts[1]);
+    const commandName = `${parts[0]}.${camelAction}`;
+    if (registry.has(commandName)) {
+      const hint = ARG_HINTS[commandName];
+      if (hint) {
+        const hintParts = hint.split(/\s+/);
+        const typedArgCount = parts.length - 2;
+        if (typedArgCount < hintParts.length) {
+          return ' ' + hintParts.slice(typedArgCount).join(' ');
+        }
+      }
+      return '';
+    }
   }
 
   // Standard prefix completion
