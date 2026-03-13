@@ -76,4 +76,25 @@ export function registerUiCommands(
       return { success: true, data: { isHotkeyHelpOpen: next } };
     },
   });
+
+  registry.register({
+    name: 'ui.focusToggle',
+    description: 'Switch focus between terminal and simulation',
+    category: 'ui',
+    params: NoParams,
+    execute: async () => {
+      const terminalInput = document.querySelector('[data-testid="terminal-input"]') as HTMLElement | null;
+      const active = document.activeElement;
+      if (active === terminalInput) {
+        // Terminal focused → blur to sim area
+        (active as HTMLElement).blur();
+        return { success: true, data: { focus: 'simulation' } };
+      } else if (terminalInput) {
+        // Sim area → focus terminal input
+        terminalInput.focus();
+        return { success: true, data: { focus: 'terminal' } };
+      }
+      return { success: true, data: { focus: 'unchanged' } };
+    },
+  });
 }

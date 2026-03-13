@@ -79,7 +79,7 @@ describe('Command Definitions', () => {
     expect(names).toContain('rule.edit');
     expect(names).toContain('view.gridLines');
 
-    expect(list.length).toBe(35);
+    expect(list.length).toBe(37);
   });
 
   it('TestCommandDefinitions_SimPlay_StartsSimulation', async () => {

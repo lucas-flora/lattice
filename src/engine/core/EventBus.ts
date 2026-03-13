@@ -26,6 +26,7 @@ export interface EngineEventMap {
   'edit:draw': { x: number; y: number };
   'edit:erase': { x: number; y: number };
   'sim:computeProgress': { computedGeneration: number };
+  'sim:timelineExtend': { duration: number };
 }
 
 /** Valid event names */

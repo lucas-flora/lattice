@@ -36,6 +36,19 @@ interface TickSnapshot {
 /** How many frames to compute per async chunk during compute-ahead */
 const COMPUTE_CHUNK_SIZE = 50;
 
+/** Smaller chunk during playback to avoid blocking playback ticks */
+const PLAYBACK_CHUNK_SIZE = 10;
+
+/** Round a duration to a "nice" number for smart auto-extend */
+function smartExtendDuration(current: number): number {
+  const doubled = current * 2;
+  if (doubled <= 100) return Math.ceil(doubled / 10) * 10;
+  if (doubled <= 1000) return Math.ceil(doubled / 50) * 50;
+  return Math.ceil(doubled / 100) * 100;
+}
+
+export type PlaybackMode = 'loop' | 'endless' | 'once';
+
 export class SimulationController {
   private eventBus: EventBus;
   private simulation: Simulation | null = null;
@@ -64,6 +77,12 @@ export class SimulationController {
 
   /** Current playback generation (may lag behind computedGeneration) */
   private playbackGeneration: number = 0;
+
+  /** What happens when playback reaches the end of the timeline */
+  private playbackMode: PlaybackMode = 'endless';
+
+  /** Timeline duration in frames (for end-of-timeline detection) */
+  private timelineDuration: number = 300;
 
   constructor(eventBus: EventBus, tickIntervalMs: number = 100) {
     this.eventBus = eventBus;
@@ -152,11 +171,19 @@ export class SimulationController {
   step(): void {
     if (!this.simulation) return;
 
+    const nextGen = this.playbackGeneration + 1;
+
+    // Stepping past timeline end: extend by exactly 1 frame
+    if (nextGen >= this.timelineDuration) {
+      this.timelineDuration = nextGen + 1;
+      this.eventBus.emit('sim:timelineExtend', { duration: this.timelineDuration });
+    }
+
     // Ensure the next frame is computed
-    if (this.playbackGeneration >= this.computedGeneration) {
+    if (nextGen > this.computedGeneration) {
       this.computeFrames(1);
     }
-    this.playbackGeneration++;
+    this.playbackGeneration = nextGen;
     this.restoreFrame(this.playbackGeneration);
   }
 
@@ -356,6 +383,20 @@ export class SimulationController {
   }
 
   /**
+   * Set what happens when playback reaches the end of the timeline.
+   */
+  setPlaybackMode(mode: PlaybackMode): void {
+    this.playbackMode = mode;
+  }
+
+  /**
+   * Update the timeline duration the controller tracks for end-of-timeline detection.
+   */
+  setTimelineDuration(duration: number): void {
+    this.timelineDuration = duration;
+  }
+
+  /**
    * Capture the current grid state as the "initial state" for seek/reset.
    * Call after initializeSimulation() to preserve the starting pattern.
    * Immediately starts aggressive compute-ahead to fill the cache.
@@ -372,6 +413,7 @@ export class SimulationController {
 
     // Aggressively start computing ahead immediately
     if (cacheTarget && cacheTarget > 0) {
+      this.timelineDuration = cacheTarget;
       this.computeAhead(cacheTarget);
     }
   }
@@ -518,24 +560,44 @@ export class SimulationController {
   private playbackTick(): void {
     if (!this.simulation) return;
 
-    // If we've caught up to the computed frontier, compute more
-    if (this.playbackGeneration >= this.computedGeneration) {
-      // Compute a small burst to stay ahead
-      this.computeFrames(Math.min(COMPUTE_CHUNK_SIZE, 10));
+    const nextGen = this.playbackGeneration + 1;
+
+    // Check if playback has reached the end of the timeline
+    if (nextGen >= this.timelineDuration) {
+      switch (this.playbackMode) {
+        case 'once':
+          this.pause();
+          return;
+        case 'loop':
+          this.playbackGeneration = 0;
+          this.restoreFrame(0);
+          return;
+        case 'endless': {
+          const newDuration = smartExtendDuration(this.timelineDuration);
+          this.timelineDuration = newDuration;
+          this.eventBus.emit('sim:timelineExtend', { duration: newDuration });
+          // Extend compute-ahead target and kick off caching if idle
+          this.computeAheadTarget = newDuration;
+          if (!this.computeAheadTimer) {
+            this.runComputeAheadChunk();
+          }
+          break; // Continue to advance playback below
+        }
+      }
     }
 
-    // Advance playback — restoreFrame sets the grid to the right state for rendering
-    if (this.playbackGeneration < this.computedGeneration) {
-      this.playbackGeneration++;
-      this.restoreFrame(this.playbackGeneration);
+    // If next frame isn't computed yet, compute just 1 frame to keep playback going
+    // (minimal synchronous work — bulk caching is handled by runComputeAheadChunk)
+    if (nextGen > this.computedGeneration) {
+      this.computeFrames(1);
     }
 
-    // Keep computing ahead in the background
-    if (this.computedGeneration < this.computeAheadTarget) {
-      this.computeFrames(Math.min(COMPUTE_CHUNK_SIZE, this.computeAheadTarget - this.computedGeneration));
-      // Restore grid to playback frame (computeFrames advanced the engine)
+    // Advance playback if the frame is now available
+    if (nextGen <= this.computedGeneration) {
+      this.playbackGeneration = nextGen;
       this.restoreFrame(this.playbackGeneration);
     }
+    // else: frame still not ready, skip this tick (avoids blocking)
   }
 
   /**
@@ -561,7 +623,9 @@ export class SimulationController {
     }
 
     const remaining = this.computeAheadTarget - this.computedGeneration;
-    const chunkSize = Math.min(COMPUTE_CHUNK_SIZE, remaining);
+    // Use smaller chunks during playback to avoid blocking playback ticks
+    const maxChunk = this.playing ? PLAYBACK_CHUNK_SIZE : COMPUTE_CHUNK_SIZE;
+    const chunkSize = Math.min(maxChunk, remaining);
     this.computeFrames(chunkSize);
 
     // Restore the grid to the playback frame so the visible state isn't corrupted.

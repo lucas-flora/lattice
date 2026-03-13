@@ -65,7 +65,7 @@ function formatLabel(frame: number, mode: TimelineDisplayMode, fps: number): str
 
 export { niceInterval, formatLabel };
 
-const MINIMAP_HEIGHT = 12;
+const MINIMAP_HEIGHT = 16;
 const RULER_HEIGHT = 24;
 const MAJOR_TICK_HEIGHT = 10;
 const MINOR_TICK_HEIGHT = 5;
@@ -92,6 +92,18 @@ function MiniMap({
   const draggingRef = useRef<'none' | 'pan' | 'left' | 'right'>('none');
   const dragStartRef = useRef({ x: 0, zoomStart: 0, zoomEnd: 0 });
 
+  // Track duration changes for smooth CSS transitions during auto-extend
+  const [isExtending, setIsExtending] = useState(false);
+  const prevDurationRef = useRef(duration);
+  useEffect(() => {
+    if (duration !== prevDurationRef.current) {
+      prevDurationRef.current = duration;
+      setIsExtending(true);
+      const timer = setTimeout(() => setIsExtending(false), 400);
+      return () => clearTimeout(timer);
+    }
+  }, [duration]);
+
   const frameToX = (frame: number) => (frame / Math.max(duration, 1)) * containerWidth;
   const xToFrame = (x: number) => (x / Math.max(containerWidth, 1)) * duration;
 
@@ -107,11 +119,11 @@ function MiniMap({
     const x = e.clientX - rect.left;
     el.setPointerCapture(e.pointerId);
 
-    // Check if clicking on zoom region edges (8px grab zone for grips)
-    if (Math.abs(x - zoomLeftX) < 8) {
+    // Check if clicking on zoom region edges (16px grab zone for grips)
+    if (Math.abs(x - zoomLeftX) < 16) {
       draggingRef.current = 'left';
       dragStartRef.current = { x: e.clientX, zoomStart, zoomEnd };
-    } else if (Math.abs(x - (zoomLeftX + zoomWidth)) < 8) {
+    } else if (Math.abs(x - (zoomLeftX + zoomWidth)) < 16) {
       draggingRef.current = 'right';
       dragStartRef.current = { x: e.clientX, zoomStart, zoomEnd };
     } else if (x >= zoomLeftX && x <= zoomLeftX + zoomWidth) {
@@ -175,7 +187,11 @@ function MiniMap({
       {/* Zoom region — much brighter to contrast with dark outside */}
       <div
         className="absolute top-0 bottom-0 bg-zinc-700"
-        style={{ left: zoomLeftX, width: Math.max(zoomWidth, 2) }}
+        style={{
+          left: zoomLeftX,
+          width: Math.max(zoomWidth, 2),
+          ...(isExtending ? { transition: 'left 300ms ease-out, width 300ms ease-out' } : {}),
+        }}
       />
 
       {/* Computed region inside zoom — brighter green */}
@@ -185,6 +201,7 @@ function MiniMap({
           style={{
             left: zoomLeftX,
             width: Math.min(computedWidth, zoomLeftX + zoomWidth) - zoomLeftX,
+            ...(isExtending ? { transition: 'left 300ms ease-out, width 300ms ease-out' } : {}),
           }}
         />
       )}
@@ -192,17 +209,23 @@ function MiniMap({
       {/* Left grip */}
       <div
         className="absolute top-0 bottom-0 cursor-ew-resize"
-        style={{ left: zoomLeftX - 3, width: 6 }}
+        style={{
+          left: zoomLeftX - 12, width: 24,
+          ...(isExtending ? { transition: 'left 300ms ease-out' } : {}),
+        }}
       >
-        <div className="absolute inset-y-0 left-[2px] w-[2px] bg-zinc-400" />
+        <div className="absolute inset-y-0 left-[5px] w-[10px] bg-zinc-400/80 rounded-sm" />
       </div>
 
       {/* Right grip */}
       <div
         className="absolute top-0 bottom-0 cursor-ew-resize"
-        style={{ left: zoomLeftX + zoomWidth - 3, width: 6 }}
+        style={{
+          left: zoomLeftX + zoomWidth - 12, width: 24,
+          ...(isExtending ? { transition: 'left 300ms ease-out' } : {}),
+        }}
       >
-        <div className="absolute inset-y-0 right-[2px] w-[2px] bg-zinc-400" />
+        <div className="absolute inset-y-0 right-[5px] w-[10px] bg-zinc-400/80 rounded-sm" />
       </div>
 
       {/* Playhead on mini-map */}
@@ -221,6 +244,8 @@ export function TimelineCounter() {
   const speed = useSimStore((s) => s.speed);
   const displayMode = useUiStore((s) => s.timelineDisplayMode);
   const duration = useUiStore((s) => s.timelineDuration);
+  const [editingDuration, setEditingDuration] = useState(false);
+  const [editValue, setEditValue] = useState('');
 
   const cycleDisplayMode = useCallback(() => {
     const modes: TimelineDisplayMode[] = ['frames', 'time', 'timecode'];
@@ -229,19 +254,60 @@ export function TimelineCounter() {
     useUiStore.setState({ timelineDisplayMode: nextMode });
   }, [displayMode]);
 
+  const startEditDuration = useCallback(() => {
+    setEditValue(String(duration));
+    setEditingDuration(true);
+  }, [duration]);
+
+  const commitDuration = useCallback(() => {
+    const val = parseInt(editValue, 10);
+    if (val > 0) {
+      uiStoreActions.setTimelineDuration(val);
+    }
+    setEditingDuration(false);
+  }, [editValue]);
+
   const currentLabel = formatLabel(generation, displayMode, speed);
   const durationLabel = formatLabel(duration, displayMode, speed);
 
+  // Dynamic width based on display mode
+  const counterWidth = displayMode === 'timecode' ? 150 : displayMode === 'time' ? 120 : 90;
+
   return (
-    <button
-      onClick={cycleDisplayMode}
-      className="shrink-0 py-1 text-[10px] font-mono tabular-nums text-zinc-400 hover:text-zinc-200 transition-colors whitespace-nowrap bg-zinc-800/60 rounded border border-zinc-700/50 text-center"
-      style={{ width: 90 }}
-      title={`Display: ${displayMode} (click to cycle)`}
+    <div
+      className="shrink-0 flex items-center py-1 text-[10px] font-mono tabular-nums whitespace-nowrap bg-zinc-800/60 rounded border border-zinc-700/50"
+      style={{ width: counterWidth }}
       data-testid="timeline-display-mode"
     >
-      {currentLabel} / {durationLabel}
-    </button>
+      <button
+        onClick={cycleDisplayMode}
+        className="flex-1 text-zinc-400 hover:text-zinc-200 transition-colors text-center"
+        title={`Display: ${displayMode} (click to cycle)`}
+      >
+        {currentLabel}
+      </button>
+      <span className="text-zinc-600">/</span>
+      {editingDuration ? (
+        <input
+          type="number"
+          value={editValue}
+          onChange={(e) => setEditValue(e.target.value)}
+          onBlur={commitDuration}
+          onKeyDown={(e) => { if (e.key === 'Enter') commitDuration(); if (e.key === 'Escape') setEditingDuration(false); }}
+          className="w-14 bg-zinc-700 text-zinc-200 text-[10px] font-mono tabular-nums text-center outline-none rounded-sm px-1 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+          min={1}
+          autoFocus
+        />
+      ) : (
+        <button
+          onClick={startEditDuration}
+          className="flex-1 text-zinc-400 hover:text-zinc-200 transition-colors text-center"
+          title="Click to set duration"
+        >
+          {durationLabel}
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -257,8 +323,6 @@ export function Timeline() {
   const duration = useUiStore((s) => s.timelineDuration);
   const zoomStart = useUiStore((s) => s.timelineZoomStart);
   const zoomEnd = useUiStore((s) => s.timelineZoomEnd);
-  const autoExtend = useUiStore((s) => s.timelineAutoExtend);
-
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(0);
   const draggingRef = useRef(false);
@@ -276,18 +340,17 @@ export function Timeline() {
     return () => observer.disconnect();
   }, []);
 
-  // Auto-extend: when generation reaches duration, double it
+  // Auto-pan during playback: keep playhead in view by scrolling the zoom region
   useEffect(() => {
-    if (!autoExtend) return;
-    if (generation >= duration) {
-      const newDuration = duration * 2;
-      uiStoreActions.setTimelineDuration(newDuration);
-      // Keep zoom showing same span but recentered so playhead is at midpoint
-      const zoomSpan = zoomEnd - zoomStart;
-      const newZoomStart = Math.max(0, generation - zoomSpan / 2);
-      uiStoreActions.setTimelineZoom(newZoomStart, newZoomStart + zoomSpan);
+    if (!isRunning) return;
+    const span = zoomEnd - zoomStart;
+    const margin = span * 0.1;
+    if (generation > zoomEnd - margin) {
+      const newStart = generation - span * 0.5;
+      const clamped = Math.max(0, Math.min(newStart, duration - span));
+      uiStoreActions.setTimelineZoom(clamped, clamped + span);
     }
-  }, [generation, duration, autoExtend, zoomStart, zoomEnd]);
+  }, [generation, isRunning, zoomStart, zoomEnd, duration]);
 
   // Zoomed view range
   const zoomSpan = Math.max(zoomEnd - zoomStart, 1);
@@ -371,28 +434,54 @@ export function Timeline() {
     (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
   }, []);
 
-  // Scroll wheel zoom — centered on cursor position
+  // Scroll: vertical = zoom (centered on cursor), horizontal = scrub playhead
   const onWheel = useCallback((e: React.WheelEvent) => {
     e.preventDefault();
     const el = containerRef.current;
     if (!el) return;
+
+    // Horizontal scroll → scrub playhead
+    if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+      const frameDelta = Math.round((e.deltaX / containerWidth) * zoomSpan * 2);
+      if (frameDelta !== 0) {
+        const target = Math.max(0, Math.min(generation + frameDelta, Math.max(computedGeneration, maxGeneration)));
+        pendingSeekRef.current = target;
+        if (seekRafRef.current === null) {
+          seekRafRef.current = requestAnimationFrame(() => {
+            seekRafRef.current = null;
+            if (pendingSeekRef.current !== null) {
+              commandRegistry.execute('sim.seek', { generation: pendingSeekRef.current });
+              pendingSeekRef.current = null;
+            }
+          });
+        }
+      }
+      return;
+    }
+
+    // Vertical scroll → zoom centered on cursor
     const rect = el.getBoundingClientRect();
     const cursorX = e.clientX - rect.left;
     const cursorFraction = cursorX / containerWidth;
     const cursorFrame = zoomStart + cursorFraction * zoomSpan;
 
-    // Zoom factor: scroll up = zoom in, scroll down = zoom out
     const factor = e.deltaY > 0 ? 1.2 : 1 / 1.2;
     const newSpan = Math.max(10, Math.min(duration, zoomSpan * factor));
 
-    // Keep cursor frame at the same screen position
     const newStart = cursorFrame - cursorFraction * newSpan;
     const clampedStart = Math.max(0, Math.min(newStart, duration - newSpan));
     uiStoreActions.setTimelineZoom(clampedStart, clampedStart + newSpan);
-  }, [containerWidth, zoomStart, zoomSpan, duration]);
+  }, [containerWidth, zoomStart, zoomSpan, duration, generation, computedGeneration, maxGeneration]);
+
+  // Click on timeline blurs any focused input (so keyboard shortcuts work again)
+  const handleTimelineClick = useCallback(() => {
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+  }, []);
 
   return (
-    <div className="select-none" data-testid="timeline">
+    <div className="select-none" tabIndex={-1} onClick={handleTimelineClick} data-testid="timeline">
       {/* Mini-map — always shows full 0..duration */}
       <MiniMap
         containerWidth={containerWidth}

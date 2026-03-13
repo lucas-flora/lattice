@@ -207,29 +207,49 @@ export function ParamPanel({ docked = false }: ParamPanelProps) {
           <div className="space-y-1.5 text-xs font-mono text-zinc-400">
             <div className="flex items-center justify-between">
               <span>Width</span>
-              <input
-                type="number"
-                value={editWidth}
-                onChange={(e) => setEditWidth(e.target.value)}
-                onBlur={handleGridResize}
-                onKeyDown={(e) => { if (e.key === 'Enter') handleGridResize(); }}
-                min={1}
-                className="w-20 bg-zinc-800 text-zinc-200 text-xs font-mono tabular-nums rounded px-2 py-1 border border-zinc-700 outline-none text-right [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                data-testid="param-grid-width"
-              />
+              <div className="flex items-center gap-0">
+                <button
+                  onClick={() => { const v = Math.max(1, parseInt(editWidth, 10) - 1); setEditWidth(String(v)); commandRegistry.execute('grid.resize', { width: v, height: parseInt(editHeight, 10) }); }}
+                  className="bg-zinc-800 text-zinc-400 hover:text-zinc-200 border border-zinc-700 border-r-0 rounded-l px-1.5 py-1 text-xs"
+                >{'\u2212'}</button>
+                <input
+                  type="number"
+                  value={editWidth}
+                  onChange={(e) => setEditWidth(e.target.value)}
+                  onBlur={handleGridResize}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleGridResize(); }}
+                  min={1}
+                  className="w-14 bg-zinc-800 text-zinc-200 text-xs font-mono tabular-nums px-1 py-1 border-y border-zinc-700 outline-none text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  data-testid="param-grid-width"
+                />
+                <button
+                  onClick={() => { const v = parseInt(editWidth, 10) + 1; setEditWidth(String(v)); commandRegistry.execute('grid.resize', { width: v, height: parseInt(editHeight, 10) }); }}
+                  className="bg-zinc-800 text-zinc-400 hover:text-zinc-200 border border-zinc-700 border-l-0 rounded-r px-1.5 py-1 text-xs"
+                >+</button>
+              </div>
             </div>
             <div className="flex items-center justify-between">
               <span>Height</span>
-              <input
-                type="number"
-                value={editHeight}
-                onChange={(e) => setEditHeight(e.target.value)}
-                onBlur={handleGridResize}
-                onKeyDown={(e) => { if (e.key === 'Enter') handleGridResize(); }}
-                min={1}
-                className="w-20 bg-zinc-800 text-zinc-200 text-xs font-mono tabular-nums rounded px-2 py-1 border border-zinc-700 outline-none text-right [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                data-testid="param-grid-height"
-              />
+              <div className="flex items-center gap-0">
+                <button
+                  onClick={() => { const v = Math.max(1, parseInt(editHeight, 10) - 1); setEditHeight(String(v)); commandRegistry.execute('grid.resize', { width: parseInt(editWidth, 10), height: v }); }}
+                  className="bg-zinc-800 text-zinc-400 hover:text-zinc-200 border border-zinc-700 border-r-0 rounded-l px-1.5 py-1 text-xs"
+                >{'\u2212'}</button>
+                <input
+                  type="number"
+                  value={editHeight}
+                  onChange={(e) => setEditHeight(e.target.value)}
+                  onBlur={handleGridResize}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleGridResize(); }}
+                  min={1}
+                  className="w-14 bg-zinc-800 text-zinc-200 text-xs font-mono tabular-nums px-1 py-1 border-y border-zinc-700 outline-none text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  data-testid="param-grid-height"
+                />
+                <button
+                  onClick={() => { const v = parseInt(editHeight, 10) + 1; setEditHeight(String(v)); commandRegistry.execute('grid.resize', { width: parseInt(editWidth, 10), height: v }); }}
+                  className="bg-zinc-800 text-zinc-400 hover:text-zinc-200 border border-zinc-700 border-l-0 rounded-r px-1.5 py-1 text-xs"
+                >+</button>
+              </div>
             </div>
             <div className="flex justify-between">
               <span>Speed</span>

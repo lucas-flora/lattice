@@ -9,6 +9,7 @@ import { subscribeWithSelector } from 'zustand/middleware';
 
 export type PanelMode = 'floating' | 'docked';
 export type TimelineDisplayMode = 'frames' | 'time' | 'timecode';
+export type PlaybackMode = 'loop' | 'endless' | 'once';
 
 export interface UiState {
   /** Whether the terminal panel is visible */
@@ -43,6 +44,8 @@ export interface UiState {
   timelineZoomEnd: number;
   /** Auto-extend timeline when sim reaches the end */
   timelineAutoExtend: boolean;
+  /** Playback end-of-timeline behavior */
+  playbackMode: PlaybackMode;
 }
 
 export const useUiStore = create<UiState>()(
@@ -63,6 +66,7 @@ export const useUiStore = create<UiState>()(
     timelineZoomStart: 0,
     timelineZoomEnd: 300,
     timelineAutoExtend: true,
+    playbackMode: 'endless' as PlaybackMode,
   })),
 );
 
@@ -124,5 +128,8 @@ export const uiStoreActions = {
   },
   setTimelineAutoExtend: (autoExtend: boolean): void => {
     useUiStore.setState({ timelineAutoExtend: autoExtend });
+  },
+  setPlaybackMode: (playbackMode: PlaybackMode): void => {
+    useUiStore.setState({ playbackMode });
   },
 };

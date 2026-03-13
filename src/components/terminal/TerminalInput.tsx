@@ -34,7 +34,7 @@ export function TerminalInput({
     if (e.key === 'Enter') {
       e.preventDefault();
       onSubmit(value);
-    } else if (e.key === 'Tab') {
+    } else if (e.key === 'Tab' && !e.shiftKey) {
       e.preventDefault();
       onAcceptGhostText();
     } else if (e.key === 'ArrowUp') {

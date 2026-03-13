@@ -28,10 +28,17 @@ function speedToSliderIndex(fps: number): number {
   return idx >= 0 ? idx : 2; // Default to 10 FPS
 }
 
+const PLAYBACK_MODE_ICONS: Record<string, string> = {
+  loop: '\u27F3',    // ⟳
+  endless: '\u221E', // ∞
+  once: '\u21E5',    // ⇥ (arrow to bar — play to end then stop)
+};
+
 export function ControlBar() {
   const isRunning = useSimStore((s) => s.isRunning);
   const speed = useSimStore((s) => s.speed);
   const viewportCount = useUiStore((s) => s.viewportCount);
+  const playbackMode = useUiStore((s) => s.playbackMode);
 
   const handlePlayPause = useCallback(() => {
     if (isRunning) {
@@ -70,6 +77,13 @@ export function ControlBar() {
   const handleScreenshot = useCallback(() => {
     commandRegistry.execute('viewport.screenshot', {});
   }, []);
+
+  const handlePlaybackMode = useCallback(() => {
+    const modes = ['loop', 'endless', 'once'] as const;
+    const currentIdx = modes.indexOf(playbackMode as typeof modes[number]);
+    const nextMode = modes[(currentIdx + 1) % modes.length];
+    commandRegistry.execute('sim.setPlaybackMode', { mode: nextMode });
+  }, [playbackMode]);
 
   return (
     <div
@@ -151,6 +165,16 @@ export function ControlBar() {
 
       {/* Divider */}
       <div className="w-px h-5 bg-zinc-700" />
+
+      {/* Playback Mode */}
+      <button
+        onClick={handlePlaybackMode}
+        className="text-zinc-300 hover:text-white px-2 py-1 text-sm font-mono"
+        title={`Playback: ${playbackMode}`}
+        data-testid="btn-playback-mode"
+      >
+        {PLAYBACK_MODE_ICONS[playbackMode] || '\u221E'}
+      </button>
 
       {/* Screenshot */}
       <button

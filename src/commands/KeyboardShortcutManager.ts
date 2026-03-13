@@ -46,6 +46,7 @@ export const DEFAULT_SHORTCUTS: ShortcutBinding[] = [
   { keyLabel: '?', key: '?', commandName: 'ui.toggleHotkeyHelp', description: 'Show keyboard shortcuts' },
   { keyLabel: 'Ctrl+Z', key: 'z', ctrlOrMeta: true, commandName: 'edit.undo', description: 'Undo' },
   { keyLabel: 'Ctrl+Shift+Z', key: 'z', ctrlOrMeta: true, shift: true, commandName: 'edit.redo', description: 'Redo' },
+  { keyLabel: 'Shift+Tab', key: 'Tab', shift: true, commandName: 'ui.focusToggle', description: 'Switch focus' },
 ];
 
 export class KeyboardShortcutManager {
@@ -98,9 +99,11 @@ export class KeyboardShortcutManager {
 
       // Skip if user is typing in an input field, unless it's a
       // Ctrl/Cmd shortcut (e.g. Ctrl+` to close terminal from its input)
+      // or Shift+Tab (focus switching always works)
       const tag = (e.target as HTMLElement)?.tagName;
       if ((tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') &&
-          !(e.ctrlKey || e.metaKey)) return;
+          !(e.ctrlKey || e.metaKey) &&
+          !(e.key === 'Tab' && e.shiftKey)) return;
 
       for (const binding of this.shortcuts) {
         if (this.matchesEvent(e, binding)) {

@@ -19,6 +19,10 @@ const SeekParams = z.object({
   generation: z.number().int().min(0),
 }).describe('{ generation: number }');
 
+const PlaybackModeParams = z.object({
+  mode: z.enum(['loop', 'endless', 'once']),
+}).describe('{ mode: "loop" | "endless" | "once" }');
+
 export function registerSimCommands(
   registry: CommandRegistry,
   controller: SimulationController,
@@ -29,8 +33,10 @@ export function registerSimCommands(
     category: 'sim',
     params: NoParams,
     execute: async () => {
-      // Kick off compute-ahead to timeline duration before starting playback
-      const { timelineDuration } = useUiStore.getState();
+      // Sync playback mode and timeline duration to controller before starting
+      const { timelineDuration, playbackMode } = useUiStore.getState();
+      controller.setPlaybackMode(playbackMode);
+      controller.setTimelineDuration(timelineDuration);
       controller.computeAhead(timelineDuration);
       controller.play();
       return { success: true };
@@ -136,11 +142,26 @@ export function registerSimCommands(
       if (controller.isPlaying()) {
         controller.pause();
       } else {
-        const { timelineDuration } = useUiStore.getState();
+        const { timelineDuration, playbackMode } = useUiStore.getState();
+        controller.setPlaybackMode(playbackMode);
+        controller.setTimelineDuration(timelineDuration);
         controller.computeAhead(timelineDuration);
         controller.play();
       }
       return { success: true, data: { isRunning: controller.isPlaying() } };
+    },
+  });
+
+  registry.register({
+    name: 'sim.setPlaybackMode',
+    description: 'Set playback end behavior (loop, endless, once)',
+    category: 'sim',
+    params: PlaybackModeParams,
+    execute: async (params) => {
+      const { mode } = params as z.infer<typeof PlaybackModeParams>;
+      controller.setPlaybackMode(mode);
+      useUiStore.setState({ playbackMode: mode });
+      return { success: true, data: { mode } };
     },
   });
 }
