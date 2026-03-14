@@ -48,6 +48,8 @@ Lattice is a universal simulation substrate. Cellular automata, reaction-diffusi
 │                                                                      │
 │  ┌─ SimulationInstance ─────────────────────────────────────┐        │
 │  │  Grid (1D/2D/3D ping-pong buffers, property channels)   │        │
+│  │  <!-- Grid is a rank-3 tensor (W, H, P). Vec properties occupy consecutive channel slots. See Glossary. -->
+│  │                                                         │        │
 │  │  CellTypeRegistry (types, inheritance, property union)   │        │
 │  │  RuleRunner (perceive → expressions → links → rule → tags)│       │
 │  │  CommandHistory (undo/redo snapshots)                     │        │
@@ -621,3 +623,4 @@ P11 (MCP) can begin any time after P10 — it only needs the command registry an
 | **MCP**           | Model Context Protocol. JSON-RPC transport for external AI agents to call commands. |
 | **Public API**    | REST/WebSocket HTTP endpoints exposing commands to external clients. |
 | **Command**       | A registered, named action with Zod-validated params and typed result. The atomic unit of the Three Surface Doctrine. |
+| **Tensor (rank-n)** | The grid is a rank-3 tensor `(W, H, P)` where W/H are spatial dimensions and P is total property channels. A single cell is a rank-1 slice (vector). The timeline adds a 4th dimension `(T, W, H, P)`. Vec properties (vec2/vec3/vec4) occupy consecutive channel indices within P. |
