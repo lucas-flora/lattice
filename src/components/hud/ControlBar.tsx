@@ -103,58 +103,58 @@ export function ControlBar() {
       className="flex items-center gap-2 px-1 py-1.5"
       data-testid="control-bar"
     >
-      {/* Skip to Start */}
-      <button
-        onClick={handleSkipToStart}
-        className="text-zinc-300 hover:text-white px-2 py-1 text-lg"
-        title="Skip to Start"
-        data-testid="btn-skip-start"
-      >
-        {'\u23EE'}
-      </button>
+      {/* Transport group */}
+      <div className="flex items-center gap-0.5 bg-zinc-800/60 rounded border border-zinc-700/40 px-1 py-0.5">
+        {/* Skip to Start */}
+        <button
+          onClick={handleSkipToStart}
+          className="text-zinc-400 hover:text-white px-1 py-0.5 text-xs"
+          title="Skip to Start"
+          data-testid="btn-skip-start"
+        >
+          {'\u23EE'}
+        </button>
 
-      {/* Step Back */}
-      <button
-        onClick={handleStepBack}
-        className="text-zinc-300 hover:text-white px-1.5 py-1 text-sm font-mono"
-        title="Step Back (B)"
-        data-testid="btn-step-back"
-      >
-        {'|◀'}
-      </button>
+        {/* Step Back */}
+        <button
+          onClick={handleStepBack}
+          className="text-zinc-400 hover:text-white px-1 py-0.5 text-xs font-mono"
+          title="Step Back (B)"
+          data-testid="btn-step-back"
+        >
+          {'|◀'}
+        </button>
 
-      {/* Play / Pause */}
-      <button
-        onClick={handlePlayPause}
-        className={`px-2 py-1 text-lg ${isRunning ? 'text-green-400' : 'text-zinc-300 hover:text-white'}`}
-        title={isRunning ? 'Pause (Space)' : 'Play (Space)'}
-        data-testid="btn-play-pause"
-      >
-        {isRunning ? '\u23F8' : '\u25B6'}
-      </button>
+        {/* Play / Pause */}
+        <button
+          onClick={handlePlayPause}
+          className={`w-7 h-7 flex items-center justify-center rounded text-lg ${isRunning ? 'text-green-400' : 'text-zinc-300 hover:text-white'}`}
+          title={isRunning ? 'Pause (Space)' : 'Play (Space)'}
+          data-testid="btn-play-pause"
+        >
+          {isRunning ? '\u23F8' : '\u25B6'}
+        </button>
 
-      {/* Step Forward */}
-      <button
-        onClick={handleStep}
-        className="text-zinc-300 hover:text-white px-1.5 py-1 text-sm font-mono"
-        title="Step Forward (N)"
-        data-testid="btn-step"
-      >
-        {'▶|'}
-      </button>
+        {/* Step Forward */}
+        <button
+          onClick={handleStep}
+          className="text-zinc-400 hover:text-white px-1 py-0.5 text-xs font-mono"
+          title="Step Forward (N)"
+          data-testid="btn-step"
+        >
+          {'▶|'}
+        </button>
 
-      {/* Skip to End */}
-      <button
-        onClick={handleSkipToEnd}
-        className="text-zinc-300 hover:text-white px-2 py-1 text-lg"
-        title="Skip to End"
-        data-testid="btn-skip-end"
-      >
-        {'\u23ED'}
-      </button>
-
-      {/* Divider */}
-      <div className="w-px h-5 bg-zinc-700" />
+        {/* Skip to End */}
+        <button
+          onClick={handleSkipToEnd}
+          className="text-zinc-400 hover:text-white px-1 py-0.5 text-xs"
+          title="Skip to End"
+          data-testid="btn-skip-end"
+        >
+          {'\u23ED'}
+        </button>
+      </div>
 
       {/* Reset */}
       <button
