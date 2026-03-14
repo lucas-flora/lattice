@@ -114,4 +114,76 @@ describe('Simulation', () => {
     const centerAlive = sim.getCellDirect('alive', 4 + 4 * width);
     expect(centerAlive).toBe(1);
   });
+
+  it('TestSimulation_RegistersInherentProperties', () => {
+    const preset = loadPresetOrThrow(PRESET_YAML);
+    const sim = new Simulation(preset);
+    // Grid should have inherent properties registered
+    expect(sim.grid.hasProperty('alive')).toBe(true);
+    expect(sim.grid.hasProperty('age')).toBe(true);
+    expect(sim.grid.hasProperty('alpha')).toBe(true);
+    expect(sim.grid.hasProperty('_cellType')).toBe(true);
+    // Plus the preset's own properties
+    expect(sim.grid.hasProperty('energy')).toBe(true);
+  });
+
+  it('TestSimulation_AgeAutoIncrement', () => {
+    const preset = loadPresetOrThrow(PRESET_YAML);
+    const sim = new Simulation(preset);
+
+    // Set a cell alive
+    sim.setCellDirect('alive', 0, 1);
+    // Also set 2 neighbors alive so it survives (GoL rules: 2 or 3 neighbors)
+    sim.setCellDirect('alive', 1, 1);
+    sim.setCellDirect('alive', 8, 1); // (0,1) in 8-wide grid
+
+    // Age starts at 0
+    expect(sim.getCellDirect('age', 0)).toBe(0);
+
+    sim.tick();
+    // Cell 0 should survive (has 2 neighbors) → age = 1
+    expect(sim.getCellDirect('alive', 0)).toBe(1);
+    expect(sim.getCellDirect('age', 0)).toBe(1);
+
+    sim.tick();
+    // Still alive → age = 2
+    expect(sim.getCellDirect('alive', 0)).toBe(1);
+    expect(sim.getCellDirect('age', 0)).toBe(2);
+  });
+
+  it('TestSimulation_AgeResetsOnDeath', () => {
+    const preset = loadPresetOrThrow(PRESET_YAML);
+    const sim = new Simulation(preset);
+
+    // Set a single isolated cell alive (no neighbors → dies in GoL)
+    sim.setCellDirect('alive', 0, 1);
+
+    sim.tick();
+    // Cell should be dead → age = 0
+    expect(sim.getCellDirect('alive', 0)).toBe(0);
+    expect(sim.getCellDirect('age', 0)).toBe(0);
+  });
+
+  it('TestSimulation_AlphaPreserved', () => {
+    const preset = loadPresetOrThrow(PRESET_YAML);
+    const sim = new Simulation(preset);
+
+    // Alpha defaults to 1.0
+    expect(sim.getCellDirect('alpha', 0)).toBe(1);
+
+    sim.tick();
+    // Alpha should be preserved through ticks (copy-through)
+    expect(sim.getCellDirect('alpha', 0)).toBe(1);
+
+    sim.tick();
+    expect(sim.getCellDirect('alpha', 0)).toBe(1);
+  });
+
+  it('TestSimulation_HasTypeRegistry', () => {
+    const preset = loadPresetOrThrow(PRESET_YAML);
+    const sim = new Simulation(preset);
+    expect(sim.typeRegistry).toBeDefined();
+    expect(sim.typeRegistry.typeCount).toBe(1);
+    expect(sim.typeRegistry.getTypes()[0].id).toBe('default');
+  });
 });

@@ -84,17 +84,36 @@ const AiContextSchema = z.object({
   hints: z.array(z.string()).optional(),
 });
 
+const CellTypeSchema = z.object({
+  id: z.string().min(1, 'Cell type id is required'),
+  name: z.string().min(1, 'Cell type name is required'),
+  parent: z.string().optional(),
+  color: z.string().optional(),
+  properties: z.array(CellPropertySchema).optional(),
+});
+
 // --- Full Preset Schema ---
 
-export const PresetSchema = z.object({
-  schema_version: z.literal('1', {
-    errorMap: () => ({ message: "schema_version must be '1'" }),
-  }),
-  meta: MetaSchema,
-  grid: GridSchema,
-  cell_properties: z.array(CellPropertySchema).min(1, 'At least one cell property is required'),
-  rule: RuleSchema,
-  params: z.array(ParamDefSchema).optional(),
-  visual_mappings: z.array(VisualMappingSchema).optional(),
-  ai_context: AiContextSchema.optional(),
-});
+export const PresetSchema = z
+  .object({
+    schema_version: z.literal('1', {
+      errorMap: () => ({ message: "schema_version must be '1'" }),
+    }),
+    meta: MetaSchema,
+    grid: GridSchema,
+    cell_properties: z.array(CellPropertySchema).default([]),
+    cell_types: z.array(CellTypeSchema).optional(),
+    rule: RuleSchema,
+    params: z.array(ParamDefSchema).optional(),
+    visual_mappings: z.array(VisualMappingSchema).optional(),
+    ai_context: AiContextSchema.optional(),
+  })
+  .refine(
+    (data) => {
+      return (
+        (data.cell_properties && data.cell_properties.length > 0) ||
+        (data.cell_types && data.cell_types.length > 0)
+      );
+    },
+    { message: 'At least one of cell_properties or cell_types must be non-empty' },
+  );

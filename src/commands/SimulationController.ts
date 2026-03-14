@@ -104,17 +104,7 @@ export class SimulationController {
     this.computedGeneration = 0;
     this.playbackGeneration = 0;
 
-    this.eventBus.emit('sim:presetLoaded', {
-      name: config.meta.name,
-      width: config.grid.width,
-      height: config.grid.height ?? 1,
-      cellProperties: config.cell_properties.map((p) => ({
-        name: p.name,
-        type: p.type,
-        default: p.default,
-        role: p.role,
-      })),
-    });
+    this.emitPresetLoaded(config);
     this.emitParamDefs();
   }
 
@@ -131,17 +121,7 @@ export class SimulationController {
     this.computedGeneration = 0;
     this.playbackGeneration = 0;
 
-    this.eventBus.emit('sim:presetLoaded', {
-      name: config.meta.name,
-      width: config.grid.width,
-      height: config.grid.height ?? 1,
-      cellProperties: config.cell_properties.map((p) => ({
-        name: p.name,
-        type: p.type,
-        default: p.default,
-        role: p.role,
-      })),
-    });
+    this.emitPresetLoaded(config);
     this.emitParamDefs();
   }
 
@@ -223,7 +203,7 @@ export class SimulationController {
     if (!this.simulation) return;
     this.pause();
 
-    const firstProp = this.simulation.preset.cell_properties[0].name;
+    const firstProp = this.simulation.typeRegistry.getPropertyUnion()[0].name;
     const buffer = this.simulation.grid.getCurrentBuffer(firstProp);
     buffer.fill(0);
 
@@ -322,7 +302,7 @@ export class SimulationController {
    */
   getLiveCellCount(): number {
     if (!this.simulation) return 0;
-    const firstProp = this.simulation.preset.cell_properties[0].name;
+    const firstProp = this.simulation.typeRegistry.getPropertyUnion()[0].name;
     const buffer = this.simulation.grid.getCurrentBuffer(firstProp);
     let count = 0;
     for (let i = 0; i < buffer.length; i++) {
@@ -802,6 +782,54 @@ export class SimulationController {
     }
     this.invalidateCacheFrom(this.playbackGeneration + 1);
     this.eventBus.emit('sim:paramsReset', {});
+  }
+
+  /**
+   * Emit preset loaded event with cell type data from the type registry.
+   */
+  private emitPresetLoaded(config: PresetConfig): void {
+    if (!this.simulation) return;
+
+    const registry = this.simulation.typeRegistry;
+
+    // Build cellTypes for the store, filtering out _cellType and tagging inherent
+    const cellTypes = registry.getTypes().map((typeDef) => {
+      const resolved = registry.resolveProperties(typeDef.id);
+      return {
+        id: typeDef.id,
+        name: typeDef.name,
+        color: typeDef.color,
+        properties: resolved
+          .filter((p) => p.name !== '_cellType')
+          .map((p) => ({
+            name: p.name,
+            type: p.type,
+            default: p.default,
+            role: p.role,
+            isInherent: registry.isInherent(p.name),
+          })),
+      };
+    });
+
+    // Also build flat cellProperties for backward compat
+    const unionProps = registry
+      .getPropertyUnion()
+      .filter((p) => p.name !== '_cellType')
+      .map((p) => ({
+        name: p.name,
+        type: p.type,
+        default: p.default,
+        role: p.role,
+        isInherent: registry.isInherent(p.name),
+      }));
+
+    this.eventBus.emit('sim:presetLoaded', {
+      name: config.meta.name,
+      width: config.grid.width,
+      height: config.grid.height ?? 1,
+      cellProperties: unionProps,
+      cellTypes,
+    });
   }
 
   /**

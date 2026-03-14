@@ -24,6 +24,14 @@ export interface CellPropertySummary {
   type: 'bool' | 'int' | 'float' | 'vec2' | 'vec3' | 'vec4';
   default: number | number[];
   role?: string;
+  isInherent?: boolean;
+}
+
+export interface CellTypeSummary {
+  id: string;
+  name: string;
+  color: string;
+  properties: CellPropertySummary[];
 }
 
 export interface SimState {
@@ -51,6 +59,8 @@ export interface SimState {
   params: Record<string, number>;
   /** Cell property definitions for the current preset */
   cellProperties: CellPropertySummary[];
+  /** Cell type definitions from CellTypeRegistry */
+  cellTypes: CellTypeSummary[];
 }
 
 /** Default initial state */
@@ -67,6 +77,7 @@ const initialSimState: SimState = {
   paramDefs: [],
   params: {},
   cellProperties: [],
+  cellTypes: [],
 };
 
 export const useSimStore = create<SimState>()(
@@ -121,5 +132,8 @@ export const simStoreActions = {
   },
   setCellProperties: (cellProperties: CellPropertySummary[]): void => {
     useSimStore.setState({ cellProperties });
+  },
+  setCellTypes: (cellTypes: CellTypeSummary[]): void => {
+    useSimStore.setState({ cellTypes });
   },
 };

@@ -23,6 +23,8 @@ function makeSimState(overrides: Partial<SimState> = {}): SimState {
     computedGeneration: 0,
     paramDefs: [],
     params: {},
+    cellProperties: [],
+    cellTypes: [],
     ...overrides,
   };
 }

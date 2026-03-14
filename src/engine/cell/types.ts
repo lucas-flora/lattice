@@ -49,3 +49,34 @@ export interface ComputeContext {
 
 /** Compiled computed function type */
 export type ComputeFn = (ctx: ComputeContext) => number | number[];
+
+/** Inherent properties injected into every cell type */
+export const INHERENT_PROPERTIES: CellPropertyConfig[] = [
+  { name: 'alive', type: 'bool', default: 0, role: 'input_output' },
+  { name: 'age', type: 'int', default: 0, role: 'output' },
+  { name: 'alpha', type: 'float', default: 1.0, role: 'output' },
+  { name: '_cellType', type: 'int', default: 0, role: 'output' },
+];
+
+/** Configuration for defining a cell type in a preset */
+export interface CellTypeConfig {
+  id: string;
+  name: string;
+  parent?: string;
+  color?: string;
+  properties?: CellPropertyConfig[];
+}
+
+/** Summary of a cell type for UI display */
+export interface CellTypeSummary {
+  id: string;
+  name: string;
+  color: string;
+  properties: Array<{
+    name: string;
+    type: CellPropertyType;
+    default: number | number[];
+    role?: string;
+    isInherent?: boolean;
+  }>;
+}

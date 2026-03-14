@@ -17,6 +17,7 @@ export interface CellPropertyInfo {
   type: CellPropertyType;
   default: number | number[];
   role?: string;
+  isInherent?: boolean;
 }
 
 interface CellCardProps {
@@ -73,6 +74,7 @@ export function CellCard({ typeName, color, properties }: CellCardProps) {
               type={prop.type}
               defaultValue={prop.default}
               role={prop.role}
+              isInherent={prop.isInherent}
             />
           ))}
         </div>

@@ -12,6 +12,7 @@
 import { Grid } from '../grid/Grid';
 import type { PresetConfig } from '../preset/types';
 import { CHANNELS_PER_TYPE } from '../cell/types';
+import type { CellTypeRegistry } from '../cell/CellTypeRegistry';
 import { compileRule } from './RuleCompiler';
 import { WasmRuleRunner } from './WasmRuleRunner';
 import type { RuleFn, RuleContext, TickResult, IRuleRunner, WasmModule } from './types';
@@ -27,17 +28,28 @@ export class RuleRunner implements IRuleRunner {
   private useWasm: boolean = false;
   private wasmDelegate: WasmRuleRunner | null = null;
   private paramsProvider: (() => Record<string, number>) | null = null;
+  private hasInherentAge: boolean;
+  private copyThroughProperties: string[];
 
-  constructor(grid: Grid, preset: PresetConfig, wasmModule?: WasmModule) {
+  constructor(grid: Grid, preset: PresetConfig, wasmModule?: WasmModule, typeRegistry?: CellTypeRegistry) {
     this.grid = grid;
     this.preset = preset;
 
-    // Build property metadata
-    this.propertyNames = preset.cell_properties.map((p) => p.name);
+    // Build property metadata from type registry union (includes inherent props)
+    // or fall back to preset.cell_properties for backward compat
+    const propertyUnion = typeRegistry
+      ? typeRegistry.getPropertyUnion()
+      : (preset.cell_properties ?? []);
+
+    this.propertyNames = propertyUnion.map((p) => p.name);
     this.propertyChannels = new Map();
-    for (const prop of preset.cell_properties) {
+    for (const prop of propertyUnion) {
       this.propertyChannels.set(prop.name, CHANNELS_PER_TYPE[prop.type]);
     }
+
+    // Determine inherent behavior flags
+    this.hasInherentAge = grid.hasProperty('alive') && grid.hasProperty('age');
+    this.copyThroughProperties = ['alpha', '_cellType'].filter((p) => grid.hasProperty(p));
 
     // Try to set up WASM delegate if this is a WASM-type preset
     if (wasmModule && preset.rule.type === 'wasm' && preset.rule.wasm_module) {
@@ -60,7 +72,7 @@ export class RuleRunner implements IRuleRunner {
    * Create a RuleRunner with async WASM module loading.
    * Falls back to TypeScript silently if WASM loading fails.
    */
-  static async create(grid: Grid, preset: PresetConfig): Promise<RuleRunner> {
+  static async create(grid: Grid, preset: PresetConfig, typeRegistry?: CellTypeRegistry): Promise<RuleRunner> {
     let wasmModule: WasmModule | undefined;
 
     if (preset.rule.type === 'wasm' && preset.rule.wasm_module) {
@@ -84,7 +96,7 @@ export class RuleRunner implements IRuleRunner {
       }
     }
 
-    return new RuleRunner(grid, preset, wasmModule);
+    return new RuleRunner(grid, preset, wasmModule, typeRegistry);
   }
 
   /**
@@ -123,6 +135,13 @@ export class RuleRunner implements IRuleRunner {
     // TypeScript fallback: per-cell perceive-update loop
     const { width, height, depth, dimensionality } = this.grid.config;
     const gridInfo = { width, height, depth, dimensionality };
+
+    // Copy through inherent properties that rules don't manage
+    for (const propName of this.copyThroughProperties) {
+      const src = this.grid.getCurrentBuffer(propName);
+      const dst = this.grid.getNextBuffer(propName);
+      dst.set(src);
+    }
 
     // For each cell: perceive neighborhood, run rule, write to next buffer
     for (let i = 0; i < this.grid.cellCount; i++) {
@@ -171,6 +190,16 @@ export class RuleRunner implements IRuleRunner {
             }
           }
         }
+      }
+    }
+
+    // Age auto-increment: after rule results, before swap
+    if (this.hasInherentAge) {
+      const aliveNext = this.grid.getNextBuffer('alive');
+      const ageCurr = this.grid.getCurrentBuffer('age');
+      const ageNext = this.grid.getNextBuffer('age');
+      for (let i = 0; i < this.grid.cellCount; i++) {
+        ageNext[i] = aliveNext[i] > 0 ? ageCurr[i] + 1 : 0;
       }
     }
 

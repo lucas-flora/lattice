@@ -58,6 +58,17 @@ export function ControlBar() {
     commandRegistry.execute('sim.stepBack', {});
   }, []);
 
+  const handleSkipToStart = useCallback(() => {
+    commandRegistry.execute('sim.seek', { generation: 0 });
+  }, []);
+
+  const handleSkipToEnd = useCallback(() => {
+    const computed = useSimStore.getState().computedGeneration;
+    if (computed > 0) {
+      commandRegistry.execute('sim.seek', { generation: computed });
+    }
+  }, []);
+
   const handleReset = useCallback(() => {
     commandRegistry.execute('sim.reset', {});
   }, []);
@@ -92,14 +103,24 @@ export function ControlBar() {
       className="flex items-center gap-2 px-1 py-1.5"
       data-testid="control-bar"
     >
+      {/* Skip to Start */}
+      <button
+        onClick={handleSkipToStart}
+        className="text-zinc-300 hover:text-white px-2 py-1 text-lg"
+        title="Skip to Start"
+        data-testid="btn-skip-start"
+      >
+        {'\u23EE'}
+      </button>
+
       {/* Step Back */}
       <button
         onClick={handleStepBack}
-        className="text-zinc-300 hover:text-white px-2 py-1 text-lg"
+        className="text-zinc-300 hover:text-white px-1.5 py-1 text-sm font-mono"
         title="Step Back (B)"
         data-testid="btn-step-back"
       >
-        {'\u23EE'}
+        {'|◀'}
       </button>
 
       {/* Play / Pause */}
@@ -115,9 +136,19 @@ export function ControlBar() {
       {/* Step Forward */}
       <button
         onClick={handleStep}
-        className="text-zinc-300 hover:text-white px-2 py-1 text-lg"
+        className="text-zinc-300 hover:text-white px-1.5 py-1 text-sm font-mono"
         title="Step Forward (N)"
         data-testid="btn-step"
+      >
+        {'▶|'}
+      </button>
+
+      {/* Skip to End */}
+      <button
+        onClick={handleSkipToEnd}
+        className="text-zinc-300 hover:text-white px-2 py-1 text-lg"
+        title="Skip to End"
+        data-testid="btn-skip-end"
       >
         {'\u23ED'}
       </button>

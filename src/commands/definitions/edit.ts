@@ -88,7 +88,7 @@ export function registerEditCommands(
         controller.pause();
       }
 
-      const firstProp = sim.preset.cell_properties[0].name;
+      const firstProp = sim.typeRegistry.getPropertyUnion()[0].name;
       const brushSize = useUiStore.getState().brushSize;
       const halfBrush = Math.floor(brushSize / 2);
 
@@ -131,7 +131,7 @@ export function registerEditCommands(
         controller.pause();
       }
 
-      const firstProp = sim.preset.cell_properties[0].name;
+      const firstProp = sim.typeRegistry.getPropertyUnion()[0].name;
       const brushSize = useUiStore.getState().brushSize;
       const halfBrush = Math.floor(brushSize / 2);
 

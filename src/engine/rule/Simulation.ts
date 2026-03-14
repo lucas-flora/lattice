@@ -13,6 +13,7 @@ import { Grid } from '../grid/Grid';
 import type { GridConfig } from '../grid/types';
 import type { PresetConfig } from '../preset/types';
 import { CHANNELS_PER_TYPE } from '../cell/types';
+import { CellTypeRegistry } from '../cell/CellTypeRegistry';
 import { RuleRunner } from './RuleRunner';
 import { compileRule } from './RuleCompiler';
 import type { TickResult } from './types';
@@ -22,6 +23,7 @@ export class Simulation {
   runner: RuleRunner;
   readonly preset: PresetConfig;
   readonly params: Map<string, number> = new Map();
+  readonly typeRegistry: CellTypeRegistry;
 
   constructor(preset: PresetConfig) {
     this.preset = preset;
@@ -32,6 +34,9 @@ export class Simulation {
         this.params.set(p.name, p.default);
       }
     }
+
+    // Build type registry from preset (backward compatible)
+    this.typeRegistry = CellTypeRegistry.fromPreset(preset);
 
     // Build grid config from preset
     const gridConfig: GridConfig = {
@@ -45,14 +50,14 @@ export class Simulation {
 
     this.grid = new Grid(gridConfig);
 
-    // Register all cell properties on the grid
-    for (const prop of preset.cell_properties) {
+    // Register all cell properties on the grid (from type registry union)
+    for (const prop of this.typeRegistry.getPropertyUnion()) {
       const channels = CHANNELS_PER_TYPE[prop.type];
       this.grid.addProperty(prop.name, channels, prop.default);
     }
 
     // Create the rule runner (synchronous path -- always uses TS fallback)
-    this.runner = new RuleRunner(this.grid, preset);
+    this.runner = new RuleRunner(this.grid, preset, undefined, this.typeRegistry);
     this.runner.setParamsProvider(() => this.getParamsObject());
   }
 
@@ -64,7 +69,7 @@ export class Simulation {
     const sim = new Simulation(preset);
     // If the preset requests WASM, try to load it
     if (preset.rule.type === 'wasm') {
-      const wasmRunner = await RuleRunner.create(sim.grid, preset);
+      const wasmRunner = await RuleRunner.create(sim.grid, preset, sim.typeRegistry);
       wasmRunner.setParamsProvider(() => sim.getParamsObject());
       // Replace the runner with the WASM-enabled one
       (sim as { runner: RuleRunner }).runner = wasmRunner;
@@ -110,7 +115,7 @@ export class Simulation {
    */
   setCellDirect(propertyName: string, index: number, value: number, channel: number = 0): void {
     const currentBuf = this.grid.getCurrentBuffer(propertyName);
-    const prop = this.preset.cell_properties.find((p) => p.name === propertyName);
+    const prop = this.typeRegistry.getPropertyUnion().find((p) => p.name === propertyName);
     if (!prop) throw new Error(`Property '${propertyName}' not found`);
     const channels = CHANNELS_PER_TYPE[prop.type];
     currentBuf[index * channels + channel] = value;
@@ -161,7 +166,7 @@ export class Simulation {
     };
     // Replace runner with recompiled one
     const gen = this.getGeneration();
-    this.runner = new RuleRunner(this.grid, updatedPreset);
+    this.runner = new RuleRunner(this.grid, updatedPreset, undefined, this.typeRegistry);
     this.runner.setGeneration(gen);
     this.runner.setParamsProvider(() => this.getParamsObject());
   }

@@ -1,10 +1,9 @@
 /**
  * CellPanel: left drawer panel showing cell type cards.
  *
- * Phase 2: visual shell that reads cell property definitions from simStore.
- * Shows a single card for the current preset's cell properties.
+ * Phase 3: wired to CellTypeRegistry. Reads cellTypes from simStore.
+ * Falls back to legacy cellProperties if cellTypes is empty (backward compat).
  *
- * Phase 3 will wire this to CellTypeRegistry for real type hierarchy.
  * Phase 7 will add "Add Cell Type" button, duplicate, color picker, etc.
  */
 
@@ -15,35 +14,12 @@ import { useSimStore } from '@/store/simStore';
 import { CellCard } from './CellCard';
 import type { CellPropertyInfo } from './CellCard';
 
-/** Derive a display name from the preset name */
-function cellTypeName(preset: string | null): string {
-  if (!preset) return 'Cell';
-  // e.g. "Conway's Game of Life" → "GoL Cell", but just use preset for now
-  return `${preset} Cell`;
-}
-
-/** Pick a display color based on the preset */
-function cellTypeColor(preset: string | null): string {
-  if (!preset) return '#4ade80'; // green-400
-  const lower = preset.toLowerCase();
-  if (lower.includes('gray') || lower.includes('scott')) return '#60a5fa'; // blue-400
-  if (lower.includes('navier') || lower.includes('stokes')) return '#818cf8'; // indigo-400
-  if (lower.includes('brain')) return '#f472b6'; // pink-400
-  if (lower.includes('langton')) return '#facc15'; // yellow-400
-  if (lower.includes('rule')) return '#fb923c'; // orange-400
-  return '#4ade80'; // green-400
-}
-
 export function CellPanel(_props: PanelProps) {
-  const activePreset = useSimStore((s) => s.activePreset);
+  const cellTypes = useSimStore((s) => s.cellTypes);
   const cellProperties = useSimStore((s) => s.cellProperties);
 
-  const properties: CellPropertyInfo[] = cellProperties.map((p) => ({
-    name: p.name,
-    type: p.type,
-    default: p.default,
-    role: p.role,
-  }));
+  // Prefer cellTypes from registry; fall back to legacy cellProperties
+  const hasCellTypes = cellTypes.length > 0;
 
   return (
     <div className="h-full bg-zinc-900/95 overflow-y-auto" data-testid="cell-panel">
@@ -62,11 +38,31 @@ export function CellPanel(_props: PanelProps) {
 
       {/* Cell cards */}
       <div className="px-3 py-3 space-y-2">
-        {properties.length > 0 ? (
+        {hasCellTypes ? (
+          cellTypes.map((ct) => (
+            <CellCard
+              key={ct.id}
+              typeName={ct.name}
+              color={ct.color}
+              properties={ct.properties.map((p) => ({
+                name: p.name,
+                type: p.type,
+                default: p.default,
+                role: p.role,
+                isInherent: p.isInherent,
+              }))}
+            />
+          ))
+        ) : cellProperties.length > 0 ? (
           <CellCard
-            typeName={cellTypeName(activePreset)}
-            color={cellTypeColor(activePreset)}
-            properties={properties}
+            typeName="Cell"
+            color="#4ade80"
+            properties={cellProperties.map((p) => ({
+              name: p.name,
+              type: p.type,
+              default: p.default,
+              role: p.role,
+            }))}
           />
         ) : (
           <p className="text-[10px] font-mono text-zinc-600 italic px-1">

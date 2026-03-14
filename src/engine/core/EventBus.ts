@@ -11,7 +11,7 @@ export interface EngineEventMap {
   'sim:play': Record<string, never>;
   'sim:pause': Record<string, never>;
   'sim:reset': Record<string, never>;
-  'sim:presetLoaded': { name: string; width: number; height: number; cellProperties?: Array<{ name: string; type: string; default: number | number[]; role?: string }> };
+  'sim:presetLoaded': { name: string; width: number; height: number; cellProperties?: Array<{ name: string; type: string; default: number | number[]; role?: string; isInherent?: boolean }>; cellTypes?: Array<{ id: string; name: string; color: string; properties: Array<{ name: string; type: string; default: number | number[]; role?: string; isInherent?: boolean }> }> };
   'sim:speedChange': { fps: number };
   'sim:clear': Record<string, never>;
   'sim:stepBack': { generation: number };

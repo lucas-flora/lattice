@@ -24,6 +24,7 @@ interface PropertyRowProps {
   type: CellPropertyType;
   defaultValue: number | number[];
   role?: string;
+  isInherent?: boolean;
 }
 
 function formatDefault(value: number | number[], type: CellPropertyType): string {
@@ -35,13 +36,18 @@ function formatDefault(value: number | number[], type: CellPropertyType): string
   return String(value);
 }
 
-export function PropertyRow({ name, type, defaultValue, role }: PropertyRowProps) {
+export function PropertyRow({ name, type, defaultValue, role, isInherent }: PropertyRowProps) {
   const colorClass = TYPE_COLORS[type] ?? 'text-zinc-400 bg-zinc-400/10';
 
   return (
     <div className="flex items-center gap-2 py-1 group" data-testid={`property-row-${name}`}>
       {/* Property name */}
-      <span className="text-xs font-mono text-zinc-300 flex-1 truncate">{name}</span>
+      <span className="text-xs font-mono text-zinc-300 flex-1 truncate">
+        {name}
+        {isInherent && (
+          <span className="text-[8px] font-mono text-zinc-600 ml-1">inherent</span>
+        )}
+      </span>
 
       {/* Type badge */}
       <span
