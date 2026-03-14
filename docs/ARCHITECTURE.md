@@ -14,7 +14,7 @@ Lattice is a universal simulation substrate. Cellular automata, reaction-diffusi
 
 1. **Modular everything.** Panels, cell types, rules, scripts, visual mappings — all pluggable building blocks. No hardcoded behavior that can't be overridden or composed.
 
-2. **Three Surface Doctrine.** Every action is accessible through GUI panels, CLI terminal, and AI assistant. No surface has privileged logic. All three call `CommandRegistry.execute()`.
+2. **Three Surface Doctrine.** Every action is accessible through GUI panels, CLI terminal, and AI assistant. No surface has privileged logic. All three call `CommandRegistry.execute()`. This is the **foundational architectural constraint** — if a feature exists, it must be a command. If it's a command, every surface can invoke it. No exceptions. MCP and public API are future extensions of this same pattern (see below).
 
 3. **YAML as universal API.** Presets, cell types, layouts, scripts — everything serializes to YAML. A preset file fully describes a simulation. URL hash encoding enables link sharing.
 
@@ -30,10 +30,11 @@ Lattice is a universal simulation substrate. Cellular automata, reaction-diffusi
 
 ```
 ┌─ SURFACE LAYER ──────────────────────────────────────────────────────┐
-│  GUI Panels          CLI Terminal          AI Assistant               │
-│  (React/TSX)         (autocomplete)        (OpenAI + tools)          │
+│  GUI Panels     CLI Terminal     AI Assistant    MCP Server   Public  │
+│  (React/TSX)    (autocomplete)   (OpenAI+tools)  (agents)    API     │
 └──────────────────────────┬───────────────────────────────────────────┘
                            │ CommandRegistry.execute()
+                           │ (ALL surfaces use the same entry point)
 ┌──────────────────────────┴───────────────────────────────────────────┐
 │ COMMAND LAYER                                                        │
 │  CommandRegistry ─── SimulationController ─── KeyboardShortcutManager│
@@ -121,7 +122,9 @@ type LayoutNode =
   | { type: 'panel'; id: string; panelType: string; config?: Record<string, unknown> }
 ```
 
-JSON-serializable. Stored in Zustand (`layoutStore`). All mutations via commands. Recursive `LayoutRenderer` maps nodes to `SplitContainer`, `TabContainer`, or `PanelHost`.
+JSON-serializable. Stored in Zustand (`layoutStore`). All mutations via commands (`layout.split`, `layout.addTab`, `layout.removePanel`, `layout.toggleDrawer`, `layout.reset`). Recursive `LayoutRenderer` maps nodes to `SplitContainer`, `TabContainer`, or `PanelHost`.
+
+**Doctrine note:** Layout mutations go through commands, not direct store writes. This means CLI commands like `layout.split` and AI tool calls can rearrange the panel layout — same power as dragging in the GUI.
 
 ---
 
@@ -150,7 +153,7 @@ Child types inherit all parent properties and add their own. Property union dete
 ```
 BaseCell                    SpecialCell (extends BaseCell)
 ├── alive (bool)            ├── alive (bool)      ← inherited
-├── lifetime (int)          ├── lifetime (int)     ← inherited
+├── age (int)          ├── age (int)     ← inherited
 ├── alpha (float)           ├── alpha (float)      ← inherited
 └── _cellType (inherent)    ├── _cellType          ← inherited
                             └── energy (float)     ← added
@@ -163,7 +166,7 @@ Every cell always has these — they are not user-removable:
 | Property    | Type  | Default | Behavior                                    |
 |-------------|-------|---------|---------------------------------------------|
 | `alive`     | bool  | 0       | Core state flag                             |
-| `lifetime`  | int   | 0       | Auto-increments while alive, resets on death|
+| `age`       | int   | 0       | Ticks alive (sim steps). Resets on death. Derive other units (seconds, frames) via expressions. |
 | `alpha`     | float | 1.0     | Visual opacity multiplier                   |
 | `_cellType` | int   | 0       | Type ID (internal, not user-editable)       |
 
@@ -207,8 +210,8 @@ Python is the user-facing scripting language for everything: expressions, rules,
 
 **1. Per-property expression** — Python one-liner attached to a single property.
 ```python
-# On alpha: fade cell over lifetime
-clamp(1.0 - (cell.lifetime / 100), 0, 1)
+# On alpha: fade cell over age
+clamp(1.0 - (cell.age / 100), 0, 1)
 ```
 
 **2. Global script** — Free-standing Python that can read/write any parameter.
@@ -270,7 +273,7 @@ Dot-path strings address any parameter in the system:
 
 | Pattern              | Examples                           |
 |----------------------|------------------------------------|
-| `cell.<property>`    | `cell.alive`, `cell.lifetime`      |
+| `cell.<property>`    | `cell.alive`, `cell.age`      |
 | `cell.<type>.<prop>` | `cell.special.energy`              |
 | `env.<param>`        | `env.feedRate`, `env.killRate`     |
 | `visual.<channel>`   | `visual.color`, `visual.size`      |
@@ -286,7 +289,7 @@ C4D-style property-to-property linking with range mapping and easing:
 
 ```typescript
 interface ParameterLink {
-  source: string;       // address: "cell.lifetime"
+  source: string;       // address: "cell.age"
   target: string;       // address: "cell.alpha"
   sourceRange: [number, number];  // [0, 100]
   targetRange: [number, number];  // [1.0, 0.0]  (inverted = fade out)
@@ -305,16 +308,18 @@ Three mapping modes:
 | Mode         | Description                                    | Example                           |
 |--------------|------------------------------------------------|-----------------------------------|
 | `discrete`   | Exact value → color (existing)                 | `alive: 0→#000, 1→#0f0`          |
-| `continuous`  | Range → interpolated color with easing         | `lifetime: [0,100]→[green,black]` |
-| `expression` | Python expression returning color/size/etc.    | `hsv(cell.lifetime/100, 1, 1)`    |
+| `continuous`  | Range → interpolated color with easing         | `age: [0,100]→[green,black]` |
+| `expression` | Python expression returning color/size/etc.    | `hsv(cell.age/100, 1, 1)`    |
 
 ---
 
 ## Data Flow
 
+Every mutation follows the same path regardless of which surface initiates it (Three Surface Doctrine):
+
 ```
-User action (click, command, key, AI)
-  → CommandRegistry.execute(name, params)
+Any surface (GUI click, CLI command, AI tool call, MCP request, API endpoint)
+  → CommandRegistry.execute(name, params)      ← single entry point, always
     → SimulationController / engine method
       → Engine mutates state
         → EventBus.emit(event, payload)
@@ -323,6 +328,8 @@ User action (click, command, key, AI)
               → React re-render
                 → Three.js / DOM update
 ```
+
+**No shortcutting.** A button onClick handler does NOT directly mutate engine state. It calls `commandRegistry.execute()`. This guarantees that CLI, AI, MCP, and API can always do exactly what the GUI can do.
 
 For scripting:
 ```
@@ -335,6 +342,61 @@ Tick pipeline (per frame):
   6. Swap buffers
   7. Emit sim:tick
 ```
+
+---
+
+## Three Surface Doctrine (extended)
+
+The Three Surface Doctrine is the single most important architectural constraint. It states:
+
+> **Every capability of the application MUST be a registered command. Every registered command MUST be accessible from every surface. No surface has privileged logic.**
+
+### Core surfaces (built)
+
+| Surface | Entry point | How it invokes |
+|---------|-------------|----------------|
+| **GUI** | Button click, slider drag, panel interaction | `commandRegistry.execute(name, params)` |
+| **CLI** | Terminal text input, autocomplete, ghost-text | `commandRegistry.execute(name, params)` |
+| **AI** | OpenAI tool calls mapped to commands | `commandRegistry.execute(name, params)` |
+
+All three surfaces converge on `CommandRegistry.execute()`. The registry validates params with Zod, executes the handler, and returns a typed result. No surface has special access to engine internals.
+
+### Extended surfaces (planned)
+
+| Surface | Transport | How it invokes |
+|---------|-----------|----------------|
+| **MCP Server** | JSON-RPC over stdio/SSE | Same `commandRegistry.execute()`, exposed as MCP tools |
+| **Public API** | REST/WebSocket HTTP endpoints | Same `commandRegistry.execute()`, behind auth |
+
+### MCP Integration
+
+MCP (Model Context Protocol) lets external AI agents — Claude, GPT, local models, automation scripts — control Lattice as a tool. Because every action is already a command, the MCP server is a thin transport layer:
+
+1. **MCP tool list** is auto-generated from `commandRegistry.list()`. Each command's Zod schema becomes the tool's input schema. Command descriptions become tool descriptions. Zero manual mapping.
+2. **MCP tool execution** calls `commandRegistry.execute(name, params)` and returns the result as MCP tool output.
+3. **MCP resources** expose read-only state: current grid snapshot, generation count, parameter values, preset metadata — all via existing store getters.
+4. **Bidirectional events** via MCP notifications: `sim:tick`, `sim:presetLoaded`, etc. map directly from EventBus events.
+
+The result: an external agent can load presets, adjust parameters, run simulations, read results, modify cell types, execute scripts, and control the entire environment — using the exact same command set available to the GUI, CLI, and built-in AI.
+
+### Public API
+
+A REST/WebSocket API for programmatic access without the MCP protocol:
+
+- **REST endpoints**: `/api/commands/:name` → `commandRegistry.execute(name, body)`. Same commands, HTTP transport.
+- **WebSocket**: Real-time event stream (sim:tick, state changes) + command execution.
+- **Auth**: API key or session token. Rate limiting. Scoped permissions per key.
+- **Use cases**: Dashboard integrations, CI/CD pipelines triggering simulation runs, external monitoring tools, mobile companion apps, educational platforms embedding Lattice.
+
+### Doctrine enforcement
+
+When adding ANY new feature:
+1. Does it have a command? If not, create one.
+2. Can the CLI invoke it? If not, fix the command interface.
+3. Can the AI invoke it? If not, register it as a tool.
+4. Will MCP/API consumers be able to invoke it? If not, the command needs better params/result types.
+
+**If you find yourself writing logic inside a React component that doesn't go through `commandRegistry.execute()`, stop. Extract it into a command first.** The only exceptions are pure rendering logic (camera math, Three.js scene updates) and ephemeral UI state (hover effects, animation tweens).
 
 ---
 
@@ -411,7 +473,7 @@ visual_mappings:
       "1": "#4ade80"
 
 parameter_links:
-  - source: "cell.lifetime"
+  - source: "cell.age"
     target: "cell.alpha"
     sourceRange: [0, 100]
     targetRange: [1.0, 0.0]
@@ -462,8 +524,8 @@ These must work when the system is complete:
 ### 1. GoL with default setup (baseline)
 Load `conways-gol.yaml`. Single cell type (base), boolean `alive`, B3/S23 rule (TypeScript fast path). Green/black discrete mapping. Play, pause, step, draw, undo, scrub timeline. **This is the zero-cost path — no Pyodide loaded.**
 
-### 2. GoL with expression on alpha tied to lifetime
-Add expression `clamp(1.0 - (cell.lifetime / 100), 0, 1)` to the `alpha` property. Cells fade out as they age. Triggers Pyodide lazy-load on first expression edit. Visual mapper reads alpha from buffer.
+### 2. GoL with expression on alpha tied to age
+Add expression `clamp(1.0 - (cell.age / 100), 0, 1)` to the `alpha` property. Cells fade out as they age. Triggers Pyodide lazy-load on first expression edit. Visual mapper reads alpha from buffer.
 
 ### 3. GoL with two cell types
 Create "Red Cell" extending base with `kill_threshold: int = 4`. Assign red color. Global rule checks `_cellType` — base uses B3/S23, red cells die at 4+ neighbors. Left drawer shows two CellCards. Grid paint tool has type selector.
@@ -476,6 +538,12 @@ User creates a new preset. Adds cell types with custom properties. Writes Python
 
 ### 6. Sharing a sim via URL
 User builds a custom sim. Clicks Share. URL encodes the full YAML. Recipient opens URL in browser. App loads, decodes hash, reconstructs the entire setup. No server needed.
+
+### 7. External agent controlling a simulation via MCP
+An external Claude agent connects to Lattice via MCP. It loads a preset (`preset.load`), adjusts parameters (`param.set`), runs 1000 steps (`sim.play` + `sim.seek`), reads the grid state, computes metrics, adjusts parameters again, and exports a screenshot (`viewport.screenshot`). The agent uses the exact same commands as a human clicking buttons — no special API, no privileged access. The Three Surface Doctrine means the agent is a first-class citizen.
+
+### 8. CI pipeline running simulation benchmarks via Public API
+A GitHub Actions workflow hits the Lattice REST API: loads each built-in preset, runs 100 frames, reads performance metrics (tick rate, memory), and fails the build if any preset regresses beyond thresholds. Same commands, HTTP transport.
 
 ---
 
@@ -509,16 +577,23 @@ User builds a custom sim. Clicks Share. URL encodes the full YAML. Recipient ope
 | 8     | Node-Based Scripting     | Visual node editor as panel type. Compiles to Python.       |
 | 9     | Independent Viewports    | Each viewport can be its own SimulationInstance.             |
 | 10    | YAML + URL Sharing       | Full serialization. Share via URL hash.                     |
+| 11    | MCP Server               | Expose CommandRegistry as MCP tools. External agent control. |
+| 12    | Public API               | REST/WebSocket endpoints. Auth, rate limiting, CI/CD use cases. |
 
 Each phase ends with full functionality of everything built so far. No phase breaks existing features.
+
+**Three Surface Doctrine checkpoint at every phase:** Before a phase is considered complete, verify that every new command works from GUI, CLI, and AI. If MCP/API phases are complete, verify those surfaces too.
 
 ### Dependency Graph
 
 ```
 P0 → P1 → P2 → P3 → P4 → P5 → P6 → P7 → P8 → P9 → P10
-                       ↑         ↑
-                       └── P4 ───┘  (P3 and P4 can partially overlap)
+                       ↑         ↑                      ↓
+                       └── P4 ───┘  (P3/P4 overlap)    P11 → P12
+                                                    (MCP)  (API)
 ```
+
+P11 (MCP) can begin any time after P10 — it only needs the command registry and serialization to be stable. P12 (Public API) extends P11 with HTTP transport and auth.
 
 ---
 
@@ -528,7 +603,7 @@ P0 → P1 → P2 → P3 → P4 → P5 → P6 → P7 → P8 → P9 → P10
 |-------------------|------------------------------------------------------------------|
 | **Cell type**     | Named collection of properties. Defines what data a cell stores. |
 | **Property**      | A typed data channel stored per-cell (bool, int, float, vec).    |
-| **Inherent property** | Property every cell has (alive, lifetime, alpha, _cellType). |
+| **Inherent property** | Property every cell has (alive, age, alpha, _cellType). |
 | **Expression**    | Python one-liner attached to a property, evaluated per-tick.     |
 | **Global script** | Free-standing Python that can read/write any parameter per-frame.|
 | **Global variable** | Named value in a shared store, addressable as `global.*`.     |
@@ -542,3 +617,7 @@ P0 → P1 → P2 → P3 → P4 → P5 → P6 → P7 → P8 → P9 → P10
 | **Address**       | Dot-path string identifying any parameter (`cell.alive`, `env.feedRate`). |
 | **Node**          | Visual block in the node editor representing a Python operation. |
 | **Instance**      | Independent simulation with its own Grid, Rule, and state.       |
+| **Surface**       | A way to invoke commands: GUI, CLI, AI, MCP, or public API.     |
+| **MCP**           | Model Context Protocol. JSON-RPC transport for external AI agents to call commands. |
+| **Public API**    | REST/WebSocket HTTP endpoints exposing commands to external clients. |
+| **Command**       | A registered, named action with Zod-validated params and typed result. The atomic unit of the Three Surface Doctrine. |

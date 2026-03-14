@@ -40,7 +40,7 @@ See `docs/ARCHITECTURE.md` for the full system architecture document (north star
 ### Key Architecture Decisions
 - **Layout**: Custom recursive tree (no library). `LayoutNode` = split | tabs | panel. JSON-serializable, stored in Zustand.
 - **App Shell**: 4 zones (left drawer, center, right drawer, bottom drawer) + pinned Timeline/ControlBar. Each zone has its own layout subtree.
-- **Cell Types**: Inheritance via property union. Base type has inherent properties (alive, lifetime, alpha, _cellType). Child types inherit + extend.
+- **Cell Types**: Inheritance via property union. Base type has inherent properties (alive, age, alpha, _cellType). Child types inherit + extend.
 - **Scripting**: Python via Pyodide (WASM) in Web Worker. Lazy-loaded. Three modes: per-property expressions, global scripts, global variable store.
 - **Performance**: Python rules operate on entire grid via numpy vectorized ops. No per-cell Python loops. Built-in presets keep JS/WASM fast paths.
 - **Parameter Addressing**: Dot-path strings (`cell.alive`, `env.feedRate`, `global.myVar`).
