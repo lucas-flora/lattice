@@ -37,7 +37,8 @@ describe('Zustand Stores', () => {
     expect(state.terminalHeight).toBe(250);
     expect(state.paramPanelWidth).toBe(300);
     expect(state.terminalMode).toBe('docked');
-    expect(state.paramPanelMode).toBe('docked');
+    expect(state.paramPanelMode).toBe('floating');
+    expect(state.leftDrawerMode).toBe('floating');
     expect(state.viewportCount).toBe(1);
     expect(state.fullscreenViewportId).toBeNull();
     expect(state.zones.center).toBeDefined();

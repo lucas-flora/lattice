@@ -38,6 +38,7 @@ const PLAYBACK_MODE_ICONS: Record<string, string> = {
 export function ControlBar() {
   const isRunning = useSimStore((s) => s.isRunning);
   const speed = useSimStore((s) => s.speed);
+  const activePreset = useSimStore((s) => s.activePreset);
   const viewportCount = useLayoutStore((s) => s.viewportCount);
   const playbackMode = useUiStore((s) => s.playbackMode);
 
@@ -155,7 +156,7 @@ export function ControlBar() {
           max={SPEED_VALUES.length - 1}
           value={speedToSliderIndex(speed)}
           onChange={handleSpeedChange}
-          className="w-20 accent-green-500"
+          className="w-20"
           title="Speed"
           data-testid="speed-slider"
         />
@@ -196,6 +197,16 @@ export function ControlBar() {
       >
         {'\u2261'}
       </button>
+
+      {/* Spacer */}
+      <div className="flex-1" />
+
+      {/* Preset name — faint, pinned right */}
+      {activePreset && (
+        <span className="text-[10px] font-mono text-zinc-600 truncate max-w-[160px]" data-testid="controlbar-preset">
+          {activePreset}
+        </span>
+      )}
     </div>
   );
 }

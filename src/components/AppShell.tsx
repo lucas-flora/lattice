@@ -11,7 +11,7 @@
 
 'use client';
 
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useCallback } from 'react';
 import { eventBus } from '@/engine/core/EventBus';
 import { SimulationController } from '@/commands/SimulationController';
 import { commandRegistry } from '@/commands/CommandRegistry';
@@ -26,7 +26,10 @@ import { BottomTray } from '@/components/layout/BottomTray';
 import { Terminal } from '@/components/terminal/Terminal';
 import { ParamPanel } from '@/components/panels/ParamPanel';
 import { useUiStore } from '@/store/uiStore';
-import { useLayoutStore } from '@/store/layoutStore';
+import { useLayoutStore, layoutStoreActions } from '@/store/layoutStore';
+import { DrawerShell } from '@/components/layout/DrawerShell';
+import { ResizeHandle } from '@/components/ui/ResizeHandle';
+import { CellPanel } from '@/components/panels/CellPanel';
 
 /** Module-level singleton for the simulation controller */
 let controllerSingleton: SimulationController | null = null;
@@ -140,6 +143,9 @@ export function AppShell() {
   const fullscreenViewportId = useLayoutStore((s) => s.fullscreenViewportId);
   const isTerminalOpen = useLayoutStore((s) => s.isTerminalOpen);
   const terminalMode = useLayoutStore((s) => s.terminalMode);
+  const isLeftDrawerOpen = useLayoutStore((s) => s.isLeftDrawerOpen);
+  const leftDrawerMode = useLayoutStore((s) => s.leftDrawerMode);
+  const leftDrawerWidth = useLayoutStore((s) => s.leftDrawerWidth);
   const isParamPanelOpen = useLayoutStore((s) => s.isParamPanelOpen);
   const paramPanelMode = useLayoutStore((s) => s.paramPanelMode);
 
@@ -195,14 +201,54 @@ export function AppShell() {
   }, []);
 
   const isAnyFullscreen = fullscreenViewportId !== null;
+  const leftDocked = leftDrawerMode === 'docked' && isLeftDrawerOpen && !isAnyFullscreen;
   const paramDocked = paramPanelMode === 'docked' && isParamPanelOpen && !isAnyFullscreen;
   const terminalFloating = terminalMode === 'floating';
 
+  const toggleLeftDrawer = useCallback(() => {
+    commandRegistry.execute('ui.toggleLeftDrawer', {});
+  }, []);
+
+  const toggleRightDrawer = useCallback(() => {
+    commandRegistry.execute('ui.toggleParamPanel', {});
+  }, []);
+
+  const openLeftDocked = useCallback(() => {
+    commandRegistry.execute('ui.toggleLeftDrawer', { docked: true });
+  }, []);
+
+  const openRightDocked = useCallback(() => {
+    commandRegistry.execute('ui.toggleParamPanel', { docked: true });
+  }, []);
+
+  // Peeking grip dots — reusable for left/right edges when panels are closed
+  const gripDots = (
+    <div className="flex flex-col gap-[3px]">
+      {[0, 1, 2].map((i) => (
+        <div key={i} className="w-[2px] h-1 rounded-full bg-zinc-700 group-hover:bg-zinc-500 transition-colors" />
+      ))}
+    </div>
+  );
+
   return (
-    <div className="w-screen h-screen bg-black overflow-hidden flex flex-col">
-      {/* Main content: viewport + optional right panel */}
-      <div className="flex flex-1 min-h-0">
-        <div className="flex flex-1 min-w-0 h-full relative z-0">
+    <div className="w-screen h-screen bg-black overflow-hidden flex flex-row">
+      {/* Left drawer — docked: full height, sits outside center column */}
+      {leftDocked && (
+        <DrawerShell
+          position="left"
+          size={leftDrawerWidth}
+          collapsed={false}
+          onResize={(size) => layoutStoreActions.setLeftDrawerWidth(size)}
+          onClose={toggleLeftDrawer}
+        >
+          <CellPanel panelId="cell-panel" />
+        </DrawerShell>
+      )}
+
+      {/* Center column: viewports + bottom tray */}
+      <div className="flex flex-col flex-1 min-w-0 min-h-0">
+        {/* Viewports */}
+        <div className="flex flex-1 min-h-0 relative">
           {/* Primary viewport */}
           {(!isAnyFullscreen || fullscreenViewportId === 'viewport-1') && (
             <div
@@ -221,21 +267,55 @@ export function AppShell() {
                 <SimulationViewport viewportId="viewport-2" />
               </div>
             )}
+
+          {/* Peeking grips — at screen edges when side panels are closed */}
+          {!isAnyFullscreen && !isLeftDrawerOpen && (
+            <button
+              className="absolute left-0 top-1/2 -translate-y-1/2 z-10 group cursor-pointer pl-[2px] pr-[4px] py-4 rounded-r-sm bg-zinc-800/30 hover:bg-zinc-700/50 transition-colors"
+              onClick={openLeftDocked}
+              title="Cells (1)"
+            >
+              {gripDots}
+            </button>
+          )}
+          {!isAnyFullscreen && !isParamPanelOpen && (
+            <button
+              className="absolute right-0 top-1/2 -translate-y-1/2 z-10 group cursor-pointer pr-[2px] pl-[4px] py-4 rounded-l-sm bg-zinc-800/30 hover:bg-zinc-700/50 transition-colors"
+              onClick={openRightDocked}
+              title="Parameters (2)"
+            >
+              {gripDots}
+            </button>
+          )}
+
+          {/* Floating side panels — inside viewport container so they don't cover bottom tray */}
+          {!leftDocked && isLeftDrawerOpen && !isAnyFullscreen && (
+            <div
+              className="absolute top-0 left-0 bottom-0 z-15 transition-transform duration-200 ease-out pointer-events-auto"
+              style={{ width: leftDrawerWidth }}
+            >
+              <div className="absolute inset-0 overflow-hidden">
+                <CellPanel panelId="cell-panel" />
+              </div>
+              <div className="absolute right-1 top-0 bottom-0 z-10 flex">
+                <ResizeHandle direction="horizontal" onResize={(delta) => layoutStoreActions.setLeftDrawerWidth(leftDrawerWidth + delta)} onDoubleClick={toggleLeftDrawer} />
+              </div>
+            </div>
+          )}
+          {!paramDocked && isParamPanelOpen && !isAnyFullscreen && <ParamPanel />}
         </div>
 
-        {/* Docked param panel (right side) */}
-        {paramDocked && <ParamPanel docked />}
+        {/* Bottom tray: timeline + controls + terminal */}
+        {!isAnyFullscreen && terminalMode === 'docked' && <BottomTray />}
       </div>
 
-      {/* Bottom tray: ControlBar (always) + Terminal (when open, docked mode) */}
-      {!isAnyFullscreen && terminalMode === 'docked' && <BottomTray />}
+      {/* Right drawer — docked: full height */}
+      {paramDocked && <ParamPanel docked />}
 
       {/* HUD overlay — pointer-events: none status display */}
       {!isAnyFullscreen && (
         <div className="absolute inset-0 z-10 pointer-events-none">
           <HUD />
-          {/* Floating param panel */}
-          {!paramDocked && <ParamPanel />}
           {/* Floating terminal */}
           {terminalFloating && <Terminal />}
         </div>

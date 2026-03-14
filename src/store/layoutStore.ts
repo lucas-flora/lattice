@@ -18,6 +18,10 @@ export type PanelMode = 'floating' | 'docked';
 export interface LayoutState {
   /** Layout trees per zone */
   zones: ZoneLayouts;
+  /** Whether the left drawer (cell cards) is visible */
+  isLeftDrawerOpen: boolean;
+  /** Left drawer display mode */
+  leftDrawerMode: PanelMode;
   /** Whether the terminal panel is visible */
   isTerminalOpen: boolean;
   /** Whether the parameter panel is visible */
@@ -30,6 +34,8 @@ export interface LayoutState {
   viewportCount: 1 | 2;
   /** ID of viewport currently in fullscreen, or null */
   fullscreenViewportId: string | null;
+  /** Left drawer width in pixels */
+  leftDrawerWidth: number;
   /** Terminal panel height in pixels (docked mode) */
   terminalHeight: number;
   /** Parameter panel width in pixels (docked mode) */
@@ -39,12 +45,15 @@ export interface LayoutState {
 export const useLayoutStore = create<LayoutState>()(
   subscribeWithSelector((): LayoutState => ({
     zones: defaultZoneLayouts(),
+    isLeftDrawerOpen: false,
+    leftDrawerMode: 'floating',
     isTerminalOpen: false,
     isParamPanelOpen: false,
     terminalMode: 'docked',
-    paramPanelMode: 'docked',
+    paramPanelMode: 'floating',
     viewportCount: 1,
     fullscreenViewportId: null,
+    leftDrawerWidth: 280,
     terminalHeight: 250,
     paramPanelWidth: 300,
   })),
@@ -52,12 +61,21 @@ export const useLayoutStore = create<LayoutState>()(
 
 /** Store actions */
 export const layoutStoreActions = {
+  setLeftDrawerOpen: (isLeftDrawerOpen: boolean): void => {
+    useLayoutStore.setState({ isLeftDrawerOpen });
+  },
+
   setTerminalOpen: (isTerminalOpen: boolean): void => {
     useLayoutStore.setState({ isTerminalOpen });
   },
 
   setParamPanelOpen: (isParamPanelOpen: boolean): void => {
     useLayoutStore.setState({ isParamPanelOpen });
+  },
+
+  setLeftDrawerWidth: (w: number): void => {
+    const maxW = typeof window !== 'undefined' ? window.innerWidth * 0.4 : 500;
+    useLayoutStore.setState({ leftDrawerWidth: Math.max(200, Math.min(w, maxW)) });
   },
 
   setTerminalHeight: (h: number): void => {
@@ -122,12 +140,15 @@ export const layoutStoreActions = {
   resetLayout: (): void => {
     useLayoutStore.setState({
       zones: defaultZoneLayouts(),
+      isLeftDrawerOpen: false,
+      leftDrawerMode: 'floating',
       isTerminalOpen: false,
       isParamPanelOpen: false,
       terminalMode: 'docked',
-      paramPanelMode: 'docked',
+      paramPanelMode: 'floating',
       viewportCount: 1,
       fullscreenViewportId: null,
+      leftDrawerWidth: 280,
       terminalHeight: 250,
       paramPanelWidth: 300,
     });

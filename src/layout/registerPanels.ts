@@ -9,6 +9,7 @@ import { panelRegistry } from './PanelRegistry';
 import { ViewportPanel } from '../components/panels/ViewportPanel';
 import { TerminalPanel } from '../components/panels/TerminalPanel';
 import { ParamPanelWrapper } from '../components/panels/ParamPanelWrapper';
+import { CellPanel } from '../components/panels/CellPanel';
 
 export function registerPanels(): void {
   panelRegistry.register({
@@ -29,6 +30,13 @@ export function registerPanels(): void {
     type: 'paramPanel',
     label: 'Environment',
     component: ParamPanelWrapper,
+    allowMultiple: false,
+  });
+
+  panelRegistry.register({
+    type: 'cellPanel',
+    label: 'Cells',
+    component: CellPanel,
     allowMultiple: false,
   });
 }

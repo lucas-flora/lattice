@@ -53,8 +53,9 @@ describe('KeyboardShortcutManager', () => {
     expect(shortcuts.some((s) => s.key === 'b')).toBe(true); // Step Back
     expect(shortcuts.some((s) => s.key === 'r')).toBe(true); // Reset
     expect(shortcuts.some((s) => s.key === 'c')).toBe(true); // Clear
-    expect(shortcuts.some((s) => s.key === 't')).toBe(true); // Terminal
-    expect(shortcuts.some((s) => s.key === 'p')).toBe(true); // Params
+    expect(shortcuts.some((s) => s.key === '`')).toBe(true); // Terminal
+    expect(shortcuts.some((s) => s.key === '1')).toBe(true); // Left drawer
+    expect(shortcuts.some((s) => s.key === '2')).toBe(true); // Params
     expect(shortcuts.some((s) => s.key === 'f')).toBe(true); // Fullscreen
     expect(shortcuts.some((s) => s.key === 's')).toBe(true); // Split
     expect(shortcuts.some((s) => s.key === '?')).toBe(true); // Help

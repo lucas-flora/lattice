@@ -8,7 +8,7 @@
  * │ ▼  50   60   70   ...                          │ Timeline ruler (full width)
  * ├────────────────────────────────────────────────┤
  * │ [100/300] [⏮ ▶ ⏭ | ↺ ✕ | ──●── FPS]   [▾]  │ Counter + ControlBar
- * ├────────────────────────────────────────────────┤
+ * ├─────────────────···───────────────────────────┤ Resize grip (when terminal open)
  * │ Terminal (when open)                           │
  * └────────────────────────────────────────────────┘
  */
@@ -36,18 +36,20 @@ export function BottomTray() {
 
   return (
     <div className="shrink-0 flex flex-col" data-testid="bottom-tray">
-      {/* Resize handle at top edge — only when terminal is open */}
-      {isTerminalOpen && (
-        <ResizeHandle direction="vertical" onResize={handleResize} />
-      )}
-
       {/* Timeline — topmost control, closest to viewport */}
       <div className="border-t border-zinc-700 bg-zinc-900/95">
         <Timeline />
       </div>
 
-      {/* ControlBar row with frame counter */}
-      <div className="flex items-center gap-2 px-2 bg-zinc-900/95 border-t border-zinc-800/50">
+      {/* ControlBar row with frame counter — double-click empty space to toggle terminal */}
+      <div
+        className="flex items-center gap-2 px-2 bg-zinc-900/95 border-t border-zinc-800/50"
+        onDoubleClick={(e) => {
+          const target = e.target as HTMLElement;
+          if (target.closest('button, input, select, [role="button"], a')) return;
+          handleToggleTerminal();
+        }}
+      >
         <TimelineCounter />
         <div className="flex-1">
           <ControlBar />
@@ -63,9 +65,13 @@ export function BottomTray() {
         </button>
       </div>
 
-      {/* Terminal content — shown when open */}
+      {/* Terminal — resize handle overlaps top edge (no gap) */}
       {isTerminalOpen && (
-        <div style={{ height: terminalHeight }}>
+        <div className="relative" style={{ height: terminalHeight }}>
+          {/* Resize handle at top — absolute, overlaps terminal top edge */}
+          <div className="absolute top-0 left-0 right-0 z-10">
+            <ResizeHandle direction="vertical" onResize={handleResize} />
+          </div>
           <Terminal docked />
         </div>
       )}

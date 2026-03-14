@@ -65,10 +65,11 @@ function formatLabel(frame: number, mode: TimelineDisplayMode, fps: number): str
 
 export { niceInterval, formatLabel };
 
-const MINIMAP_HEIGHT = 16;
-const RULER_HEIGHT = 24;
-const MAJOR_TICK_HEIGHT = 10;
-const MINOR_TICK_HEIGHT = 5;
+const MINIMAP_HEIGHT = 10;
+const GRIP_EXTEND = 8; // extra pixels above minimap bar for grip hit area
+const RULER_HEIGHT = 20;
+const MAJOR_TICK_HEIGHT = 6;
+const MINOR_TICK_HEIGHT = 3;
 
 // ─── Mini-map ────────────────────────────────────────────────
 
@@ -119,11 +120,11 @@ function MiniMap({
     const x = e.clientX - rect.left;
     el.setPointerCapture(e.pointerId);
 
-    // Check if clicking on zoom region edges (16px grab zone for grips)
-    if (Math.abs(x - zoomLeftX) < 16) {
+    // Check if clicking on zoom region edges (10px grab zone for grips)
+    if (Math.abs(x - zoomLeftX) < 10) {
       draggingRef.current = 'left';
       dragStartRef.current = { x: e.clientX, zoomStart, zoomEnd };
-    } else if (Math.abs(x - (zoomLeftX + zoomWidth)) < 16) {
+    } else if (Math.abs(x - (zoomLeftX + zoomWidth)) < 10) {
       draggingRef.current = 'right';
       dragStartRef.current = { x: e.clientX, zoomStart, zoomEnd };
     } else if (x >= zoomLeftX && x <= zoomLeftX + zoomWidth) {
@@ -168,71 +169,75 @@ function MiniMap({
 
   return (
     <div
-      className="relative cursor-pointer select-none"
-      style={{ height: MINIMAP_HEIGHT }}
+      className="relative cursor-pointer select-none z-[25]"
+      style={{ height: MINIMAP_HEIGHT + GRIP_EXTEND, marginTop: -GRIP_EXTEND }}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       data-testid="timeline-minimap"
     >
-      {/* Background — dark outside zoom region */}
-      <div className="absolute inset-0 bg-zinc-950" />
+      {/* Visual bar — bottom portion, clipped */}
+      <div className="absolute bottom-0 left-0 right-0 overflow-hidden" style={{ height: MINIMAP_HEIGHT }}>
+        {/* Background — dark outside zoom region */}
+        <div className="absolute inset-0 bg-zinc-950" />
 
-      {/* Computed region — subtle green tint in the dark area */}
-      <div
-        className="absolute top-0 bottom-0 bg-green-500/10"
-        style={{ left: 0, width: computedWidth }}
-      />
-
-      {/* Zoom region — much brighter to contrast with dark outside */}
-      <div
-        className="absolute top-0 bottom-0 bg-zinc-700"
-        style={{
-          left: zoomLeftX,
-          width: Math.max(zoomWidth, 2),
-          ...(isExtending ? { transition: 'left 300ms ease-out, width 300ms ease-out' } : {}),
-        }}
-      />
-
-      {/* Computed region inside zoom — brighter green */}
-      {computedWidth > zoomLeftX && (
+        {/* Computed region — subtle green tint in the dark area */}
         <div
-          className="absolute top-0 bottom-0 bg-green-500/25"
+          className="absolute top-0 bottom-0 bg-green-500/10"
+          style={{ left: 0, width: computedWidth }}
+        />
+
+        {/* Zoom region — much brighter to contrast with dark outside */}
+        <div
+          className="absolute top-0 bottom-0 bg-zinc-700"
           style={{
             left: zoomLeftX,
-            width: Math.min(computedWidth, zoomLeftX + zoomWidth) - zoomLeftX,
+            width: Math.max(zoomWidth, 2),
             ...(isExtending ? { transition: 'left 300ms ease-out, width 300ms ease-out' } : {}),
           }}
         />
-      )}
 
+        {/* Computed region inside zoom — brighter green */}
+        {computedWidth > zoomLeftX && (
+          <div
+            className="absolute top-0 bottom-0 bg-green-500/25"
+            style={{
+              left: zoomLeftX,
+              width: Math.min(computedWidth, zoomLeftX + zoomWidth) - zoomLeftX,
+              ...(isExtending ? { transition: 'left 300ms ease-out, width 300ms ease-out' } : {}),
+            }}
+          />
+        )}
+
+        {/* Playhead on mini-map — on top of grips */}
+        <div
+          className="absolute top-0 bottom-0 w-px bg-green-400 pointer-events-none z-10"
+          style={{ left: playheadX }}
+        />
+      </div>
+
+      {/* Grip hit zones — extend full height (including 8px above bar) for easier grabbing */}
       {/* Left grip */}
       <div
-        className="absolute top-0 bottom-0 cursor-ew-resize"
+        className="absolute top-0 bottom-0 w-[12px] cursor-ew-resize"
         style={{
-          left: zoomLeftX - 12, width: 24,
+          left: Math.max(0, zoomLeftX),
           ...(isExtending ? { transition: 'left 300ms ease-out' } : {}),
         }}
       >
-        <div className="absolute inset-y-0 left-[5px] w-[10px] bg-zinc-400/80 rounded-sm" />
+        <div className="absolute bottom-0 left-0 right-0 bg-zinc-400/40 hover:bg-zinc-300/60 transition-colors rounded-r-sm" style={{ height: MINIMAP_HEIGHT }} />
       </div>
 
       {/* Right grip */}
       <div
-        className="absolute top-0 bottom-0 cursor-ew-resize"
+        className="absolute top-0 bottom-0 w-[12px] cursor-ew-resize"
         style={{
-          left: zoomLeftX + zoomWidth - 12, width: 24,
+          left: zoomLeftX + zoomWidth - 12,
           ...(isExtending ? { transition: 'left 300ms ease-out' } : {}),
         }}
       >
-        <div className="absolute inset-y-0 right-[5px] w-[10px] bg-zinc-400/80 rounded-sm" />
+        <div className="absolute bottom-0 left-0 right-0 bg-zinc-400/40 hover:bg-zinc-300/60 transition-colors rounded-l-sm" style={{ height: MINIMAP_HEIGHT }} />
       </div>
-
-      {/* Playhead on mini-map */}
-      <div
-        className="absolute top-0 bottom-0 w-px bg-green-400 pointer-events-none"
-        style={{ left: playheadX }}
-      />
     </div>
   );
 }
@@ -522,8 +527,8 @@ export function Timeline() {
             />
             {tick.isMajor && (
               <span
-                className="absolute text-[9px] font-mono text-zinc-500 whitespace-nowrap"
-                style={{ top: MAJOR_TICK_HEIGHT + 1, left: -1, transform: 'translateX(-50%)' }}
+                className="absolute text-[8px] font-mono text-zinc-500 whitespace-nowrap leading-none"
+                style={{ top: MAJOR_TICK_HEIGHT + 2, left: 0, transform: 'translateX(-50%)' }}
               >
                 {formatLabel(tick.frame, displayMode, speed)}
               </span>
@@ -542,12 +547,12 @@ export function Timeline() {
               className="absolute -top-[1px] left-1/2 -translate-x-1/2"
               style={{
                 width: 0, height: 0,
-                borderLeft: '5px solid transparent',
-                borderRight: '5px solid transparent',
-                borderTop: '6px solid #4ade80',
+                borderLeft: '4px solid transparent',
+                borderRight: '4px solid transparent',
+                borderTop: '5px solid #4ade80',
               }}
             />
-            <div className="absolute top-[5px] bottom-0 left-0 w-px bg-green-400" />
+            <div className="absolute top-[4px] bottom-0 left-0 w-px bg-green-400" />
           </div>
         )}
 

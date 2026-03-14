@@ -25,6 +25,11 @@ export function splitCenterLayout(): LayoutNode {
   };
 }
 
+/** Default left drawer: cell cards panel */
+export function defaultLeftLayout(): LayoutNode {
+  return { type: 'panel', id: 'cell-panel', panelType: 'cellPanel' };
+}
+
 /** Default right drawer: parameter panel */
 export function defaultRightLayout(): LayoutNode {
   return { type: 'panel', id: 'param-panel', panelType: 'paramPanel' };
@@ -39,7 +44,7 @@ export function defaultBottomLayout(): LayoutNode {
 export function defaultZoneLayouts(): ZoneLayouts {
   return {
     center: defaultCenterLayout(),
-    left: null,
+    left: defaultLeftLayout(),
     right: defaultRightLayout(),
     bottom: defaultBottomLayout(),
   };

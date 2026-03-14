@@ -1,7 +1,9 @@
 /**
- * ResizeHandle: thin drag handle for resizing panels.
+ * ResizeHandle: drag handle for resizing panels.
  *
  * Uses pointer capture for reliable dragging over canvas/iframes.
+ * Real element width/height (6px) — no zero-size tricks.
+ * Subtle grip dots centered in the handle, accent line on hover.
  */
 
 'use client';
@@ -11,12 +13,12 @@ import { useRef, useCallback } from 'react';
 interface ResizeHandleProps {
   direction: 'horizontal' | 'vertical';
   onResize: (delta: number) => void;
+  onDoubleClick?: () => void;
 }
 
-export function ResizeHandle({ direction, onResize }: ResizeHandleProps) {
+export function ResizeHandle({ direction, onResize, onDoubleClick }: ResizeHandleProps) {
   const draggingRef = useRef(false);
   const lastPosRef = useRef(0);
-  const handleRef = useRef<HTMLDivElement>(null);
 
   const isVertical = direction === 'vertical';
 
@@ -24,7 +26,7 @@ export function ResizeHandle({ direction, onResize }: ResizeHandleProps) {
     e.preventDefault();
     draggingRef.current = true;
     lastPosRef.current = isVertical ? e.clientY : e.clientX;
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   }, [isVertical]);
 
   const onPointerMove = useCallback((e: React.PointerEvent) => {
@@ -37,22 +39,42 @@ export function ResizeHandle({ direction, onResize }: ResizeHandleProps) {
 
   const onPointerUp = useCallback((e: React.PointerEvent) => {
     draggingRef.current = false;
-    (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+    (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
   }, []);
 
   return (
     <div
-      ref={handleRef}
-      className={`shrink-0 ${isVertical ? 'h-1 cursor-row-resize' : 'w-1 cursor-col-resize'} group relative select-none`}
+      className={`shrink-0 group relative select-none ${
+        isVertical
+          ? 'h-[6px] cursor-row-resize'
+          : 'w-[6px] cursor-col-resize'
+      }`}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
+      onDoubleClick={onDoubleClick}
       data-testid="resize-handle"
     >
-      {/* Wider hit area */}
-      <div className={`absolute ${isVertical ? 'inset-x-0 -top-1 -bottom-1' : 'inset-y-0 -left-1 -right-1'}`} />
-      {/* Visual accent */}
-      <div className={`absolute ${isVertical ? 'inset-x-0 top-0 h-[2px]' : 'inset-y-0 left-0 w-[2px]'} bg-transparent group-hover:bg-green-500/30 group-active:bg-green-500/60 transition-colors`} />
+      {/* Accent line on hover/drag */}
+      <div className={`absolute pointer-events-none ${
+        isVertical
+          ? 'inset-x-0 top-1/2 -translate-y-1/2 h-[2px]'
+          : 'inset-y-0 left-1/2 -translate-x-1/2 w-[2px]'
+      } bg-transparent group-hover:bg-green-500/40 group-active:bg-green-500/70 transition-colors`} />
+
+      {/* Grip dots — centered, subtle */}
+      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+        <div className={`flex ${isVertical ? 'flex-row gap-1' : 'flex-col gap-[3px]'}`}>
+          {[0, 1, 2].map((i) => (
+            <div
+              key={i}
+              className={`rounded-full bg-zinc-700 group-hover:bg-zinc-500 transition-colors ${
+                isVertical ? 'w-1 h-[2px]' : 'w-[2px] h-1'
+              }`}
+            />
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

@@ -24,3 +24,74 @@ body {
   font-family: Arial, Helvetica, sans-serif;
   overflow: hidden;
 }
+
+/* ── Range slider: thin technical style ────────────────────────── */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+  height: 16px;
+}
+
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 2px;
+  background: #3f3f46; /* zinc-700 */
+  border-radius: 1px;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 2px;
+  height: 14px;
+  background: #a1a1aa; /* zinc-400 */
+  border: none;
+  border-radius: 1px;
+  margin-top: -6px;
+}
+
+input[type="range"]:hover::-webkit-slider-thumb {
+  background: #4ade80; /* green-400 */
+}
+
+input[type="range"]:active::-webkit-slider-thumb {
+  background: #22c55e; /* green-500 */
+}
+
+/* Firefox */
+input[type="range"]::-moz-range-track {
+  height: 2px;
+  background: #3f3f46;
+  border-radius: 1px;
+  border: none;
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 2px;
+  height: 14px;
+  background: #a1a1aa;
+  border: none;
+  border-radius: 1px;
+}
+
+input[type="range"]:hover::-moz-range-thumb {
+  background: #4ade80;
+}
+
+input[type="range"]:active::-moz-range-thumb {
+  background: #22c55e;
+}
+
+input[type="range"]::-moz-range-progress {
+  background: #4ade80;
+  height: 2px;
+  border-radius: 1px;
+}
+
+input[type="range"]:disabled::-webkit-slider-thumb {
+  background: #52525b; /* zinc-600 */
+}
+
+input[type="range"]:disabled::-moz-range-thumb {
+  background: #52525b;
+}

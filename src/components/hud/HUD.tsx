@@ -1,46 +1,39 @@
 /**
- * HUD: heads-up display overlay showing simulation status and shortcut hints.
+ * HUD: minimal heads-up display overlay showing simulation status.
  *
- * Shows preset name, generation counter (tabular-nums), live cell count,
- * and a subtle keyboard shortcut hint.
- * Reads reactively from simStore.
+ * Compact, transparent, informational only. Never overlaps drawers.
+ * Titles (app name, preset) live in HotkeyHelp and ControlBar instead.
  */
 
 'use client';
 
 import { useSimStore } from '@/store/simStore';
+import { useLayoutStore } from '@/store/layoutStore';
 
 export function HUD() {
   const generation = useSimStore((s) => s.generation);
   const liveCellCount = useSimStore((s) => s.liveCellCount);
-  const activePreset = useSimStore((s) => s.activePreset);
+  const isLeftDrawerOpen = useLayoutStore((s) => s.isLeftDrawerOpen);
+  const leftDrawerWidth = useLayoutStore((s) => s.leftDrawerWidth);
+
+  // Offset HUD to the right when left drawer is open (docked) to avoid overlap
+  const leftOffset = isLeftDrawerOpen ? leftDrawerWidth + 8 : 8;
 
   return (
     <div
-      className="absolute top-4 left-4 z-20 flex flex-col gap-1 pointer-events-none select-none bg-zinc-900/80 backdrop-blur-sm rounded-lg px-3 py-2"
+      className="absolute top-2 z-20 flex items-center gap-3 pointer-events-none select-none bg-zinc-900/50 backdrop-blur-sm rounded px-2 py-1"
+      style={{ left: leftOffset }}
       data-testid="hud"
     >
-      <h1 className="text-sm font-mono text-zinc-500 tracking-wider uppercase">
-        Lattice
-      </h1>
-      {activePreset && (
-        <p className="text-xs font-mono text-zinc-600" data-testid="hud-preset">
-          {activePreset}
-        </p>
-      )}
-      <p
-        className="text-lg font-mono text-green-400"
-        style={{ fontVariantNumeric: 'tabular-nums' }}
+      <span
+        className="text-xs font-mono text-green-400/80 tabular-nums"
         data-testid="hud-generation"
       >
         Gen {generation}
-      </p>
-      <p className="text-xs font-mono text-zinc-400" data-testid="hud-cell-count">
+      </span>
+      <span className="text-[10px] font-mono text-zinc-500" data-testid="hud-cell-count">
         {liveCellCount.toLocaleString()} cells
-      </p>
-      <p className="text-[10px] font-mono text-zinc-700 mt-1" data-testid="hud-shortcut-hint">
-        Press <kbd className="text-zinc-600 bg-zinc-800 px-1 rounded">?</kbd> for shortcuts
-      </p>
+      </span>
     </div>
   );
 }

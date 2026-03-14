@@ -108,6 +108,12 @@ export class SimulationController {
       name: config.meta.name,
       width: config.grid.width,
       height: config.grid.height ?? 1,
+      cellProperties: config.cell_properties.map((p) => ({
+        name: p.name,
+        type: p.type,
+        default: p.default,
+        role: p.role,
+      })),
     });
     this.emitParamDefs();
   }
@@ -129,6 +135,12 @@ export class SimulationController {
       name: config.meta.name,
       width: config.grid.width,
       height: config.grid.height ?? 1,
+      cellProperties: config.cell_properties.map((p) => ({
+        name: p.name,
+        type: p.type,
+        default: p.default,
+        role: p.role,
+      })),
     });
     this.emitParamDefs();
   }

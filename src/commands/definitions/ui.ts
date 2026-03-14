@@ -67,6 +67,29 @@ export function registerUiCommands(
   });
 
   registry.register({
+    name: 'ui.toggleLeftDrawer',
+    description: 'Toggle left drawer (cell cards) visibility',
+    category: 'ui',
+    params: ToggleParams,
+    execute: async (params: unknown) => {
+      const p = params as { docked?: boolean } | undefined;
+      const { isLeftDrawerOpen, leftDrawerMode } = useLayoutStore.getState();
+
+      if (p?.docked !== undefined) {
+        const requestedMode = p.docked ? 'docked' : 'floating';
+        if (isLeftDrawerOpen && leftDrawerMode === requestedMode) {
+          useLayoutStore.setState({ isLeftDrawerOpen: false });
+        } else {
+          useLayoutStore.setState({ isLeftDrawerOpen: true, leftDrawerMode: requestedMode });
+        }
+      } else {
+        useLayoutStore.setState({ isLeftDrawerOpen: !isLeftDrawerOpen });
+      }
+      return { success: true, data: { isLeftDrawerOpen: useLayoutStore.getState().isLeftDrawerOpen } };
+    },
+  });
+
+  registry.register({
     name: 'ui.toggleHotkeyHelp',
     description: 'Toggle keyboard shortcut help overlay',
     category: 'ui',

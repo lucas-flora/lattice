@@ -84,7 +84,10 @@ describe('Command Definitions', () => {
     // Timeline / playback
     expect(names).toContain('sim.setDuration');
 
-    expect(list.length).toBe(40);
+    // Phase 2 new commands
+    expect(names).toContain('ui.toggleLeftDrawer');
+
+    expect(list.length).toBe(41);
   });
 
   it('TestCommandDefinitions_SimPlay_StartsSimulation', async () => {

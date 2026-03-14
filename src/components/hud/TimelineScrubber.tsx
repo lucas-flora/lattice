@@ -49,7 +49,7 @@ export function TimelineScrubber() {
         value={generation}
         onChange={handleScrub}
         disabled={isRunning}
-        className="w-32 accent-green-500 disabled:opacity-50"
+        className="w-32 disabled:opacity-50"
         title={`Generation ${generation} / ${maxGeneration}`}
         data-testid="timeline-slider"
       />

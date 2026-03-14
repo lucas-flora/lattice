@@ -33,8 +33,11 @@ export function wireStores(eventBus: EventBus): () => void {
     simStoreActions.setIsRunning(false);
   };
 
-  const onPresetLoaded = (payload: { name: string; width: number; height: number }) => {
+  const onPresetLoaded = (payload: { name: string; width: number; height: number; cellProperties?: Array<{ name: string; type: string; default: number | number[]; role?: string }> }) => {
     simStoreActions.setActivePreset(payload.name, payload.width, payload.height);
+    if (payload.cellProperties) {
+      simStoreActions.setCellProperties(payload.cellProperties as Array<{ name: string; type: 'bool' | 'int' | 'float' | 'vec2' | 'vec3' | 'vec4'; default: number | number[]; role?: string }>);
+    }
   };
 
   const onReset = () => {

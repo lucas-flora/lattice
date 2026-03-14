@@ -19,6 +19,13 @@ export interface ParamDef {
   step?: number;
 }
 
+export interface CellPropertySummary {
+  name: string;
+  type: 'bool' | 'int' | 'float' | 'vec2' | 'vec3' | 'vec4';
+  default: number | number[];
+  role?: string;
+}
+
 export interface SimState {
   /** Current simulation generation */
   generation: number;
@@ -42,6 +49,8 @@ export interface SimState {
   paramDefs: ParamDef[];
   /** Current parameter values */
   params: Record<string, number>;
+  /** Cell property definitions for the current preset */
+  cellProperties: CellPropertySummary[];
 }
 
 /** Default initial state */
@@ -57,6 +66,7 @@ const initialSimState: SimState = {
   computedGeneration: 0,
   paramDefs: [],
   params: {},
+  cellProperties: [],
 };
 
 export const useSimStore = create<SimState>()(
@@ -108,5 +118,8 @@ export const simStoreActions = {
   },
   getParamDefs: (): ParamDef[] => {
     return useSimStore.getState().paramDefs;
+  },
+  setCellProperties: (cellProperties: CellPropertySummary[]): void => {
+    useSimStore.setState({ cellProperties });
   },
 };

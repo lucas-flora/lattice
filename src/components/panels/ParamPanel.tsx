@@ -300,7 +300,7 @@ export function ParamPanel({ docked = false }: ParamPanelProps) {
                           value: parseFloat(e.target.value),
                         });
                       }}
-                      className="w-full h-1 bg-zinc-700 rounded-full appearance-none cursor-pointer accent-green-500"
+                      className="w-full"
                       data-testid={`param-slider-${def.name}`}
                     />
                   </div>
@@ -422,10 +422,13 @@ export function ParamPanel({ docked = false }: ParamPanelProps) {
 
   if (docked) {
     return (
-      <div className="shrink-0 h-full flex" data-testid="param-panel">
-        <ResizeHandle direction="horizontal" onResize={handlePanelResize} />
-        <div style={{ width: paramPanelWidth }} className="h-full">
+      <div className="relative shrink-0 h-full" style={{ width: paramPanelWidth }} data-testid="param-panel">
+        <div className="absolute inset-0 overflow-hidden">
           {panelContent}
+        </div>
+        {/* Resize handle at left edge — slight inset, double-click to close */}
+        <div className="absolute left-1 top-0 bottom-0 z-10 flex">
+          <ResizeHandle direction="horizontal" onResize={handlePanelResize} onDoubleClick={handleClose} />
         </div>
       </div>
     );
@@ -433,29 +436,21 @@ export function ParamPanel({ docked = false }: ParamPanelProps) {
 
   // Floating mode
   return (
-    <>
-      {/* Edge tab toggle — flush against right edge, only visible when drawer is closed */}
-      {!isOpen && (
-        <button
-          onClick={() => commandRegistry.execute('ui.toggleParamPanel', {})}
-          className="absolute top-1/3 right-0 z-10 bg-zinc-800/80 text-zinc-500 hover:text-zinc-200 text-[10px] font-mono py-3 px-1 rounded-l border border-r-0 border-zinc-700 transition-colors pointer-events-auto"
-          title="Parameters (P)"
-          data-testid="param-panel-toggle"
-        >
-          {'\u25C0'}
-        </button>
-      )}
-
-      {/* Panel */}
-      <div
-        className={`absolute top-0 right-0 bottom-0 z-15 w-[300px] transition-transform duration-200 ease-out pointer-events-auto ${isOpen ? '' : 'pointer-events-none'}`}
-        style={{
-          transform: isOpen ? 'translateX(0)' : 'translateX(100%)',
-        }}
-        data-testid="param-panel"
-      >
+    <div
+      className={`absolute top-0 right-0 bottom-0 z-15 transition-transform duration-200 ease-out pointer-events-auto ${isOpen ? '' : 'pointer-events-none'}`}
+      style={{
+        width: paramPanelWidth,
+        transform: isOpen ? 'translateX(0)' : 'translateX(100%)',
+      }}
+      data-testid="param-panel"
+    >
+      <div className="absolute inset-0 overflow-hidden">
         {panelContent}
       </div>
-    </>
+      {/* Resize handle at left edge — slight inset, double-click to close */}
+      <div className="absolute left-1 top-0 bottom-0 z-10 flex">
+        <ResizeHandle direction="horizontal" onResize={handlePanelResize} onDoubleClick={handleClose} />
+      </div>
+    </div>
   );
 }

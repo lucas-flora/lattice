@@ -1,7 +1,8 @@
 /**
  * DrawerShell: collapsible container for a zone's layout tree.
  *
- * Renders a resize handle and wraps a LayoutRenderer for the drawer's content.
+ * Resize handle is absolute-positioned at the edge (within bounds).
+ * Double-click the grip to close. Small inset for visual breathing room.
  */
 
 'use client';
@@ -15,17 +16,15 @@ interface DrawerShellProps {
   size: number;
   collapsed: boolean;
   onResize: (size: number) => void;
+  onClose?: () => void;
   children: ReactNode;
 }
 
-export function DrawerShell({ position, size, collapsed, onResize, children }: DrawerShellProps) {
+export function DrawerShell({ position, size, collapsed, onResize, onClose, children }: DrawerShellProps) {
   const isHorizontal = position === 'left' || position === 'right';
 
   const handleResize = useCallback(
     (delta: number) => {
-      // Left drawer: dragging right = bigger (+delta)
-      // Right drawer: dragging left = bigger (-delta)
-      // Bottom drawer: dragging up = bigger (-delta)
       const sign = position === 'left' ? 1 : -1;
       onResize(size + delta * sign);
     },
@@ -38,41 +37,26 @@ export function DrawerShell({ position, size, collapsed, onResize, children }: D
     ? { width: size, minWidth: 0 }
     : { height: size, minHeight: 0 };
 
-  const borderClass =
-    position === 'left'
-      ? 'border-r border-zinc-700'
-      : position === 'right'
-        ? 'border-l border-zinc-700'
-        : '';
-
-  // Resize handle position
-  const resizeDirection = isHorizontal ? 'horizontal' : 'vertical';
-  const handlePosition = position === 'left' ? 'right' : position === 'right' ? 'left' : 'top';
-
   return (
     <div
-      className={`relative shrink-0 flex ${isHorizontal ? 'flex-col' : 'flex-row'} ${borderClass}`}
+      className="relative shrink-0"
       style={sizeStyle}
       data-testid={`drawer-${position}`}
     >
-      {/* Resize handle on the edge facing center */}
-      {handlePosition === 'top' && (
-        <ResizeHandle direction={resizeDirection} onResize={handleResize} />
-      )}
-      {handlePosition === 'left' && (
-        <div className="absolute left-0 top-0 bottom-0 z-10">
-          <ResizeHandle direction={resizeDirection} onResize={handleResize} />
-        </div>
-      )}
-
-      {/* Drawer content */}
-      <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
+      {/* Content fills full area */}
+      <div className="absolute inset-0 overflow-hidden">
         {children}
       </div>
 
-      {handlePosition === 'right' && (
-        <div className="absolute right-0 top-0 bottom-0 z-10">
-          <ResizeHandle direction={resizeDirection} onResize={handleResize} />
+      {/* Resize handle at the edge — within bounds, slight inset for breathing room */}
+      {position === 'left' && (
+        <div className="absolute right-1 top-0 bottom-0 z-10 flex">
+          <ResizeHandle direction="horizontal" onResize={handleResize} onDoubleClick={onClose} />
+        </div>
+      )}
+      {position === 'right' && (
+        <div className="absolute left-1 top-0 bottom-0 z-10 flex">
+          <ResizeHandle direction="horizontal" onResize={handleResize} onDoubleClick={onClose} />
         </div>
       )}
     </div>
