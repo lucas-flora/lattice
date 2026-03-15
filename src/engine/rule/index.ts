@@ -6,6 +6,7 @@
  */
 export { RuleRunner } from './RuleRunner';
 export { WasmRuleRunner } from './WasmRuleRunner';
+export { PythonRuleRunner } from './PythonRuleRunner';
 export { Simulation } from './Simulation';
 export { CommandHistory } from './CommandHistory';
 export { compileRule, validateCompiledRule } from './RuleCompiler';

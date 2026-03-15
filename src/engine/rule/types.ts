@@ -51,6 +51,8 @@ export interface IRuleRunner {
   reset(): void;
   /** Check whether the runner is using WASM or TypeScript */
   isUsingWasm(): boolean;
+  /** Check whether the runner is using Python/Pyodide */
+  isUsingPython?: () => boolean;
 }
 
 /** WASM module interface for lattice-engine exports */

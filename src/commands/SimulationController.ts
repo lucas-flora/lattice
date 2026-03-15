@@ -14,6 +14,7 @@ import { CommandHistory } from '../engine/rule/CommandHistory';
 import { loadBuiltinPresetClient, type BuiltinPresetNameClient } from '../engine/preset/builtinPresetsClient';
 import type { EventBus } from '../engine/core/EventBus';
 import type { PresetConfig } from '../engine/preset/types';
+import type { PyodideBridge } from '../engine/scripting/PyodideBridge';
 
 export interface ParamDef {
   name: string;
@@ -75,6 +76,9 @@ export class SimulationController {
   /** Debounce timer for restarting compute-ahead after grid edits */
   private editDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
+  /** Optional PyodideBridge for Python rule support */
+  private pyodideBridge: PyodideBridge | null = null;
+
   /** Current playback generation (may lag behind computedGeneration) */
   private playbackGeneration: number = 0;
 
@@ -110,6 +114,7 @@ export class SimulationController {
 
   /**
    * Load a preset from an already-parsed PresetConfig.
+   * For Python presets, use loadPresetConfigAsync() instead.
    */
   loadPresetConfig(config: PresetConfig): void {
     this.pause();
@@ -123,6 +128,32 @@ export class SimulationController {
 
     this.emitPresetLoaded(config);
     this.emitParamDefs();
+  }
+
+  /**
+   * Load a Python preset asynchronously. Creates PyodideBridge and
+   * initializes the Python runtime before creating the Simulation.
+   */
+  async loadPresetConfigAsync(config: PresetConfig, bridge: PyodideBridge): Promise<void> {
+    this.pause();
+
+    this.pyodideBridge = bridge;
+    this.simulation = await Simulation.create(config, bridge);
+    this.commandHistory = new CommandHistory(this.simulation);
+    this.activePresetName = config.meta.name;
+    this.frameCache.clear();
+    this.computedGeneration = 0;
+    this.playbackGeneration = 0;
+
+    this.emitPresetLoaded(config);
+    this.emitParamDefs();
+  }
+
+  /**
+   * Check whether the current simulation uses a Python rule.
+   */
+  isUsingPython(): boolean {
+    return this.simulation?.isUsingPython() ?? false;
   }
 
   /**
@@ -159,9 +190,14 @@ export class SimulationController {
 
   /**
    * Run a single tick (step forward one generation).
+   * For Python rules, use stepAsync() instead.
    */
   step(): void {
     if (!this.simulation) return;
+    if (this.simulation.isUsingPython()) {
+      void this.stepAsync();
+      return;
+    }
 
     const nextGen = this.playbackGeneration + 1;
 
@@ -174,6 +210,26 @@ export class SimulationController {
     // Ensure the next frame is computed
     if (nextGen > this.computedGeneration) {
       this.computeFrames(1);
+    }
+    this.playbackGeneration = nextGen;
+    this.restoreFrame(this.playbackGeneration);
+  }
+
+  /**
+   * Async step for Python rules.
+   */
+  async stepAsync(): Promise<void> {
+    if (!this.simulation) return;
+
+    const nextGen = this.playbackGeneration + 1;
+
+    if (nextGen >= this.timelineDuration) {
+      this.timelineDuration = nextGen + 1;
+      this.eventBus.emit('sim:timelineExtend', { duration: this.timelineDuration });
+    }
+
+    if (nextGen > this.computedGeneration) {
+      await this.computeFramesAsync(1);
     }
     this.playbackGeneration = nextGen;
     this.restoreFrame(this.playbackGeneration);
@@ -472,6 +528,26 @@ export class SimulationController {
   }
 
   /**
+   * Async version of computeFrames for Python rules.
+   */
+  private async computeFramesAsync(count: number): Promise<void> {
+    if (!this.simulation) return;
+
+    if (this.simulation.getGeneration() !== this.computedGeneration) {
+      this.advanceSimTo(this.computedGeneration);
+    }
+
+    for (let i = 0; i < count; i++) {
+      this.cacheCurrentFrame();
+      await this.simulation.tickAsync();
+      this.computedGeneration = this.simulation.getGeneration();
+    }
+    this.cacheCurrentFrame();
+
+    this.eventBus.emit('sim:computeProgress', { computedGeneration: this.computedGeneration });
+  }
+
+  /**
    * Advance the sim engine to a specific generation (for internal use).
    * If the target is cached, restores from cache. Otherwise replays from initial state.
    */
@@ -552,6 +628,12 @@ export class SimulationController {
   private playbackTick(): void {
     if (!this.simulation) return;
 
+    // Python rules use async playback
+    if (this.simulation.isUsingPython()) {
+      void this.playbackTickAsync();
+      return;
+    }
+
     const nextGen = this.playbackGeneration + 1;
 
     // Check if playback has reached the end of the timeline
@@ -590,6 +672,40 @@ export class SimulationController {
       this.restoreFrame(this.playbackGeneration);
     }
     // else: frame still not ready, skip this tick (avoids blocking)
+  }
+
+  private async playbackTickAsync(): Promise<void> {
+    if (!this.simulation) return;
+
+    const nextGen = this.playbackGeneration + 1;
+
+    if (nextGen >= this.timelineDuration) {
+      switch (this.playbackMode) {
+        case 'once':
+          this.pause();
+          return;
+        case 'loop':
+          this.playbackGeneration = 0;
+          this.restoreFrame(0);
+          return;
+        case 'endless': {
+          const newDuration = smartExtendDuration(this.timelineDuration);
+          this.timelineDuration = newDuration;
+          this.eventBus.emit('sim:timelineExtend', { duration: newDuration });
+          this.computeAheadTarget = newDuration;
+          break;
+        }
+      }
+    }
+
+    if (nextGen > this.computedGeneration) {
+      await this.computeFramesAsync(1);
+    }
+
+    if (nextGen <= this.computedGeneration) {
+      this.playbackGeneration = nextGen;
+      this.restoreFrame(this.playbackGeneration);
+    }
   }
 
   /**
@@ -903,6 +1019,10 @@ export class SimulationController {
     if (this.editDebounceTimer) {
       clearTimeout(this.editDebounceTimer);
       this.editDebounceTimer = null;
+    }
+    if (this.pyodideBridge) {
+      this.pyodideBridge.dispose();
+      this.pyodideBridge = null;
     }
     this.simulation = null;
     this.commandHistory = null;

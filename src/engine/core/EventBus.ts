@@ -27,6 +27,9 @@ export interface EngineEventMap {
   'edit:erase': { x: number; y: number };
   'sim:computeProgress': { computedGeneration: number };
   'sim:timelineExtend': { duration: number };
+  'pyodide:loading': { phase: string; progress: number };
+  'pyodide:ready': Record<string, never>;
+  'pyodide:error': { message: string };
 }
 
 /** Valid event names */

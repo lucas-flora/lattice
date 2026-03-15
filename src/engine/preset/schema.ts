@@ -55,7 +55,7 @@ const CellPropertySchema = z.object({
 });
 
 const RuleSchema = z.object({
-  type: z.enum(['typescript', 'wasm']),
+  type: z.enum(['typescript', 'wasm', 'python']),
   compute: z.string().min(1, 'Rule compute function body is required'),
   /** Name of the WASM function to call (e.g., 'gray_scott_tick'). Only used when type is 'wasm'. */
   wasm_module: z.string().optional(),

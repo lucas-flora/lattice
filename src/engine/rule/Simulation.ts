@@ -15,12 +15,14 @@ import type { PresetConfig } from '../preset/types';
 import { CHANNELS_PER_TYPE } from '../cell/types';
 import { CellTypeRegistry } from '../cell/CellTypeRegistry';
 import { RuleRunner } from './RuleRunner';
+import { PythonRuleRunner } from './PythonRuleRunner';
 import { compileRule } from './RuleCompiler';
+import type { PyodideBridge } from '../scripting/PyodideBridge';
 import type { TickResult } from './types';
 
 export class Simulation {
   readonly grid: Grid;
-  runner: RuleRunner;
+  runner: RuleRunner | PythonRuleRunner;
   readonly preset: PresetConfig;
   readonly params: Map<string, number> = new Map();
   readonly typeRegistry: CellTypeRegistry;
@@ -64,24 +66,46 @@ export class Simulation {
   /**
    * Create a Simulation with async WASM module loading.
    * Falls back to TypeScript silently if WASM loading fails.
+   * Accepts optional PyodideBridge for Python rule support.
    */
-  static async create(preset: PresetConfig): Promise<Simulation> {
+  static async create(preset: PresetConfig, pyodideBridge?: PyodideBridge): Promise<Simulation> {
     const sim = new Simulation(preset);
-    // If the preset requests WASM, try to load it
-    if (preset.rule.type === 'wasm') {
+    if (preset.rule.type === 'python' && pyodideBridge) {
+      const pythonRunner = new PythonRuleRunner(sim.grid, preset, pyodideBridge);
+      pythonRunner.setParamsProvider(() => sim.getParamsObject());
+      (sim as { runner: RuleRunner | PythonRuleRunner }).runner = pythonRunner;
+    } else if (preset.rule.type === 'wasm') {
       const wasmRunner = await RuleRunner.create(sim.grid, preset, sim.typeRegistry);
       wasmRunner.setParamsProvider(() => sim.getParamsObject());
-      // Replace the runner with the WASM-enabled one
-      (sim as { runner: RuleRunner }).runner = wasmRunner;
+      (sim as { runner: RuleRunner | PythonRuleRunner }).runner = wasmRunner;
     }
     return sim;
   }
 
   /**
    * Run one tick of the simulation.
+   * Throws if the runner is Python-only (use tickAsync instead).
    */
   tick(): TickResult {
     return this.runner.tick();
+  }
+
+  /**
+   * Run one tick asynchronously. Required for Python rules.
+   * Falls back to sync tick() for TS/WASM runners.
+   */
+  async tickAsync(): Promise<TickResult> {
+    if (this.runner instanceof PythonRuleRunner) {
+      return this.runner.tickAsync();
+    }
+    return this.runner.tick();
+  }
+
+  /**
+   * Check whether the simulation is using a Python rule.
+   */
+  isUsingPython(): boolean {
+    return this.runner instanceof PythonRuleRunner;
   }
 
   /**

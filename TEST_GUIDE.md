@@ -248,3 +248,18 @@ pnpm vitest run --dir src && \
 - 13 RAG app documentation documents covering all major features
 - Gray-Scott 512x512 TypeScript baseline: ~170-180ms/tick; WASM target: <16ms/tick
 - Top 3 performance bottlenecks documented: Laplacian computation, U*V^2 reaction, Float32Array allocation
+
+### Phase 11: Pyodide Integration (2026-03-14)
+- 20 new JS/TS tests = 628 total (with Phases 1-10)
+- All quality gates pass: tsc --noEmit, vitest, next build
+- Grid transfer suite: `gridTransfer.test.ts` (5 tests: extract, copy isolation, apply, unknown prop ignored, size mismatch ignored)
+- Integration suite: `pyodide-integration.test.ts` (9 tests: schema accepts python, coexists with TS/WASM, harness output, bridge lazy init, EventBus pyodide events)
+- Scenario suite: `python-gol.test.ts` (6 tests: real Pyodide loads, numpy roundtrip, import error recovery, blinker oscillates, still life stable, TS preset coexistence)
+- Pyodide loads lazily in dedicated Web Worker (separate from simulation worker)
+- PyodideBridge: promise-based API with correlation IDs, lazy init, status via EventBus
+- Grid Float32Array → numpy ndarray roundtrip preserves values (copy-based transfer)
+- Python GoL blinker oscillates correctly over 2 ticks via numpy vectorized ops
+- PythonRuleRunner follows WasmRuleRunner delegate pattern with async tickAsync()
+- Simulation.tickAsync() and SimulationController async step/playback paths
+- Preset schema extended: `'python'` added alongside `'typescript'` and `'wasm'`
+- Zero regressions: all 608 pre-existing tests pass unchanged
