@@ -45,7 +45,20 @@ const PARAM_MAPPINGS: Record<string, string[]> = {
   'param.get': ['name'],
   'param.reset': ['?name'],
   'grid.resize': ['width', '?height'],
-  'rule.edit': ['body'],
+  'rule.edit': ['...body'],
+  'var.set': ['name', 'value'],
+  'var.get': ['name'],
+  'var.delete': ['name'],
+  'expr.set': ['property', '...expression'],
+  'expr.clear': ['property'],
+  'script.add': ['name', '...code'],
+  'script.remove': ['name'],
+  'script.enable': ['name'],
+  'script.disable': ['name'],
+  'script.show': ['name'],
+  'script.clear': [],
+  'var.clear': [],
+  'expr.clearAll': [],
 };
 
 /**
@@ -68,6 +81,19 @@ const ARG_HINTS: Record<string, string> = {
   'param.reset': '[name]',
   'grid.resize': '<width> [height]',
   'rule.edit': '<body>',
+  'var.set': '<name> <value>',
+  'var.get': '<name>',
+  'var.delete': '<name>',
+  'expr.set': '<property> <expression>',
+  'expr.clear': '<property>',
+  'script.add': '<name> <code>',
+  'script.remove': '<name>',
+  'script.enable': '<name>',
+  'script.disable': '<name>',
+  'script.show': '<name>',
+  'script.clear': '',
+  'var.clear': '',
+  'expr.clearAll': '',
 };
 
 /**
@@ -221,8 +247,19 @@ function mapArgs(commandName: string, args: string[]): Record<string, unknown> {
   const params: Record<string, unknown> = {};
 
   for (let i = 0; i < paramNames.length && i < args.length; i++) {
-    const rawName = paramNames[i];
-    const name = rawName.startsWith('?') ? rawName.slice(1) : rawName;
+    let rawName = paramNames[i];
+    const isOptional = rawName.startsWith('?');
+    if (isOptional) rawName = rawName.slice(1);
+
+    // Rest parameter: captures all remaining args as a single string
+    const isRest = rawName.startsWith('...');
+    const name = isRest ? rawName.slice(3) : rawName;
+
+    if (isRest) {
+      params[name] = args.slice(i).join(' ');
+      break;
+    }
+
     const value = args[i];
     const numValue = Number(value);
     params[name] = isNaN(numValue) ? value : numValue;

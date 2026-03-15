@@ -1,9 +1,12 @@
 /**
- * Scripting module: Pyodide integration for Python rules.
+ * Scripting module: Pyodide integration for Python rules, expressions, and scripts.
  *
  * Provides the PyodideBridge (main-thread API), grid transfer helpers,
- * and worker message types.
+ * worker message types, and scripting engines.
  */
 export { PyodideBridge } from './PyodideBridge';
 export { extractGridBuffers, applyResultBuffers } from './gridTransfer';
-export type { PyodideStatus, PyodideInMessage, PyodideOutMessage } from './types';
+export { GlobalVariableStore } from './GlobalVariableStore';
+export { ExpressionEngine } from './ExpressionEngine';
+export { GlobalScriptRunner } from './GlobalScriptRunner';
+export type { PyodideStatus, PyodideInMessage, PyodideOutMessage, GlobalVariableDef, GlobalScriptDef } from './types';

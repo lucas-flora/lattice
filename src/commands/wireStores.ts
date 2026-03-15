@@ -13,6 +13,7 @@ import { simStoreActions } from '../store/simStore';
 import { viewStoreActions } from '../store/viewStore';
 import { uiStoreActions } from '../store/uiStore';
 import { layoutStoreActions } from '../store/layoutStore';
+import { scriptStoreActions } from '../store/scriptStore';
 // aiStore wiring deferred to Phase 8
 
 /**
@@ -117,6 +118,60 @@ export function wireStores(eventBus: EventBus): () => void {
   eventBus.on('view:change', onViewChange);
   eventBus.on('ui:change', onUiChange);
 
+  // --- scriptStore wiring ---
+  const onPyodideLoading = (payload: { phase: string; progress: number }) => {
+    scriptStoreActions.setPyodideStatus('loading');
+    scriptStoreActions.setPyodideProgress(payload.progress);
+  };
+
+  const onPyodideReady = () => {
+    scriptStoreActions.setPyodideStatus('ready');
+    scriptStoreActions.setPyodideProgress(1);
+  };
+
+  const onPyodideError = () => {
+    scriptStoreActions.setPyodideStatus('error');
+  };
+
+  const onVariableChanged = (payload: { name: string; value: number | string }) => {
+    scriptStoreActions.setVariable(payload.name, payload.value);
+  };
+
+  const onVariablesReset = () => {
+    scriptStoreActions.resetVariables();
+  };
+
+  const onScriptAdded = (payload: { name: string; enabled: boolean; code: string; inputs?: string[]; outputs?: string[] }) => {
+    scriptStoreActions.addScript(payload);
+  };
+
+  const onScriptRemoved = (payload: { name: string }) => {
+    scriptStoreActions.removeScript(payload.name);
+  };
+
+  const onScriptToggled = (payload: { name: string; enabled: boolean }) => {
+    scriptStoreActions.toggleScript(payload.name, payload.enabled);
+  };
+
+  const onExpressionSet = (payload: { property: string; expression: string }) => {
+    scriptStoreActions.setExpression(payload.property, payload.expression);
+  };
+
+  const onExpressionCleared = (payload: { property: string }) => {
+    scriptStoreActions.clearExpression(payload.property);
+  };
+
+  eventBus.on('pyodide:loading', onPyodideLoading);
+  eventBus.on('pyodide:ready', onPyodideReady);
+  eventBus.on('pyodide:error', onPyodideError);
+  eventBus.on('script:variableChanged', onVariableChanged);
+  eventBus.on('script:variablesReset', onVariablesReset);
+  eventBus.on('script:scriptAdded', onScriptAdded);
+  eventBus.on('script:scriptRemoved', onScriptRemoved);
+  eventBus.on('script:scriptToggled', onScriptToggled);
+  eventBus.on('script:expressionSet', onExpressionSet);
+  eventBus.on('script:expressionCleared', onExpressionCleared);
+
   // aiStore: Phase 8 will wire AI-specific events here
 
   // Return cleanup function
@@ -135,5 +190,15 @@ export function wireStores(eventBus: EventBus): () => void {
     eventBus.off('sim:timelineExtend', onTimelineExtend);
     eventBus.off('view:change', onViewChange);
     eventBus.off('ui:change', onUiChange);
+    eventBus.off('pyodide:loading', onPyodideLoading);
+    eventBus.off('pyodide:ready', onPyodideReady);
+    eventBus.off('pyodide:error', onPyodideError);
+    eventBus.off('script:variableChanged', onVariableChanged);
+    eventBus.off('script:variablesReset', onVariablesReset);
+    eventBus.off('script:scriptAdded', onScriptAdded);
+    eventBus.off('script:scriptRemoved', onScriptRemoved);
+    eventBus.off('script:scriptToggled', onScriptToggled);
+    eventBus.off('script:expressionSet', onExpressionSet);
+    eventBus.off('script:expressionCleared', onExpressionCleared);
   };
 }

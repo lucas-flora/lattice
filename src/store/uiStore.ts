@@ -38,11 +38,11 @@ export const useUiStore = create<UiState>()(
     brushSize: 1,
     gridLinesVisible: false,
     timelineDisplayMode: 'frames' as TimelineDisplayMode,
-    timelineDuration: 300,
+    timelineDuration: 256,
     timelineZoomStart: 0,
-    timelineZoomEnd: 300,
+    timelineZoomEnd: 256,
     timelineAutoExtend: true,
-    playbackMode: 'endless' as PlaybackMode,
+    playbackMode: 'loop' as PlaybackMode,
   })),
 );
 

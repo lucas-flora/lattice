@@ -66,7 +66,7 @@ describe('Timeline', () => {
       });
     });
 
-    it('TestTimeline_Duration_DefaultIs300', () => {
+    it('TestTimeline_Duration_SetTo300', () => {
       expect(useUiStore.getState().timelineDuration).toBe(300);
     });
 

@@ -49,12 +49,12 @@ See `docs/ARCHITECTURE.md` for the full system architecture document (north star
 - **Independent Viewports**: Each viewport can be its own SimulationInstance with separate Grid/Rule/state.
 
 ### Tick Pipeline Order
-1. Evaluate expressions (topological order from dependency graph)
-2. Resolve parameter links
-3. Execute rule (TS/WASM built-in or Python custom)
-4. Run tags (per-cell post-processing)
-5. Run global scripts (per-frame)
-6. Swap buffers → emit sim:tick
+1. Resolve parameter links
+2. Execute rule (TS/WASM built-in or Python custom)
+3. Swap buffers (rule output becomes current)
+4. Evaluate expressions (post-rule, derives values from rule output, writes current in-place)
+5. Run tags (per-cell post-processing)
+6. Run global scripts (per-frame) → emit sim:tick
 
 ### Existing YAML Presets
 The 6 built-in presets (`src/engine/preset/builtins/`) use TypeScript `compute` bodies. These remain as-is (JS/WASM fast path). Python rules are for user-authored custom logic — both paths coexist.

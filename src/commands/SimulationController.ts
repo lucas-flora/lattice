@@ -14,7 +14,10 @@ import { CommandHistory } from '../engine/rule/CommandHistory';
 import { loadBuiltinPresetClient, type BuiltinPresetNameClient } from '../engine/preset/builtinPresetsClient';
 import type { EventBus } from '../engine/core/EventBus';
 import type { PresetConfig } from '../engine/preset/types';
-import type { PyodideBridge } from '../engine/scripting/PyodideBridge';
+import { PyodideBridge } from '../engine/scripting/PyodideBridge';
+import { ExpressionEngine } from '../engine/scripting/ExpressionEngine';
+import { GlobalScriptRunner } from '../engine/scripting/GlobalScriptRunner';
+import { scriptStoreActions } from '../store/scriptStore';
 
 export interface ParamDef {
   name: string;
@@ -83,14 +86,39 @@ export class SimulationController {
   private playbackGeneration: number = 0;
 
   /** What happens when playback reaches the end of the timeline */
-  private playbackMode: PlaybackMode = 'endless';
+  private playbackMode: PlaybackMode = 'loop';
 
   /** Timeline duration in frames (for end-of-timeline detection) */
-  private timelineDuration: number = 300;
+  private timelineDuration: number = 256;
 
   constructor(eventBus: EventBus, tickIntervalMs: number = 100) {
     this.eventBus = eventBus;
     this.tickIntervalMs = tickIntervalMs;
+  }
+
+  /**
+   * Clear all scripting state (variables, expressions, scripts) and reset the store.
+   * Called on preset load so stale scripts don't carry over between presets.
+   */
+  private clearScriptingState(): void {
+    // Clear engine-side state if it exists
+    if (this.simulation) {
+      this.simulation.variableStore.clear();
+      if (this.simulation.expressionEngine) {
+        const exprs = this.simulation.expressionEngine.getAllExpressions();
+        for (const prop of Object.keys(exprs)) {
+          this.simulation.expressionEngine.clearExpression(prop);
+        }
+      }
+      if (this.simulation.globalScriptRunner) {
+        const scripts = this.simulation.globalScriptRunner.getAllScripts();
+        for (const s of scripts) {
+          this.simulation.globalScriptRunner.removeScript(s.name);
+        }
+      }
+    }
+    // Reset the Zustand store directly (covers cases where engine objects are about to be replaced)
+    scriptStoreActions.resetAll();
   }
 
   /**
@@ -99,6 +127,7 @@ export class SimulationController {
    */
   loadPreset(name: string): void {
     this.pause();
+    this.clearScriptingState();
 
     const config: PresetConfig = loadBuiltinPresetClient(name as BuiltinPresetNameClient);
     this.simulation = new Simulation(config);
@@ -118,6 +147,7 @@ export class SimulationController {
    */
   loadPresetConfig(config: PresetConfig): void {
     this.pause();
+    this.clearScriptingState();
 
     this.simulation = new Simulation(config);
     this.commandHistory = new CommandHistory(this.simulation);
@@ -136,6 +166,7 @@ export class SimulationController {
    */
   async loadPresetConfigAsync(config: PresetConfig, bridge: PyodideBridge): Promise<void> {
     this.pause();
+    this.clearScriptingState();
 
     this.pyodideBridge = bridge;
     this.simulation = await Simulation.create(config, bridge);
@@ -154,6 +185,70 @@ export class SimulationController {
    */
   isUsingPython(): boolean {
     return this.simulation?.isUsingPython() ?? false;
+  }
+
+  /**
+   * Check whether the tick pipeline requires async execution.
+   */
+  needsAsyncTick(): boolean {
+    return this.simulation?.needsAsyncTick() ?? false;
+  }
+
+  /**
+   * Get the variable store from the current simulation.
+   */
+  getVariableStore() {
+    return this.simulation?.variableStore ?? null;
+  }
+
+  /**
+   * Get the expression engine from the current simulation.
+   */
+  getExpressionEngine() {
+    return this.simulation?.expressionEngine ?? null;
+  }
+
+  /**
+   * Get the global script runner from the current simulation.
+   */
+  getGlobalScriptRunner() {
+    return this.simulation?.globalScriptRunner ?? null;
+  }
+
+  /**
+   * Get the PyodideBridge instance.
+   */
+  getPyodideBridge() {
+    return this.pyodideBridge;
+  }
+
+  /**
+   * Lazily ensure scripting engines are available on the current simulation.
+   * Creates a PyodideBridge if needed and attaches ExpressionEngine + GlobalScriptRunner.
+   */
+  ensureScriptingEngines(): { bridge: PyodideBridge; expressionEngine: ExpressionEngine; scriptRunner: GlobalScriptRunner } | null {
+    if (!this.simulation) return null;
+
+    // Create bridge if needed
+    if (!this.pyodideBridge) {
+      this.pyodideBridge = new PyodideBridge();
+    }
+
+    // Attach expression engine if needed
+    if (!this.simulation.expressionEngine) {
+      this.simulation.expressionEngine = new ExpressionEngine(this.pyodideBridge);
+    }
+
+    // Attach script runner if needed
+    if (!this.simulation.globalScriptRunner) {
+      this.simulation.globalScriptRunner = new GlobalScriptRunner(this.pyodideBridge);
+    }
+
+    return {
+      bridge: this.pyodideBridge,
+      expressionEngine: this.simulation.expressionEngine,
+      scriptRunner: this.simulation.globalScriptRunner,
+    };
   }
 
   /**
@@ -194,7 +289,7 @@ export class SimulationController {
    */
   step(): void {
     if (!this.simulation) return;
-    if (this.simulation.isUsingPython()) {
+    if (this.simulation.needsAsyncTick()) {
       void this.stepAsync();
       return;
     }
@@ -628,8 +723,8 @@ export class SimulationController {
   private playbackTick(): void {
     if (!this.simulation) return;
 
-    // Python rules use async playback
-    if (this.simulation.isUsingPython()) {
+    // Async rules (Python, expressions, scripts) use async playback
+    if (this.simulation.needsAsyncTick()) {
       void this.playbackTickAsync();
       return;
     }

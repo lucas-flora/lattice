@@ -26,6 +26,10 @@ export interface LayoutState {
   isTerminalOpen: boolean;
   /** Whether the parameter panel is visible */
   isParamPanelOpen: boolean;
+  /** Whether the script panel is visible */
+  isScriptPanelOpen: boolean;
+  /** Script panel display mode */
+  scriptPanelMode: PanelMode;
   /** Terminal display mode */
   terminalMode: PanelMode;
   /** Parameter panel display mode */
@@ -40,6 +44,8 @@ export interface LayoutState {
   terminalHeight: number;
   /** Parameter panel width in pixels (docked mode) */
   paramPanelWidth: number;
+  /** Script panel width in pixels */
+  scriptPanelWidth: number;
 }
 
 export const useLayoutStore = create<LayoutState>()(
@@ -49,13 +55,16 @@ export const useLayoutStore = create<LayoutState>()(
     leftDrawerMode: 'floating',
     isTerminalOpen: false,
     isParamPanelOpen: false,
+    isScriptPanelOpen: false,
     terminalMode: 'docked',
+    scriptPanelMode: 'floating',
     paramPanelMode: 'floating',
     viewportCount: 1,
     fullscreenViewportId: null,
     leftDrawerWidth: 280,
     terminalHeight: 250,
     paramPanelWidth: 300,
+    scriptPanelWidth: 300,
   })),
 );
 
@@ -71,6 +80,15 @@ export const layoutStoreActions = {
 
   setParamPanelOpen: (isParamPanelOpen: boolean): void => {
     useLayoutStore.setState({ isParamPanelOpen });
+  },
+
+  setScriptPanelOpen: (isScriptPanelOpen: boolean): void => {
+    useLayoutStore.setState({ isScriptPanelOpen });
+  },
+
+  setScriptPanelWidth: (w: number): void => {
+    const maxW = typeof window !== 'undefined' ? window.innerWidth * 0.5 : 800;
+    useLayoutStore.setState({ scriptPanelWidth: Math.max(200, Math.min(w, maxW)) });
   },
 
   setLeftDrawerWidth: (w: number): void => {
@@ -144,13 +162,16 @@ export const layoutStoreActions = {
       leftDrawerMode: 'floating',
       isTerminalOpen: false,
       isParamPanelOpen: false,
+      isScriptPanelOpen: false,
       terminalMode: 'docked',
+      scriptPanelMode: 'floating',
       paramPanelMode: 'floating',
       viewportCount: 1,
       fullscreenViewportId: null,
       leftDrawerWidth: 280,
       terminalHeight: 250,
       paramPanelWidth: 300,
+      scriptPanelWidth: 300,
     });
   },
 };

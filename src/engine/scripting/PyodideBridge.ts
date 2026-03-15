@@ -19,11 +19,20 @@ export class PyodideBridge {
   private status: PyodideStatus = 'idle';
   private initPromise: Promise<void> | null = null;
 
-  /** Pending exec-rule requests awaiting response */
+  /** Pending exec-rule and exec-expressions requests awaiting response */
   private pending = new Map<
     string,
     {
       resolve: (buffers: Record<string, Float32Array>) => void;
+      reject: (error: Error) => void;
+    }
+  >();
+
+  /** Pending exec-script requests awaiting response */
+  private scriptPending = new Map<
+    string,
+    {
+      resolve: (result: { envChanges: Record<string, number>; varChanges: Record<string, number | string> }) => void;
       reject: (error: Error) => void;
     }
   >();
@@ -103,6 +112,70 @@ export class PyodideBridge {
   }
 
   /**
+   * Execute per-property expressions. Returns the modified buffers.
+   */
+  async execExpressions(
+    code: string,
+    buffers: Record<string, Float32Array>,
+    gridWidth: number,
+    gridHeight: number,
+    gridDepth: number,
+    params: Record<string, number>,
+    globalVars: Record<string, number>,
+  ): Promise<Record<string, Float32Array>> {
+    await this.ensureReady();
+
+    const id = nextId();
+    return new Promise<Record<string, Float32Array>>((resolve, reject) => {
+      this.pending.set(id, { resolve, reject });
+
+      const msg: PyodideInMessage = {
+        type: 'exec-expressions',
+        id,
+        code,
+        buffers,
+        gridWidth,
+        gridHeight,
+        gridDepth,
+        params,
+        globalVars,
+      };
+      this.worker!.postMessage(msg);
+    });
+  }
+
+  /**
+   * Execute a global script. Returns env and variable changes.
+   */
+  async execScript(
+    code: string,
+    params: Record<string, number>,
+    globalVars: Record<string, number>,
+    gridWidth: number,
+    gridHeight: number,
+    gridDepth: number,
+  ): Promise<{ envChanges: Record<string, number>; varChanges: Record<string, number | string> }> {
+    await this.ensureReady();
+
+    const id = nextId();
+    return new Promise((resolve, reject) => {
+      this.scriptPending.set(id, { resolve, reject });
+
+      const msg: PyodideInMessage = {
+        type: 'exec-script',
+        id,
+        code,
+        params,
+        globalVars,
+        gridWidth,
+        gridHeight,
+        gridDepth,
+      };
+      this.worker!.postMessage(msg);
+    });
+  }
+
+  /**
    * Get the current Pyodide status.
    */
   getStatus(): PyodideStatus {
@@ -128,6 +201,10 @@ export class PyodideBridge {
       reject(new Error('PyodideBridge disposed'));
     }
     this.pending.clear();
+    for (const [, { reject }] of this.scriptPending) {
+      reject(new Error('PyodideBridge disposed'));
+    }
+    this.scriptPending.clear();
   }
 
   private handleMessage(msg: PyodideOutMessage): void {
@@ -153,13 +230,36 @@ export class PyodideBridge {
         break;
       }
 
+      case 'expression-result': {
+        const ep = this.pending.get(msg.id);
+        if (ep) {
+          this.pending.delete(msg.id);
+          ep.resolve(msg.buffers);
+        }
+        break;
+      }
+
+      case 'script-result': {
+        const sp = this.scriptPending.get(msg.id);
+        if (sp) {
+          this.scriptPending.delete(msg.id);
+          sp.resolve({ envChanges: msg.envChanges, varChanges: msg.varChanges });
+        }
+        break;
+      }
+
       case 'error': {
         if (msg.id) {
-          // Error for a specific exec-rule request
+          // Error for a specific request
           const p = this.pending.get(msg.id);
           if (p) {
             this.pending.delete(msg.id);
             p.reject(new Error(msg.message));
+          }
+          const sp = this.scriptPending.get(msg.id);
+          if (sp) {
+            this.scriptPending.delete(msg.id);
+            sp.reject(new Error(msg.message));
           }
         } else if (this._initReject) {
           // Error during init

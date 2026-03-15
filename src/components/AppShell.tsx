@@ -30,6 +30,7 @@ import { useLayoutStore, layoutStoreActions } from '@/store/layoutStore';
 import { DrawerShell } from '@/components/layout/DrawerShell';
 import { ResizeHandle } from '@/components/ui/ResizeHandle';
 import { CellPanel } from '@/components/panels/CellPanel';
+import { ScriptPanel } from '@/components/panels/ScriptPanel';
 
 /** Module-level singleton for the simulation controller */
 let controllerSingleton: SimulationController | null = null;
@@ -148,6 +149,8 @@ export function AppShell() {
   const leftDrawerWidth = useLayoutStore((s) => s.leftDrawerWidth);
   const isParamPanelOpen = useLayoutStore((s) => s.isParamPanelOpen);
   const paramPanelMode = useLayoutStore((s) => s.paramPanelMode);
+  const isScriptPanelOpen = useLayoutStore((s) => s.isScriptPanelOpen);
+  const scriptPanelMode = useLayoutStore((s) => s.scriptPanelMode);
 
   // Initialize command infrastructure once
   useEffect(() => {
@@ -203,6 +206,7 @@ export function AppShell() {
   const isAnyFullscreen = fullscreenViewportId !== null;
   const leftDocked = leftDrawerMode === 'docked' && isLeftDrawerOpen && !isAnyFullscreen;
   const paramDocked = paramPanelMode === 'docked' && isParamPanelOpen && !isAnyFullscreen;
+  const scriptDocked = scriptPanelMode === 'docked' && isScriptPanelOpen && !isAnyFullscreen;
   const terminalFloating = terminalMode === 'floating';
 
   const toggleLeftDrawer = useCallback(() => {
@@ -302,6 +306,7 @@ export function AppShell() {
               </div>
             </div>
           )}
+          {!scriptDocked && isScriptPanelOpen && !isAnyFullscreen && <ScriptPanel />}
           {!paramDocked && isParamPanelOpen && !isAnyFullscreen && <ParamPanel />}
         </div>
 
@@ -309,7 +314,8 @@ export function AppShell() {
         {!isAnyFullscreen && terminalMode === 'docked' && <BottomTray />}
       </div>
 
-      {/* Right drawer — docked: full height */}
+      {/* Right drawers — docked: full height, zero gap between siblings */}
+      {scriptDocked && <ScriptPanel docked />}
       {paramDocked && <ParamPanel docked />}
 
       {/* HUD overlay — pointer-events: none status display */}

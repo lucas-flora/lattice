@@ -41,6 +41,8 @@ export const DEFAULT_SHORTCUTS: ShortcutBinding[] = [
   { keyLabel: 'Ctrl+1', key: '1', ctrlOrMeta: true, commandName: 'ui.toggleLeftDrawer', commandParams: { docked: true }, description: 'Dock cells panel' },
   { keyLabel: '2', key: '2', commandName: 'ui.toggleParamPanel', description: 'Toggle parameters' },
   { keyLabel: 'Ctrl+2', key: '2', ctrlOrMeta: true, commandName: 'ui.toggleParamPanel', commandParams: { docked: true }, description: 'Dock parameters' },
+  { keyLabel: '3', key: '3', commandName: 'ui.toggleScriptPanel', description: 'Toggle scripts' },
+  { keyLabel: 'Ctrl+3', key: '3', ctrlOrMeta: true, commandName: 'ui.toggleScriptPanel', commandParams: { docked: true }, description: 'Dock scripts' },
   { keyLabel: 'F', key: 'f', commandName: 'view.fullscreen', description: 'Toggle fullscreen' },
   { keyLabel: 'S', key: 's', commandName: 'view.split', description: 'Toggle split view' },
   { keyLabel: 'G', key: 'g', commandName: 'view.gridLines', description: 'Toggle grid lines' },

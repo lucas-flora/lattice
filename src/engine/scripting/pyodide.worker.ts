@@ -105,6 +105,124 @@ async function handleExecRule(
   }
 }
 
+async function handleExecExpressions(
+  id: string,
+  code: string,
+  buffers: Record<string, Float32Array>,
+  gridWidth: number,
+  gridHeight: number,
+  gridDepth: number,
+  params: Record<string, number>,
+  globalVars: Record<string, number>,
+): Promise<void> {
+  if (!pyodide) {
+    post({ type: 'error', id, message: 'Pyodide not initialized' });
+    return;
+  }
+
+  try {
+    const propertyNames = Object.keys(buffers);
+    const globals = pyodide.globals;
+
+    const inputBuffers = pyodide.toPy(
+      Object.fromEntries(
+        Object.entries(buffers).map(([k, v]) => [k, Array.from(v)]),
+      ),
+    );
+    globals.set('_input_buffers', inputBuffers);
+    globals.set('_input_params', pyodide.toPy(params));
+    globals.set('_input_globals', pyodide.toPy(globalVars));
+
+    await pyodide.runPythonAsync(code);
+
+    const outputProxy = globals.get('_output_buffers');
+    const resultBuffers: Record<string, Float32Array> = {};
+
+    for (const name of propertyNames) {
+      if (outputProxy.has(name)) {
+        const pyArray = outputProxy.get(name);
+        const jsArray = pyArray.toJs();
+        resultBuffers[name] = new Float32Array(jsArray);
+        pyArray.destroy();
+      }
+    }
+
+    outputProxy.destroy();
+    inputBuffers.destroy();
+    globals.delete('_input_buffers');
+    globals.delete('_input_params');
+    globals.delete('_input_globals');
+    globals.delete('_output_buffers');
+
+    post({ type: 'expression-result', id, buffers: resultBuffers });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const stack = err instanceof Error ? err.stack : undefined;
+    post({ type: 'error', id, message, stack });
+  }
+}
+
+async function handleExecScript(
+  id: string,
+  code: string,
+  params: Record<string, number>,
+  globalVars: Record<string, number>,
+  gridWidth: number,
+  gridHeight: number,
+  gridDepth: number,
+): Promise<void> {
+  if (!pyodide) {
+    post({ type: 'error', id, message: 'Pyodide not initialized' });
+    return;
+  }
+
+  try {
+    const globals = pyodide.globals;
+    globals.set('_input_params', pyodide.toPy(params));
+    globals.set('_input_globals', pyodide.toPy(globalVars));
+
+    await pyodide.runPythonAsync(code);
+
+    // Extract changes
+    const envProxy = globals.get('_env_changes');
+    const varProxy = globals.get('_var_changes');
+
+    const envChanges: Record<string, number> = {};
+    const varChanges: Record<string, number | string> = {};
+
+    if (envProxy) {
+      const envJs = envProxy.toJs();
+      if (envJs instanceof Map) {
+        for (const [k, v] of envJs) {
+          envChanges[k] = Number(v);
+        }
+      }
+      envProxy.destroy();
+    }
+
+    if (varProxy) {
+      const varJs = varProxy.toJs();
+      if (varJs instanceof Map) {
+        for (const [k, v] of varJs) {
+          varChanges[k] = typeof v === 'string' ? v : Number(v);
+        }
+      }
+      varProxy.destroy();
+    }
+
+    globals.delete('_input_params');
+    globals.delete('_input_globals');
+    globals.delete('_env_changes');
+    globals.delete('_var_changes');
+
+    post({ type: 'script-result', id, envChanges, varChanges });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const stack = err instanceof Error ? err.stack : undefined;
+    post({ type: 'error', id, message, stack });
+  }
+}
+
 function handleDispose(): void {
   pyodide = null;
   post({ type: 'disposed' });
@@ -126,6 +244,29 @@ ctx.addEventListener('message', (event: MessageEvent<PyodideInMessage>) => {
         msg.gridHeight,
         msg.gridDepth,
         msg.params,
+      );
+      break;
+    case 'exec-expressions':
+      void handleExecExpressions(
+        msg.id,
+        msg.code,
+        msg.buffers,
+        msg.gridWidth,
+        msg.gridHeight,
+        msg.gridDepth,
+        msg.params,
+        msg.globalVars,
+      );
+      break;
+    case 'exec-script':
+      void handleExecScript(
+        msg.id,
+        msg.code,
+        msg.params,
+        msg.globalVars,
+        msg.gridWidth,
+        msg.gridHeight,
+        msg.gridDepth,
       );
       break;
     case 'dispose':

@@ -90,6 +90,29 @@ export function registerUiCommands(
   });
 
   registry.register({
+    name: 'ui.toggleScriptPanel',
+    description: 'Toggle script panel visibility',
+    category: 'ui',
+    params: ToggleParams,
+    execute: async (params: unknown) => {
+      const p = params as { docked?: boolean } | undefined;
+      const { isScriptPanelOpen, scriptPanelMode } = useLayoutStore.getState();
+
+      if (p?.docked !== undefined) {
+        const requestedMode = p.docked ? 'docked' : 'floating';
+        if (isScriptPanelOpen && scriptPanelMode === requestedMode) {
+          useLayoutStore.setState({ isScriptPanelOpen: false });
+        } else {
+          useLayoutStore.setState({ isScriptPanelOpen: true, scriptPanelMode: requestedMode });
+        }
+      } else {
+        useLayoutStore.setState({ isScriptPanelOpen: !isScriptPanelOpen });
+      }
+      return { success: true, data: { isScriptPanelOpen: useLayoutStore.getState().isScriptPanelOpen } };
+    },
+  });
+
+  registry.register({
     name: 'ui.toggleHotkeyHelp',
     description: 'Toggle keyboard shortcut help overlay',
     category: 'ui',

@@ -52,6 +52,7 @@ const CellPropertySchema = z.object({
   default: z.union([z.number(), z.array(z.number())]),
   role: PropertyRoleSchema.optional(),
   compute: z.string().optional(),
+  expression: z.string().optional(),
 });
 
 const RuleSchema = z.object({
@@ -77,6 +78,20 @@ const ParamDefSchema = z.object({
   min: z.number().optional(),
   max: z.number().optional(),
   step: z.number().optional(),
+});
+
+const GlobalVariableSchema = z.object({
+  name: z.string().min(1),
+  type: z.enum(['float', 'int', 'string']),
+  default: z.union([z.number(), z.string()]),
+});
+
+const GlobalScriptSchema = z.object({
+  name: z.string().min(1),
+  enabled: z.boolean().default(true),
+  inputs: z.array(z.string()).optional(),
+  outputs: z.array(z.string()).optional(),
+  code: z.string(),
 });
 
 const AiContextSchema = z.object({
@@ -105,6 +120,8 @@ export const PresetSchema = z
     cell_types: z.array(CellTypeSchema).optional(),
     rule: RuleSchema,
     params: z.array(ParamDefSchema).optional(),
+    global_variables: z.array(GlobalVariableSchema).optional(),
+    global_scripts: z.array(GlobalScriptSchema).optional(),
     visual_mappings: z.array(VisualMappingSchema).optional(),
     ai_context: AiContextSchema.optional(),
   })

@@ -10,6 +10,7 @@ import { ViewportPanel } from '../components/panels/ViewportPanel';
 import { TerminalPanel } from '../components/panels/TerminalPanel';
 import { ParamPanelWrapper } from '../components/panels/ParamPanelWrapper';
 import { CellPanel } from '../components/panels/CellPanel';
+import { ScriptPanelWrapper } from '../components/panels/ScriptPanelWrapper';
 
 export function registerPanels(): void {
   panelRegistry.register({
@@ -37,6 +38,13 @@ export function registerPanels(): void {
     type: 'cellPanel',
     label: 'Cells',
     component: CellPanel,
+    allowMultiple: false,
+  });
+
+  panelRegistry.register({
+    type: 'scriptPanel',
+    label: 'Scripts',
+    component: ScriptPanelWrapper,
     allowMultiple: false,
   });
 }

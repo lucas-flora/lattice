@@ -87,7 +87,7 @@ describe('Command Definitions', () => {
     // Phase 2 new commands
     expect(names).toContain('ui.toggleLeftDrawer');
 
-    expect(list.length).toBe(41);
+    expect(list.length).toBe(58);
   });
 
   it('TestCommandDefinitions_SimPlay_StartsSimulation', async () => {

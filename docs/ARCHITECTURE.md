@@ -336,14 +336,17 @@ Any surface (GUI click, CLI command, AI tool call, MCP request, API endpoint)
 For scripting:
 ```
 Tick pipeline (per frame):
-  1. Evaluate expressions (topological order)
-  2. Resolve parameter links
-  3. Execute rule (TS/WASM for built-in, Python for custom)
-  4. Run tags (per-cell post-processing)
-  5. Run global scripts (per-frame)
-  6. Swap buffers
+  1. Resolve parameter links
+  2. Execute rule (TS/WASM for built-in, Python for custom)
+  3. Swap buffers (rule output becomes current)
+  4. Evaluate expressions (post-rule, reads rule output, writes current in-place)
+  5. Run tags (per-cell post-processing)
+  6. Run global scripts (per-frame)
   7. Emit sim:tick
 ```
+Note: Expressions run post-rule so they can derive values from the rule's
+output (e.g. `alpha = age / 50.0`). When the dependency graph lands, this
+can become configurable per-expression (pre-rule vs post-rule).
 
 ---
 

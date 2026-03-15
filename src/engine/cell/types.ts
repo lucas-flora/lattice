@@ -28,6 +28,8 @@ export interface CellPropertyConfig {
   role?: PropertyRole;
   /** JavaScript function body string for computed properties */
   compute?: string;
+  /** Python expression evaluated per-tick before the rule */
+  expression?: string;
 }
 
 /** Context object passed to computed functions */

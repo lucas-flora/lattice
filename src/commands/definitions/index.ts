@@ -18,6 +18,9 @@ import { registerParamCommands } from './param';
 import { registerGridCommands } from './grid';
 import { registerRuleCommands } from './rule';
 import { registerLayoutCommands } from './layout';
+import { registerVariableCommands } from './variable';
+import { registerExpressionCommands } from './expression';
+import { registerScriptCommands } from './script';
 
 /**
  * Register all commands in the registry.
@@ -37,4 +40,7 @@ export function registerAllCommands(
   registerGridCommands(registry, controller);
   registerRuleCommands(registry, controller);
   registerLayoutCommands(registry);
+  registerVariableCommands(registry, controller);
+  registerExpressionCommands(registry, controller);
+  registerScriptCommands(registry, controller);
 }

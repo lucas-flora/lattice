@@ -18,6 +18,9 @@ import { RuleRunner } from './RuleRunner';
 import { PythonRuleRunner } from './PythonRuleRunner';
 import { compileRule } from './RuleCompiler';
 import type { PyodideBridge } from '../scripting/PyodideBridge';
+import { GlobalVariableStore } from '../scripting/GlobalVariableStore';
+import { ExpressionEngine } from '../scripting/ExpressionEngine';
+import { GlobalScriptRunner } from '../scripting/GlobalScriptRunner';
 import type { TickResult } from './types';
 
 export class Simulation {
@@ -26,6 +29,9 @@ export class Simulation {
   readonly preset: PresetConfig;
   readonly params: Map<string, number> = new Map();
   readonly typeRegistry: CellTypeRegistry;
+  readonly variableStore: GlobalVariableStore = new GlobalVariableStore();
+  expressionEngine: ExpressionEngine | null = null;
+  globalScriptRunner: GlobalScriptRunner | null = null;
 
   constructor(preset: PresetConfig) {
     this.preset = preset;
@@ -61,6 +67,11 @@ export class Simulation {
     // Create the rule runner (synchronous path -- always uses TS fallback)
     this.runner = new RuleRunner(this.grid, preset, undefined, this.typeRegistry);
     this.runner.setParamsProvider(() => this.getParamsObject());
+
+    // Load global variables from preset
+    if (preset.global_variables) {
+      this.variableStore.loadFromConfig(preset.global_variables);
+    }
   }
 
   /**
@@ -79,6 +90,22 @@ export class Simulation {
       wasmRunner.setParamsProvider(() => sim.getParamsObject());
       (sim as { runner: RuleRunner | PythonRuleRunner }).runner = wasmRunner;
     }
+
+    // Set up scripting engines if a bridge is available
+    if (pyodideBridge) {
+      sim.expressionEngine = new ExpressionEngine(pyodideBridge);
+      sim.globalScriptRunner = new GlobalScriptRunner(pyodideBridge);
+
+      // Load expressions from preset cell properties
+      const allProps = sim.typeRegistry.getPropertyUnion();
+      sim.expressionEngine.loadFromProperties(allProps);
+
+      // Load global scripts from preset
+      if (preset.global_scripts) {
+        sim.globalScriptRunner.loadFromConfig(preset.global_scripts);
+      }
+    }
+
     return sim;
   }
 
@@ -91,14 +118,59 @@ export class Simulation {
   }
 
   /**
-   * Run one tick asynchronously. Required for Python rules.
-   * Falls back to sync tick() for TS/WASM runners.
+   * Run one tick asynchronously. Required for Python rules, expressions, or scripts.
+   * Falls back to sync tick() for TS/WASM runners without scripting.
+   *
+   * Pipeline: rule → expressions (post-rule) → global scripts
+   *
+   * Expressions run AFTER the rule so they can derive values from the rule's
+   * output (e.g. alpha = age / 50.0). They read from the current buffer
+   * (which contains the rule's newly-swapped output) and write back to current.
+   * This can be made configurable (pre/post) when the dependency graph lands.
    */
   async tickAsync(): Promise<TickResult> {
+    const generation = this.getGeneration();
+    const dt = 1.0;
+    const envParams = this.getParamsObject();
+    const globalVars = this.variableStore.getNumericAll();
+
+    // Step 1: Execute rule
+    let result: TickResult;
     if (this.runner instanceof PythonRuleRunner) {
-      return this.runner.tickAsync();
+      result = await this.runner.tickAsync();
+    } else {
+      result = this.runner.tick();
     }
-    return this.runner.tick();
+
+    // Step 2: Evaluate expressions (post-rule, reads rule output from current buffer)
+    if (this.expressionEngine?.hasExpressions()) {
+      await this.expressionEngine.evaluate(this.grid, result.generation, dt, envParams, globalVars);
+    }
+
+    // Step 3: Run global scripts (after rule + expressions)
+    if (this.globalScriptRunner?.hasEnabledScripts()) {
+      const { width, height, depth } = this.grid.config;
+      const scriptResult = await this.globalScriptRunner.runAll(
+        envParams,
+        this.variableStore.getNumericAll(),
+        result.generation,
+        dt,
+        width,
+        height,
+        depth,
+      );
+
+      // Apply env changes
+      for (const [k, v] of Object.entries(scriptResult.envChanges)) {
+        this.params.set(k, v);
+      }
+      // Apply var changes
+      for (const [k, v] of Object.entries(scriptResult.varChanges)) {
+        this.variableStore.set(k, v);
+      }
+    }
+
+    return result;
   }
 
   /**
@@ -106,6 +178,17 @@ export class Simulation {
    */
   isUsingPython(): boolean {
     return this.runner instanceof PythonRuleRunner;
+  }
+
+  /**
+   * Check whether the tick pipeline requires async execution.
+   * True if any scripting feature is active (expressions, scripts, or Python rule).
+   */
+  needsAsyncTick(): boolean {
+    if (this.runner instanceof PythonRuleRunner) return true;
+    if (this.expressionEngine?.hasExpressions()) return true;
+    if (this.globalScriptRunner?.hasEnabledScripts()) return true;
+    return false;
   }
 
   /**

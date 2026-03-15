@@ -21,19 +21,22 @@ export function extractGridBuffers(grid: Grid): Record<string, Float32Array> {
 }
 
 /**
- * Apply result buffers from the worker to the grid's next (write) buffers.
+ * Apply result buffers from the worker to grid buffers.
+ * Default target is 'next' (write buffer, used by rule runners pre-swap).
+ * Use 'current' for post-rule expression results that should be immediately visible.
  * Unknown property names are silently ignored.
  */
 export function applyResultBuffers(
   grid: Grid,
   results: Record<string, Float32Array>,
+  target: 'current' | 'next' = 'next',
 ): void {
   for (const [name, data] of Object.entries(results)) {
     if (!grid.hasProperty(name)) continue;
-    const nextBuf = grid.getNextBuffer(name);
+    const buf = target === 'current' ? grid.getCurrentBuffer(name) : grid.getNextBuffer(name);
     // Only copy if lengths match (guard against malformed results)
-    if (data.length === nextBuf.length) {
-      nextBuf.set(data);
+    if (data.length === buf.length) {
+      buf.set(data);
     }
   }
 }

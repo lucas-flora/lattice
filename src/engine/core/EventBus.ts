@@ -30,6 +30,13 @@ export interface EngineEventMap {
   'pyodide:loading': { phase: string; progress: number };
   'pyodide:ready': Record<string, never>;
   'pyodide:error': { message: string };
+  'script:variableChanged': { name: string; value: number | string };
+  'script:variablesReset': Record<string, never>;
+  'script:scriptAdded': { name: string; enabled: boolean; code: string; inputs?: string[]; outputs?: string[] };
+  'script:scriptRemoved': { name: string };
+  'script:scriptToggled': { name: string; enabled: boolean };
+  'script:expressionSet': { property: string; expression: string };
+  'script:expressionCleared': { property: string };
 }
 
 /** Valid event names */
