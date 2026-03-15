@@ -94,6 +94,15 @@ const GlobalScriptSchema = z.object({
   code: z.string(),
 });
 
+const ParameterLinkSchema = z.object({
+  source: z.string().min(1),
+  target: z.string().min(1),
+  sourceRange: z.tuple([z.number(), z.number()]).optional().default([0, 1]),
+  targetRange: z.tuple([z.number(), z.number()]).optional().default([0, 1]),
+  easing: z.enum(['linear', 'smoothstep', 'easeIn', 'easeOut', 'easeInOut']).optional().default('linear'),
+  enabled: z.boolean().optional().default(true),
+});
+
 const AiContextSchema = z.object({
   description: z.string().optional(),
   hints: z.array(z.string()).optional(),
@@ -122,6 +131,7 @@ export const PresetSchema = z
     params: z.array(ParamDefSchema).optional(),
     global_variables: z.array(GlobalVariableSchema).optional(),
     global_scripts: z.array(GlobalScriptSchema).optional(),
+    parameter_links: z.array(ParameterLinkSchema).optional(),
     visual_mappings: z.array(VisualMappingSchema).optional(),
     ai_context: AiContextSchema.optional(),
   })

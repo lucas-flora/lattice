@@ -21,3 +21,6 @@ export type { LayoutState } from './layoutStore';
 
 export { useAiStore, aiStoreActions } from './aiStore';
 export type { AiState, ChatMessage } from './aiStore';
+
+export { useLinkStore, linkStoreActions } from './linkStore';
+export type { LinkState } from './linkStore';

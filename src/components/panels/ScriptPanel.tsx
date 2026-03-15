@@ -9,6 +9,7 @@
 
 import { useState, useCallback } from 'react';
 import { useScriptStore } from '@/store/scriptStore';
+import { useLinkStore } from '@/store/linkStore';
 import { useLayoutStore, layoutStoreActions } from '@/store/layoutStore';
 import { commandRegistry } from '@/commands/CommandRegistry';
 import { ResizeHandle } from '@/components/ui/ResizeHandle';
@@ -115,6 +116,61 @@ function ExpressionsSection() {
   );
 }
 
+function LinksSection() {
+  const links = useLinkStore((s) => s.links);
+
+  const handleToggle = useCallback((id: string, enabled: boolean) => {
+    const cmd = enabled ? 'link.disable' : 'link.enable';
+    commandRegistry.execute(cmd, { id });
+  }, []);
+
+  const handleRemove = useCallback((id: string) => {
+    commandRegistry.execute('link.remove', { id });
+  }, []);
+
+  return (
+    <Section title="Links">
+      {links.length === 0 ? (
+        <div className="text-xs text-zinc-500 italic">No parameter links</div>
+      ) : (
+        <div className="space-y-2">
+          {links.map((link) => (
+            <div key={link.id} className="bg-zinc-800 rounded p-2">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs font-mono text-zinc-300 truncate">
+                  {link.source} → {link.target}
+                </span>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    onClick={() => handleToggle(link.id, link.enabled)}
+                    className={`text-[10px] px-1.5 py-0.5 rounded cursor-pointer ${
+                      link.enabled
+                        ? 'bg-green-500/20 text-green-400'
+                        : 'bg-zinc-700 text-zinc-500'
+                    }`}
+                  >
+                    {link.enabled ? 'ON' : 'OFF'}
+                  </button>
+                  <button
+                    onClick={() => handleRemove(link.id)}
+                    className="text-zinc-500 hover:text-red-400 text-xs cursor-pointer"
+                    title="Remove"
+                  >
+                    &times;
+                  </button>
+                </div>
+              </div>
+              <div className="text-[10px] font-mono text-zinc-500">
+                [{link.sourceRange.join(', ')}] → [{link.targetRange.join(', ')}] · {link.easing}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </Section>
+  );
+}
+
 function ScriptsSection() {
   const scripts = useScriptStore((s) => s.globalScripts);
 
@@ -187,6 +243,7 @@ export function ScriptPanel({ docked = false }: ScriptPanelProps) {
       <VariablesSection />
       <ExpressionsSection />
       <ScriptsSection />
+      <LinksSection />
     </div>
   );
 

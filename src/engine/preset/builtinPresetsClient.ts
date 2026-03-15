@@ -18,6 +18,7 @@ export const BUILTIN_PRESET_NAMES_CLIENT = [
   'brians-brain',
   'gray-scott',
   'navier-stokes',
+  'link-testbed',
 ] as const;
 
 export type BuiltinPresetNameClient = (typeof BUILTIN_PRESET_NAMES_CLIENT)[number];
@@ -393,6 +394,89 @@ visual_mappings:
     mapping:
       min: "#000033"
       max: "#00ccff"
+`,
+  'link-testbed': `
+schema_version: "1"
+meta:
+  name: "Link Testbed"
+  author: "Lattice Engine"
+  description: "Test preset for parameter linking. GoL with age tracking, alpha fading, and linked params."
+  tags: ["test", "linking", "2d"]
+grid:
+  dimensionality: "2d"
+  width: 64
+  height: 64
+  topology: "toroidal"
+cell_properties:
+  - name: "alive"
+    type: "bool"
+    default: 0
+    role: "input_output"
+  - name: "age"
+    type: "int"
+    default: 0
+    role: "output"
+  - name: "alpha"
+    type: "float"
+    default: 1.0
+    role: "output"
+params:
+  - name: "surviveMin"
+    label: "Survive Min"
+    type: "int"
+    default: 2
+    min: 0
+    max: 8
+    step: 1
+  - name: "surviveMax"
+    label: "Survive Max"
+    type: "int"
+    default: 3
+    min: 0
+    max: 8
+    step: 1
+  - name: "birthCount"
+    label: "Birth Count"
+    type: "int"
+    default: 3
+    min: 0
+    max: 8
+    step: 1
+  - name: "fadeSpeed"
+    label: "Fade Speed"
+    type: "float"
+    default: 50.0
+    min: 5.0
+    max: 200.0
+    step: 5.0
+parameter_links:
+  - source: "cell.age"
+    target: "cell.alpha"
+    sourceRange: [0, 50]
+    targetRange: [1, 0]
+    easing: "smoothstep"
+rule:
+  type: "typescript"
+  compute: |
+    const alive = ctx.cell.alive;
+    const age = ctx.cell.age;
+    const sMin = ctx.params.surviveMin ?? 2;
+    const sMax = ctx.params.surviveMax ?? 3;
+    const birth = ctx.params.birthCount ?? 3;
+    const liveNeighbors = ctx.neighbors.filter(n => n.alive === 1).length;
+    let newAlive;
+    if (alive === 1) {
+      newAlive = (liveNeighbors >= sMin && liveNeighbors <= sMax) ? 1 : 0;
+    } else {
+      newAlive = liveNeighbors === birth ? 1 : 0;
+    }
+    return { alive: newAlive, age: newAlive > 0 ? age + 1 : 0, alpha: ctx.cell.alpha };
+visual_mappings:
+  - property: "alive"
+    channel: "color"
+    mapping:
+      "0": "#000000"
+      "1": "#00ff00"
 `,
 };
 

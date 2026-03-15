@@ -21,6 +21,7 @@ import type { PyodideBridge } from '../scripting/PyodideBridge';
 import { GlobalVariableStore } from '../scripting/GlobalVariableStore';
 import { ExpressionEngine } from '../scripting/ExpressionEngine';
 import { GlobalScriptRunner } from '../scripting/GlobalScriptRunner';
+import { LinkRegistry } from '../linking/LinkRegistry';
 import type { TickResult } from './types';
 
 export class Simulation {
@@ -30,6 +31,7 @@ export class Simulation {
   readonly params: Map<string, number> = new Map();
   readonly typeRegistry: CellTypeRegistry;
   readonly variableStore: GlobalVariableStore = new GlobalVariableStore();
+  readonly linkRegistry: LinkRegistry = new LinkRegistry();
   expressionEngine: ExpressionEngine | null = null;
   globalScriptRunner: GlobalScriptRunner | null = null;
 
@@ -72,6 +74,11 @@ export class Simulation {
     if (preset.global_variables) {
       this.variableStore.loadFromConfig(preset.global_variables);
     }
+
+    // Load parameter links from preset
+    if (preset.parameter_links) {
+      this.linkRegistry.loadFromConfig(preset.parameter_links);
+    }
   }
 
   /**
@@ -110,10 +117,20 @@ export class Simulation {
   }
 
   /**
+   * Resolve all parameter links. Called before the rule in both sync and async paths.
+   */
+  private resolveLinks(): void {
+    if (this.linkRegistry.hasLinks()) {
+      this.linkRegistry.resolveAll(this.grid, this.params, this.variableStore);
+    }
+  }
+
+  /**
    * Run one tick of the simulation.
    * Throws if the runner is Python-only (use tickAsync instead).
    */
   tick(): TickResult {
+    this.resolveLinks();
     return this.runner.tick();
   }
 
@@ -133,6 +150,9 @@ export class Simulation {
     const dt = 1.0;
     const envParams = this.getParamsObject();
     const globalVars = this.variableStore.getNumericAll();
+
+    // Step 0: Resolve parameter links (before rule)
+    this.resolveLinks();
 
     // Step 1: Execute rule
     let result: TickResult;

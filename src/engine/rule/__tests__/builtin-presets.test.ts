@@ -14,7 +14,7 @@ import { Simulation } from '../Simulation';
 
 describe('Built-in Presets', () => {
   it('loads all 6 built-in presets without error', () => {
-    expect(BUILTIN_PRESET_NAMES).toHaveLength(6);
+    expect(BUILTIN_PRESET_NAMES).toHaveLength(7);
     for (const name of BUILTIN_PRESET_NAMES) {
       expect(() => loadBuiltinPreset(name)).not.toThrow();
     }

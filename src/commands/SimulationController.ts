@@ -18,6 +18,8 @@ import { PyodideBridge } from '../engine/scripting/PyodideBridge';
 import { ExpressionEngine } from '../engine/scripting/ExpressionEngine';
 import { GlobalScriptRunner } from '../engine/scripting/GlobalScriptRunner';
 import { scriptStoreActions } from '../store/scriptStore';
+import { linkStoreActions } from '../store/linkStore';
+import type { LinkRegistry } from '../engine/linking/LinkRegistry';
 
 export interface ParamDef {
   name: string;
@@ -117,8 +119,13 @@ export class SimulationController {
         }
       }
     }
-    // Reset the Zustand store directly (covers cases where engine objects are about to be replaced)
+    // Clear links
+    if (this.simulation) {
+      this.simulation.linkRegistry.clear();
+    }
+    // Reset the Zustand stores directly (covers cases where engine objects are about to be replaced)
     scriptStoreActions.resetAll();
+    linkStoreActions.resetAll();
   }
 
   /**
@@ -139,6 +146,7 @@ export class SimulationController {
 
     this.emitPresetLoaded(config);
     this.emitParamDefs();
+    this.syncLinkStore();
   }
 
   /**
@@ -158,6 +166,7 @@ export class SimulationController {
 
     this.emitPresetLoaded(config);
     this.emitParamDefs();
+    this.syncLinkStore();
   }
 
   /**
@@ -178,6 +187,7 @@ export class SimulationController {
 
     this.emitPresetLoaded(config);
     this.emitParamDefs();
+    this.syncLinkStore();
   }
 
   /**
@@ -213,6 +223,20 @@ export class SimulationController {
    */
   getGlobalScriptRunner() {
     return this.simulation?.globalScriptRunner ?? null;
+  }
+
+  /**
+   * Get the link registry from the current simulation.
+   */
+  getLinkRegistry(): LinkRegistry | null {
+    return this.simulation?.linkRegistry ?? null;
+  }
+
+  /**
+   * Notify the controller that links changed. Invalidates cache.
+   */
+  onLinkChanged(): void {
+    this.invalidateCacheFrom(this.playbackGeneration + 1);
   }
 
   /**
@@ -1050,6 +1074,15 @@ export class SimulationController {
     const defs = this.getParamDefs();
     const values = this.getParamValues();
     this.eventBus.emit('sim:paramDefsChanged', { defs, values });
+  }
+
+  /**
+   * Sync link store with registry state after preset load.
+   */
+  private syncLinkStore(): void {
+    if (!this.simulation) return;
+    const links = this.simulation.linkRegistry.getAll();
+    linkStoreActions.setLinks(links);
   }
 
   // --- Grid Configuration Methods ---

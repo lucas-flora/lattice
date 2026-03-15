@@ -14,6 +14,7 @@ import { viewStoreActions } from '../store/viewStore';
 import { uiStoreActions } from '../store/uiStore';
 import { layoutStoreActions } from '../store/layoutStore';
 import { scriptStoreActions } from '../store/scriptStore';
+import { linkStoreActions } from '../store/linkStore';
 // aiStore wiring deferred to Phase 8
 
 /**
@@ -172,6 +173,28 @@ export function wireStores(eventBus: EventBus): () => void {
   eventBus.on('script:expressionSet', onExpressionSet);
   eventBus.on('script:expressionCleared', onExpressionCleared);
 
+  // --- linkStore wiring ---
+  const onLinkAdded = (payload: { id: string; source: string; target: string; sourceRange: [number, number]; targetRange: [number, number]; easing: string; enabled: boolean }) => {
+    linkStoreActions.addLink(payload as import('../engine/linking/types').ParameterLink);
+  };
+
+  const onLinkRemoved = (payload: { id: string }) => {
+    linkStoreActions.removeLink(payload.id);
+  };
+
+  const onLinkUpdated = (payload: { id: string; enabled: boolean }) => {
+    linkStoreActions.updateLink(payload.id, payload.enabled);
+  };
+
+  const onLinkReset = () => {
+    linkStoreActions.resetAll();
+  };
+
+  eventBus.on('link:added', onLinkAdded);
+  eventBus.on('link:removed', onLinkRemoved);
+  eventBus.on('link:updated', onLinkUpdated);
+  eventBus.on('link:reset', onLinkReset);
+
   // aiStore: Phase 8 will wire AI-specific events here
 
   // Return cleanup function
@@ -200,5 +223,9 @@ export function wireStores(eventBus: EventBus): () => void {
     eventBus.off('script:scriptToggled', onScriptToggled);
     eventBus.off('script:expressionSet', onExpressionSet);
     eventBus.off('script:expressionCleared', onExpressionCleared);
+    eventBus.off('link:added', onLinkAdded);
+    eventBus.off('link:removed', onLinkRemoved);
+    eventBus.off('link:updated', onLinkUpdated);
+    eventBus.off('link:reset', onLinkReset);
   };
 }

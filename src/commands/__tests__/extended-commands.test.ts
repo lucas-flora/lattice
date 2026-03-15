@@ -158,7 +158,7 @@ describe('Extended Commands (Phase 6)', () => {
     const result = await registry.execute('preset.list', {});
     expect(result.success).toBe(true);
     const data = result.data as { presets: string[] };
-    expect(data.presets).toHaveLength(6);
+    expect(data.presets).toHaveLength(7);
     expect(data.presets).toContain('conways-gol');
     expect(data.presets).toContain('rule-110');
     expect(data.presets).toContain('langtons-ant');

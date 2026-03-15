@@ -219,13 +219,23 @@ export class LatticeRenderer {
     // Zero-copy read from grid buffer (RNDR-12)
     const colorBuffer = colorProp ? this.grid.getCurrentBuffer(colorProp) : null;
     const sizeBuffer = sizeProp ? this.grid.getCurrentBuffer(sizeProp) : null;
+    // Read alpha buffer if the grid has an alpha property
+    const alphaBuffer = this.grid.hasProperty('alpha') ? this.grid.getCurrentBuffer('alpha') : null;
 
     for (let i = 0; i < this.grid.cellCount; i++) {
       // Color mapping
       if (colorBuffer && colorProp) {
         const value = colorBuffer[i];
         const color = this.visualMapper.getColor(colorProp, value);
-        this.instancedMesh.setColorAt(i, color);
+
+        // Apply alpha: multiply RGB toward black (premultiplied fade)
+        if (alphaBuffer) {
+          const a = Math.max(0, Math.min(1, alphaBuffer[i]));
+          this.tempColor.set(color.r * a, color.g * a, color.b * a);
+          this.instancedMesh.setColorAt(i, this.tempColor);
+        } else {
+          this.instancedMesh.setColorAt(i, color);
+        }
       }
 
       // Size mapping: update instance matrix if needed

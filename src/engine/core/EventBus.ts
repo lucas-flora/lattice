@@ -37,6 +37,10 @@ export interface EngineEventMap {
   'script:scriptToggled': { name: string; enabled: boolean };
   'script:expressionSet': { property: string; expression: string };
   'script:expressionCleared': { property: string };
+  'link:added': { id: string; source: string; target: string; sourceRange: [number, number]; targetRange: [number, number]; easing: string; enabled: boolean };
+  'link:removed': { id: string };
+  'link:updated': { id: string; enabled: boolean };
+  'link:reset': Record<string, never>;
 }
 
 /** Valid event names */

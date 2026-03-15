@@ -627,3 +627,29 @@ P11 (MCP) can begin any time after P10 — it only needs the command registry an
 | **Public API**    | REST/WebSocket HTTP endpoints exposing commands to external clients. |
 | **Command**       | A registered, named action with Zod-validated params and typed result. The atomic unit of the Three Surface Doctrine. |
 | **Tensor (rank-n)** | The grid is a rank-3 tensor `(W, H, P)` where W/H are spatial dimensions and P is total property channels. A single cell is a rank-1 slice (vector). The timeline adds a 4th dimension `(T, W, H, P)`. Vec properties (vec2/vec3/vec4) occupy consecutive channel indices within P. |
+
+---
+
+## Pipeline Design Decisions
+
+These are pragmatic first-pass decisions, not final answers. The pipeline ordering, cell→cell link semantics, and the link/expression overlap all deserve revisiting once there's real usage to learn from. A configurable pre/post flag per link or per expression is a natural future extension once the dependency graph lands.
+
+### 1. Links resolve pre-rule
+
+Links set up derived parameters the rule consumes. Scalar links (`env→env`, `global→env`) benefit most: e.g. `env.feedRate → env.killRate` is ready before the rule reads killRate. Cell→cell links (`cell.age → cell.alpha`) read the *previous tick's* values (one-tick delay), which is acceptable for smooth properties but means cell→cell derivation is often better served by expressions.
+
+### 2. Expressions evaluate post-rule
+
+Expressions derive values from the rule's output (e.g. `alpha = age / 50.0`). They read the freshly-swapped current buffer and write back in-place. This was changed from pre-rule during Phase 5 after recognizing that most expressions need the rule's output, not its input.
+
+### 3. Global scripts run last
+
+Scripts are analysis/control (e.g. compute entropy, adjust params). They run after rule + expressions so they see the fully-resolved state.
+
+### 4. Buffer semantics
+
+Rule reads current → writes next → swaps. Expressions read/write current in-place. Links read/write current in-place (pre-swap, pre-rule). No double-write conflicts because links and expressions run in different pipeline stages.
+
+### 5. Overlap between links and expressions
+
+`cell.age → cell.alpha` can be done as either a link (pre-rule, one-tick delay) or an expression `alpha = age / 50.0` (post-rule, same-tick). Both are valid; expressions are more precise for cell derivation, links are more ergonomic for parameter wiring.

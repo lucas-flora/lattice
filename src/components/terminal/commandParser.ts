@@ -59,6 +59,12 @@ const PARAM_MAPPINGS: Record<string, string[]> = {
   'script.clear': [],
   'var.clear': [],
   'expr.clearAll': [],
+  'link.add': ['source', 'target', '?easing', '?srcMin', '?srcMax', '?dstMin', '?dstMax'],
+  'link.remove': ['id'],
+  'link.list': [],
+  'link.clear': [],
+  'link.enable': ['id'],
+  'link.disable': ['id'],
 };
 
 /**
@@ -94,6 +100,12 @@ const ARG_HINTS: Record<string, string> = {
   'script.clear': '',
   'var.clear': '',
   'expr.clearAll': '',
+  'link.add': '<source> <target> [easing] [srcMin] [srcMax] [dstMin] [dstMax]',
+  'link.remove': '<id>',
+  'link.list': '',
+  'link.clear': '',
+  'link.enable': '<id>',
+  'link.disable': '<id>',
 };
 
 /**
