@@ -46,6 +46,13 @@ export interface EngineEventMap {
   'tag:removed': { id: string };
   'tag:updated': { id: string; name?: string; enabled?: boolean; phase?: string; code?: string; source?: string };
   'tag:reset': Record<string, never>;
+  // Scene graph events
+  'scene:nodeAdded': { id: string; type: string; name: string; parentId: string | null };
+  'scene:nodeRemoved': { id: string };
+  'scene:nodeMoved': { id: string; newParentId: string | null; index?: number };
+  'scene:nodeUpdated': { id: string; name?: string; enabled?: boolean; properties?: Record<string, unknown> };
+  'scene:selectionChanged': { id: string | null };
+  'scene:treeLoaded': { nodeCount: number; rootCount: number };
 }
 
 /** Valid event names */

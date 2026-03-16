@@ -1,6 +1,13 @@
 /**
  * LinkRegistry: stores parameter links and resolves them per tick.
  *
+ * @deprecated This class is superseded by ExpressionTagRegistry. All link
+ * resolution is now handled by ExpressionTagRegistry.resolvePreRule() using
+ * the JS fast-path for tags with linkMeta. LinkRegistry is kept during the
+ * migration period for backward compatibility — new code should use
+ * ExpressionTagRegistry.addFromLink() instead of LinkRegistry.add().
+ * Will be removed once all callers are migrated (see SG-5).
+ *
  * Handles four cross-type semantics:
  *   - cell→cell: element-wise range mapping
  *   - scalar→scalar: direct range mapping
@@ -26,6 +33,7 @@ export function _resetIdCounter(): void {
   nextId = 0;
 }
 
+/** @deprecated Use ExpressionTagRegistry instead. See module-level deprecation notice. */
 export class LinkRegistry {
   private links: Map<string, ParameterLink> = new Map();
   /** Adjacency list for cycle detection: source address → set of target addresses */
@@ -140,6 +148,10 @@ export class LinkRegistry {
   /**
    * Resolve all enabled links. Mutates grid/params/variableStore in place.
    * Called once per tick, before the rule executes.
+   *
+   * @deprecated Use ExpressionTagRegistry.resolvePreRule() instead.
+   * That method handles the same resolution via the JS fast-path for
+   * tags with linkMeta, making this method redundant.
    */
   resolveAll(
     grid: Grid,

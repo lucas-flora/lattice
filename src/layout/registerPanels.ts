@@ -11,6 +11,8 @@ import { TerminalPanel } from '../components/panels/TerminalPanel';
 import { ParamPanelWrapper } from '../components/panels/ParamPanelWrapper';
 import { CellPanel } from '../components/panels/CellPanel';
 import { ScriptPanelWrapper } from '../components/panels/ScriptPanelWrapper';
+import { ObjectManagerPanel } from '../components/panels/ObjectManagerPanel';
+import { InspectorPanel } from '../components/panels/InspectorPanel';
 
 export function registerPanels(): void {
   panelRegistry.register({
@@ -45,6 +47,20 @@ export function registerPanels(): void {
     type: 'scriptPanel',
     label: 'Scripts',
     component: ScriptPanelWrapper,
+    allowMultiple: false,
+  });
+
+  panelRegistry.register({
+    type: 'objectManager',
+    label: 'Object Manager',
+    component: ObjectManagerPanel,
+    allowMultiple: false,
+  });
+
+  panelRegistry.register({
+    type: 'inspector',
+    label: 'Inspector',
+    component: InspectorPanel,
     allowMultiple: false,
   });
 }

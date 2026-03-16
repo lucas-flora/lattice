@@ -22,12 +22,12 @@ interface ExpressionTag {
   name: string;                    // user-visible name
   owner: TagOwner;                 // what object this tag lives on
   code: string;                    // Python code (or auto-generated from link)
-  phase: 'pre-rule' | 'post-rule'; // when in the tick pipeline
+  phase: 'pre-rule' | 'rule' | 'post-rule'; // when in the tick pipeline
   enabled: boolean;
-  source: 'code' | 'link' | 'script'; // how it was authored
+  source: 'code' | 'script';       // how it was authored ('link' deprecated → 'code' + linkMeta)
   inputs: string[];                // declared input addresses
   outputs: string[];               // declared output addresses
-  linkMeta?: LinkMeta;             // only when source === 'link'
+  linkMeta?: LinkMeta;             // present when created via link wizard (enables JS fast-path)
 }
 ```
 
@@ -107,22 +107,68 @@ This preserves performance parity with the legacy LinkRegistry.
 
 ---
 
-## Sugar Commands
+## Tag-Centric UI Architecture
 
-The `link.*` and `expr.*` commands are convenience wrappers that create ExpressionTags:
+Tags are the single CRUD surface for all computation. Users author through tags, not legacy interfaces.
 
-| Command | Creates | Phase | Source |
-|---------|---------|-------|--------|
-| `link.add cell.age cell.alpha` | Tag with rangeMap code | `pre-rule` | `link` |
-| `expr.set alpha "age / 100"` | Tag with Python code | `post-rule` | `code` |
-| `script.add monitor "..."` | Tag with script code | `post-rule` | `script` |
+### Authoring Surfaces
 
-The `tag.*` commands operate on all tags directly:
-- `tag.list` — list all tags
-- `tag.show {id}` — full details
-- `tag.setPhase {id} {phase}` — change evaluation phase
-- `tag.copy {id} {owner}` — copy with self-ref update
-- `tag.enable / tag.disable` — toggle
+1. **UnifiedTagsSection** (in ScriptPanel) — full tag CRUD with source filtering, owner grouping, inline edit forms. Replaces the separate Expressions, Links, and Scripts sections.
+2. **PropertyRow `+` button** (in CellPanel) — inline tag creation from any cell property. Pre-fills `source: 'code'` and `defaultTarget: 'cell.{propertyName}'`.
+
+### Tag CRUD Commands
+
+Primary interface:
+- `tag.add { source, ... }` — create tag (routes by source to create in both tag registry and legacy system)
+- `tag.remove { id }` — remove tag and clean up legacy system
+- `tag.edit { id, code?, phase?, ... }` — update tag and mirror to legacy
+
+Sugar commands (create tags as side effect):
+- `link.add` → creates link + tag
+- `expr.set` → creates expression + tag
+- `script.add` → creates script + tag
+
+Lifecycle commands:
+- `tag.list`, `tag.show`, `tag.setPhase`, `tag.copy`, `tag.enable`, `tag.disable`
+
+### UI Component Hierarchy
+
+```
+ScriptPanel
+├── PyodideStatus
+├── VariablesSection (global variables, unchanged)
+└── UnifiedTagsSection
+    ├── Source filter toggles (ƒ / ⇄ / ⚡)
+    ├── TagAddForm (polymorphic by source type)
+    └── Owner groups
+        └── TagRow (collapsed: badges + toggle + delete)
+            └── Edit form (polymorphic: code / link / script)
+
+CellPanel
+└── CellCard
+    └── PropertyRow
+        ├── Expression indicator (ƒ badge when tag exists)
+        └── + button (hover, when no tag) → inline TagAddForm
+```
+
+### Owner-Grouped View
+
+Tags are grouped by owner in UnifiedTagsSection:
+- **Root** — top-level tags (global scripts, root-level links)
+- **Cell: {name}** — tags attached to a cell type
+- **Environment** — tags on env params
+- **Global** — tags on global variables
+
+### Inline Editing
+
+TagRow expands to show a polymorphic edit form:
+- **code** → textarea for Python code, phase selector
+- **link** → source/target (readonly), range inputs, easing dropdown
+- **script** → name, code textarea, inputs/outputs fields, phase selector
+
+### Legacy Compatibility
+
+Legacy commands (`link.add`, `expr.set`, `script.add`) remain fully operational. They create tags as a side effect. The legacy stores (scriptStore, linkStore) continue to receive events for backward compatibility. `expressionStore` is the canonical UI data source for all computation.
 
 ---
 
@@ -160,13 +206,36 @@ expression_tags:
 
 ---
 
-## Relationship to Node Editor (Phase 8)
+## Relationship to Node Editor (Future)
 
 The node editor is a visual view of ExpressionTag code:
 - Open a tag → see its node graph
 - Changes in code ↔ changes in node graph (bidirectional via NodeCompiler)
 - Nodes compile to the same Python code that tags execute
 - The tag is the primitive; the node graph is one of several authoring views
+
+## Scene Graph Integration
+
+> Full spec: `docs/SCENE_GRAPH.md`
+
+The scene graph architecture evolves the expression system in three key ways:
+
+1. **Tags live on SceneNodes** instead of flat `TagOwner` references. The `owner` field becomes a pointer into the scene tree (`parentId` on the tag's SceneNode). Variable resolution walks up ancestors.
+
+2. **Links become a creation wizard**, not a source type. `ExpressionSource` simplifies to `'code' | 'script'`. The link wizard generates `rangeMap()` code and creates a normal code-source tag. `linkMeta` is preserved for fast-path JS resolution.
+
+3. **Rule is a tag** with `phase: 'rule'`. `ExpressionPhase` extends to `'pre-rule' | 'rule' | 'post-rule'`. Built-in presets become pre-written rule tags. The rule is editable, swappable, and disable-able like any other tag.
+
+---
+
+## What's Next
+
+The tag-centric UI phase unlocked:
+- **Scene graph**: tags live on SceneNodes, scoped by tree position (see `docs/SCENE_GRAPH.md`)
+- **Node editor**: can now target any tag via `tag.edit` — just needs a visual node-graph authoring surface
+- **Full legacy store removal**: once no UI reads from scriptStore.expressions/globalScripts or linkStore.links directly, those stores can be removed
+- **Drag-to-reorder tags**: tags within an owner group could be reordered to control evaluation priority
+- **Tag presets**: save/load named tag collections as reusable "behaviors"
 
 ---
 

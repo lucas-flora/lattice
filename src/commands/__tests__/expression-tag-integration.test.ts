@@ -21,13 +21,13 @@ describe('ExpressionTag Integration', () => {
   let cleanup: () => void;
 
   beforeEach(() => {
+    _resetTagIdCounter();
     bus = new EventBus();
     registry = new CommandRegistry();
     controller = new SimulationController(bus, 10000);
     registerAllCommands(registry, controller, bus);
     cleanup = wireStores(bus);
     controller.loadPreset('conways-gol');
-    _resetTagIdCounter();
   });
 
   afterEach(() => {
@@ -50,8 +50,9 @@ describe('ExpressionTag Integration', () => {
     const tags = useExpressionStore.getState().tags;
     expect(tags.length).toBeGreaterThanOrEqual(1);
 
-    const linkTag = tags.find((t) => t.source === 'link');
+    const linkTag = tags.find((t) => t.linkMeta !== undefined);
     expect(linkTag).toBeDefined();
+    expect(linkTag!.source).toBe('code');
     expect(linkTag!.outputs).toContain('cell.alpha');
     expect(linkTag!.inputs).toContain('cell.age');
     expect(linkTag!.linkMeta).toBeDefined();
@@ -73,7 +74,7 @@ describe('ExpressionTag Integration', () => {
     const tags = useExpressionStore.getState().tags;
     expect(tags.length).toBeGreaterThanOrEqual(1);
 
-    const codeTag = tags.find((t) => t.source === 'code');
+    const codeTag = tags.find((t) => t.source === 'code' && t.phase !== 'rule');
     expect(codeTag).toBeDefined();
     expect(codeTag!.outputs).toContain('cell.alpha');
     expect(codeTag!.code).toBe('age / 100');
@@ -103,8 +104,10 @@ describe('ExpressionTag Integration', () => {
     expect(result.data.tags.length).toBeGreaterThanOrEqual(2);
 
     const sources = result.data.tags.map((t: { source: string }) => t.source);
-    expect(sources).toContain('link');
     expect(sources).toContain('code');
+    // Link-created tags now have source: 'code' with linkMeta present
+    const hasLinkMeta = result.data.tags.some((t: { linkMeta?: unknown }) => t.linkMeta !== undefined);
+    expect(hasLinkMeta).toBe(true);
   });
 
   it('TestIntegration_TagShow_ReturnsFullDetails', async () => {
@@ -119,14 +122,14 @@ describe('ExpressionTag Integration', () => {
 
     // Get the tag ID from the store
     const tags = useExpressionStore.getState().tags;
-    const linkTag = tags.find((t) => t.source === 'link');
+    const linkTag = tags.find((t) => t.linkMeta !== undefined);
     expect(linkTag).toBeDefined();
 
     // Show full details via command
     const result = await registry.execute('tag.show', { id: linkTag!.id });
     expect(result.success).toBe(true);
     expect(result.data.id).toBe(linkTag!.id);
-    expect(result.data.source).toBe('link');
+    expect(result.data.source).toBe('code');
     expect(result.data.linkMeta).toBeDefined();
     expect(result.data.linkMeta.sourceAddress).toBe('cell.age');
     expect(result.data.linkMeta.easing).toBe('smoothstep');
@@ -143,7 +146,7 @@ describe('ExpressionTag Integration', () => {
     });
 
     const tags = useExpressionStore.getState().tags;
-    const codeTag = tags.find((t) => t.source === 'code');
+    const codeTag = tags.find((t) => t.source === 'code' && t.phase !== 'rule');
     expect(codeTag).toBeDefined();
     expect(codeTag!.phase).toBe('post-rule');
 
@@ -172,7 +175,7 @@ describe('ExpressionTag Integration', () => {
     });
 
     const tags = useExpressionStore.getState().tags;
-    const linkTag = tags.find((t) => t.source === 'link');
+    const linkTag = tags.find((t) => t.linkMeta !== undefined);
     expect(linkTag).toBeDefined();
     expect(linkTag!.enabled).toBe(true);
 

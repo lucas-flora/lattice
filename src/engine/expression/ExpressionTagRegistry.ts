@@ -19,6 +19,7 @@ import type { ExpressionTag, ExpressionTagDef, LinkMeta, TagOwner } from './type
 import type { EasingType } from '../linking/types';
 import { parseAddress, resolveRead, resolveWrite } from './PropertyAddress';
 import { rangeMap, rangeMapArray } from './easing';
+import { generateLinkCode } from './linkCodegen';
 
 let nextId = 0;
 function generateId(): string {
@@ -28,16 +29,6 @@ function generateId(): string {
 /** Reset ID counter (for testing) */
 export function _resetTagIdCounter(): void {
   nextId = 0;
-}
-
-/**
- * Generate Python code for a link-style rangeMap tag.
- */
-function generateLinkCode(meta: LinkMeta, targetAddress: string): string {
-  const { sourceAddress, sourceRange, targetRange, easing } = meta;
-  return `# Auto-generated from link: ${sourceAddress} → ${targetAddress}\n` +
-    `# rangeMap(${sourceAddress}, [${sourceRange}], [${targetRange}], ${easing})\n` +
-    `self.${parseAddress(targetAddress).key} = rangeMap(${sourceAddress}, ${JSON.stringify(sourceRange)}, ${JSON.stringify(targetRange)}, "${easing}")`;
 }
 
 /**
@@ -136,7 +127,7 @@ export class ExpressionTagRegistry {
   }
 
   /** Update a tag's properties. Returns updated tag or null. */
-  update(id: string, patch: Partial<Pick<ExpressionTag, 'name' | 'code' | 'phase' | 'enabled' | 'source' | 'inputs' | 'outputs' | 'linkMeta'>>): ExpressionTag | null {
+  update(id: string, patch: Partial<Pick<ExpressionTag, 'name' | 'code' | 'phase' | 'enabled' | 'source' | 'inputs' | 'outputs' | 'linkMeta'>> & { owner?: TagOwner }): ExpressionTag | null {
     const tag = this.tags.get(id);
     if (!tag) return null;
 
@@ -172,6 +163,19 @@ export class ExpressionTagRegistry {
           this.graph.get(input)!.add(output);
         }
       }
+    }
+
+    // If owner changed, update the owner index
+    if (patch.owner) {
+      const oldKey = ownerKey(tag.owner);
+      const oldSet = this.tagsByOwner.get(oldKey);
+      if (oldSet) {
+        oldSet.delete(id);
+        if (oldSet.size === 0) this.tagsByOwner.delete(oldKey);
+      }
+      const newKey = ownerKey(patch.owner);
+      if (!this.tagsByOwner.has(newKey)) this.tagsByOwner.set(newKey, new Set());
+      this.tagsByOwner.get(newKey)!.add(id);
     }
 
     Object.assign(tag, patch);
@@ -309,9 +313,11 @@ export class ExpressionTagRegistry {
 
   // --- Fast path ---
 
-  /** Check if a tag can be resolved via the JS fast path (rangeMap). */
+  /** Check if a tag can be resolved via the JS fast path (rangeMap).
+   * Checks linkMeta presence regardless of source — link wizard creates
+   * 'code' tags with linkMeta preserved for fast-path eligibility. */
   isSimpleRangeMap(tag: ExpressionTag): boolean {
-    return tag.source === 'link' && tag.linkMeta !== undefined;
+    return tag.linkMeta !== undefined;
   }
 
   /** Resolve a link-sourced tag using JS rangeMap (no Pyodide). */
@@ -445,7 +451,9 @@ export class ExpressionTagRegistry {
   // --- Preset migration ---
 
   /**
-   * Create a link-style ExpressionTag from legacy ParameterLink data.
+   * Create a code tag from link wizard data.
+   * Links are a creation wizard, not a source type — the result is a normal
+   * code tag with linkMeta preserved for JS fast-path eligibility.
    */
   addFromLink(source: string, target: string, sourceRange: [number, number], targetRange: [number, number], easing: EasingType, enabled: boolean = true): ExpressionTag {
     const meta: LinkMeta = { sourceAddress: source, sourceRange, targetRange, easing };
@@ -455,11 +463,26 @@ export class ExpressionTagRegistry {
       code: generateLinkCode(meta, target),
       phase: 'pre-rule',
       enabled,
-      source: 'link',
+      source: 'code',
       inputs: [source],
       outputs: [target],
       linkMeta: meta,
     });
+  }
+
+  /**
+   * Migrate legacy link-sourced tags to code-sourced.
+   * Preserves linkMeta for fast-path. Called during preset load.
+   */
+  migrateLinkTags(): number {
+    let count = 0;
+    for (const tag of this.tags.values()) {
+      if (tag.source === 'link') {
+        (tag as { source: string }).source = 'code';
+        count++;
+      }
+    }
+    return count;
   }
 
   /**
@@ -492,6 +515,50 @@ export class ExpressionTagRegistry {
       inputs,
       outputs,
     });
+  }
+
+  /**
+   * Create a rule tag from a preset's compute body.
+   * Rule tags have phase: 'rule' and receive RuleContext.
+   *
+   * Rule tags are exempt from cycle detection because they inherently
+   * read and write the same cell properties (that's what a rule does).
+   * They run at their own pipeline stage, not in the expression graph.
+   */
+  addFromRule(presetName: string, computeBody: string, _ruleType: 'typescript' | 'wasm' | 'python' = 'typescript'): ExpressionTag {
+    const tag: ExpressionTag = {
+      id: generateId(),
+      name: `${presetName} Rule`,
+      owner: { type: 'root' },
+      code: computeBody,
+      phase: 'rule',
+      enabled: true,
+      source: 'code',
+      inputs: ['cell.*'],
+      outputs: ['cell.*'],
+      linkMeta: undefined,
+    };
+
+    // Store directly — skip cycle detection and dependency graph.
+    // Rule tags don't participate in the expression dependency graph;
+    // they run at their own pipeline stage (step 2 in the tick pipeline).
+    this.tags.set(tag.id, tag);
+
+    const key = ownerKey(tag.owner);
+    if (!this.tagsByOwner.has(key)) {
+      this.tagsByOwner.set(key, new Set());
+    }
+    this.tagsByOwner.get(key)!.add(tag.id);
+
+    return tag;
+  }
+
+  /** Get the active rule tag (phase='rule', enabled) */
+  getRuleTag(): ExpressionTag | undefined {
+    for (const tag of this.tags.values()) {
+      if (tag.phase === 'rule' && tag.enabled) return tag;
+    }
+    return undefined;
   }
 
   /**

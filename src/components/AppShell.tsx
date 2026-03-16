@@ -1,17 +1,20 @@
 /**
- * AppShell: top-level layout component that initializes the command infrastructure
- * and renders all surfaces (viewport, controls, terminal, panels).
+ * AppShell: top-level layout with numbered drawers.
+ *
+ * Drawer layout:
+ *   ` = Terminal (bottom tray)
+ *   1 = Object Manager + Inspector (left, vertically split)
+ *   2 = Card View (left, filtered node cards)
+ *   3 = Tags + Globals card view (right)
+ *   4 = Metrics/Charts (far right)
  *
  * On mount: creates EventBus, SimulationController, registers all commands,
- * wires stores, loads the default preset (Conway's GoL), and attaches keyboard shortcuts.
- *
- * Uses zone-based layout: left drawer, center (viewports), right drawer,
- * pinned Timeline+ControlBar, bottom drawer (terminal).
+ * wires stores, loads default preset, builds scene tree, attaches hotkeys.
  */
 
 'use client';
 
-import { useRef, useEffect, useCallback } from 'react';
+import { useRef, useEffect, useCallback, useState } from 'react';
 import { eventBus } from '@/engine/core/EventBus';
 import { SimulationController } from '@/commands/SimulationController';
 import { commandRegistry } from '@/commands/CommandRegistry';
@@ -24,13 +27,16 @@ import { HUD } from '@/components/hud/HUD';
 import { HotkeyHelp } from '@/components/hud/HotkeyHelp';
 import { BottomTray } from '@/components/layout/BottomTray';
 import { Terminal } from '@/components/terminal/Terminal';
-import { ParamPanel } from '@/components/panels/ParamPanel';
 import { useUiStore } from '@/store/uiStore';
 import { useLayoutStore, layoutStoreActions } from '@/store/layoutStore';
 import { DrawerShell } from '@/components/layout/DrawerShell';
 import { ResizeHandle } from '@/components/ui/ResizeHandle';
-import { CellPanel } from '@/components/panels/CellPanel';
-import { ScriptPanel } from '@/components/panels/ScriptPanel';
+// ScriptPanel replaced by CardViewPanel with defaultFilters={['tags', 'globals']}
+import { ObjectManagerPanel } from '@/components/panels/ObjectManagerPanel';
+import { InspectorPanel } from '@/components/panels/InspectorPanel';
+import { CardViewPanel } from '@/components/panels/CardViewPanel';
+import { MetricsPanel } from '@/components/panels/MetricsPanel';
+import { useSceneStore } from '@/store/sceneStore';
 
 /** Module-level singleton for the simulation controller */
 let controllerSingleton: SimulationController | null = null;
@@ -43,8 +49,6 @@ export function getController(): SimulationController | null {
 
 /**
  * Initialize simulation with appropriate starting state per preset.
- * Each preset needs domain-specific initialization — random binary isn't
- * meaningful for reaction-diffusion or fluid systems.
  */
 function initializeSimulation(controller: SimulationController): void {
   const sim = controller.getSimulation();
@@ -57,7 +61,6 @@ function initializeSimulation(controller: SimulationController): void {
   const h = sim.preset.grid.height ?? 1;
 
   if (presetName === 'Gray-Scott') {
-    // Reaction-diffusion: u=1.0 everywhere, v=0.25 in a small center square
     const uBuf = sim.grid.getCurrentBuffer('u');
     const vBuf = sim.grid.getCurrentBuffer('v');
     uBuf.fill(1.0);
@@ -78,7 +81,6 @@ function initializeSimulation(controller: SimulationController): void {
   }
 
   if (presetName === 'Navier-Stokes') {
-    // Fluid dynamics: density blob in center with initial velocity
     const densityBuf = sim.grid.getCurrentBuffer('density');
     densityBuf.fill(0.0);
     const cx = Math.floor(w / 2);
@@ -87,12 +89,10 @@ function initializeSimulation(controller: SimulationController): void {
     for (let y = cy - r; y <= cy + r; y++) {
       for (let x = cx - r; x <= cx + r; x++) {
         if (x >= 0 && x < w && y >= 0 && y < h) {
-          const idx = y * w + x;
-          densityBuf[idx] = 1.0;
+          densityBuf[y * w + x] = 1.0;
         }
       }
     }
-    // Small initial velocity perturbation
     try {
       const vxBuf = sim.grid.getCurrentBuffer('vx');
       const vyBuf = sim.grid.getCurrentBuffer('vy');
@@ -110,33 +110,89 @@ function initializeSimulation(controller: SimulationController): void {
   }
 
   if (presetName === "Langton's Ant") {
-    // Place ant at center with direction=0
     const cx = Math.floor(w / 2);
     const cy = Math.floor(h / 2);
-    const centerIdx = cy * w + cx;
-    sim.setCellDirect('ant', centerIdx, 1);
-    sim.setCellDirect('ant_dir', centerIdx, 0);
+    sim.setCellDirect('ant', cy * w + cx, 1);
+    sim.setCellDirect('ant_dir', cy * w + cx, 0);
     return;
   }
 
-  // Default initialization based on dimensionality
   if (dim === '1d') {
-    const centerX = Math.floor(w / 2);
-    sim.setCellDirect(firstProp, centerX, 1);
+    sim.setCellDirect(firstProp, Math.floor(w / 2), 1);
   } else if (dim === '2d') {
     for (let i = 0; i < sim.grid.cellCount; i++) {
-      if (Math.random() < 0.2) {
-        sim.setCellDirect(firstProp, i, 1);
-      }
+      if (Math.random() < 0.2) sim.setCellDirect(firstProp, i, 1);
     }
   } else if (dim === '3d') {
     for (let i = 0; i < sim.grid.cellCount; i++) {
-      if (Math.random() < 0.1) {
-        sim.setCellDirect(firstProp, i, 1);
-      }
+      if (Math.random() < 0.1) sim.setCellDirect(firstProp, i, 1);
     }
   }
 }
+
+// ---------------------------------------------------------------------------
+// Drawer 1: Object Manager (top) + Inspector (bottom), vertically split
+// ---------------------------------------------------------------------------
+
+function Drawer1Content() {
+  const splitRatio = useLayoutStore((s) => s.drawer1SplitRatio);
+  const [dragging, setDragging] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const handleSplitDrag = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setDragging(true);
+
+    const container = containerRef.current;
+    if (!container) return;
+
+    const onMove = (ev: MouseEvent) => {
+      const rect = container.getBoundingClientRect();
+      const ratio = (ev.clientY - rect.top) / rect.height;
+      layoutStoreActions.setDrawer1SplitRatio(ratio);
+    };
+    const onUp = () => {
+      setDragging(false);
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }, []);
+
+  return (
+    <div ref={containerRef} className="flex flex-col h-full">
+      {/* Object Manager (top) */}
+      <div className="overflow-hidden" style={{ height: `${splitRatio * 100}%` }}>
+        <ObjectManagerPanel panelId="object-manager" />
+      </div>
+
+      {/* Resize handle */}
+      <div
+        className={`h-[3px] shrink-0 cursor-row-resize hover:bg-green-500/30 transition-colors ${dragging ? 'bg-green-500/40' : 'bg-zinc-700/50'}`}
+        onMouseDown={handleSplitDrag}
+      />
+
+      {/* Inspector (bottom) */}
+      <div className="flex-1 overflow-hidden">
+        <div className="flex flex-col h-full bg-zinc-900 text-zinc-300 overflow-hidden border-t border-zinc-700/30">
+          <div className="flex items-center px-3 py-1 border-b border-zinc-700/50 shrink-0">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500 font-mono">
+              Inspector
+            </span>
+          </div>
+          <div className="flex-1 overflow-y-auto">
+            <InspectorPanel panelId="inspector" />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// AppShell
+// ---------------------------------------------------------------------------
 
 export function AppShell() {
   const initializedRef = useRef(false);
@@ -144,49 +200,62 @@ export function AppShell() {
   const fullscreenViewportId = useLayoutStore((s) => s.fullscreenViewportId);
   const isTerminalOpen = useLayoutStore((s) => s.isTerminalOpen);
   const terminalMode = useLayoutStore((s) => s.terminalMode);
-  const isLeftDrawerOpen = useLayoutStore((s) => s.isLeftDrawerOpen);
-  const leftDrawerMode = useLayoutStore((s) => s.leftDrawerMode);
-  const leftDrawerWidth = useLayoutStore((s) => s.leftDrawerWidth);
-  const isParamPanelOpen = useLayoutStore((s) => s.isParamPanelOpen);
-  const paramPanelMode = useLayoutStore((s) => s.paramPanelMode);
-  const isScriptPanelOpen = useLayoutStore((s) => s.isScriptPanelOpen);
-  const scriptPanelMode = useLayoutStore((s) => s.scriptPanelMode);
+
+  // Drawer state
+  const d1Open = useLayoutStore((s) => s.isDrawer1Open);
+  const d1Mode = useLayoutStore((s) => s.drawer1Mode);
+  const d1Width = useLayoutStore((s) => s.drawer1Width);
+  const d2Open = useLayoutStore((s) => s.isDrawer2Open);
+  const d2Mode = useLayoutStore((s) => s.drawer2Mode);
+  const d2Width = useLayoutStore((s) => s.drawer2Width);
+  const d3Open = useLayoutStore((s) => s.isDrawer3Open);
+  const d3Mode = useLayoutStore((s) => s.drawer3Mode);
+  const d3Width = useLayoutStore((s) => s.drawer3Width);
+  const d4Open = useLayoutStore((s) => s.isDrawer4Open);
+  const d4Mode = useLayoutStore((s) => s.drawer4Mode);
+  const d4Width = useLayoutStore((s) => s.drawer4Width);
 
   // Initialize command infrastructure once
   useEffect(() => {
     if (initializedRef.current) return;
     initializedRef.current = true;
 
-    // Create controller with the global eventBus
     const controller = new SimulationController(eventBus, 100);
     controllerSingleton = controller;
 
-    // Clear and re-register commands (idempotent)
     commandRegistry.clear();
     registerAllCommands(commandRegistry, controller, eventBus);
 
-    // Wire stores
     unwireFn = wireStores(eventBus);
 
-    // Attach keyboard shortcuts (GUIP-04)
     shortcutManager = new KeyboardShortcutManager(commandRegistry);
     shortcutManager.attach(window);
 
-    // Re-initialize grid data on every preset load, then capture for seek/reset
-    // and aggressively start caching ahead
     const onPresetLoaded = () => {
       initializeSimulation(controller);
       const { timelineDuration } = useUiStore.getState();
       controller.captureInitialState(timelineDuration);
+      commandRegistry.execute('scene.buildTree', {}).then(() => {
+        const { rootIds } = useSceneStore.getState();
+        if (rootIds.length > 0) {
+          commandRegistry.execute('scene.select', { id: rootIds[0] });
+        }
+      });
     };
     eventBus.on('sim:presetLoaded', onPresetLoaded);
 
-    // Load default preset (Conway's GoL) using client-safe loader
     const config = loadBuiltinPresetClient('conways-gol');
     controller.loadPresetConfig(config);
     initializeSimulation(controller);
     const { timelineDuration } = useUiStore.getState();
     controller.captureInitialState(timelineDuration);
+
+    commandRegistry.execute('scene.buildTree', {}).then(() => {
+      const { rootIds } = useSceneStore.getState();
+      if (rootIds.length > 0) {
+        commandRegistry.execute('scene.select', { id: rootIds[0] });
+      }
+    });
 
     return () => {
       eventBus.off('sim:presetLoaded', onPresetLoaded);
@@ -204,28 +273,20 @@ export function AppShell() {
   }, []);
 
   const isAnyFullscreen = fullscreenViewportId !== null;
-  const leftDocked = leftDrawerMode === 'docked' && isLeftDrawerOpen && !isAnyFullscreen;
-  const paramDocked = paramPanelMode === 'docked' && isParamPanelOpen && !isAnyFullscreen;
-  const scriptDocked = scriptPanelMode === 'docked' && isScriptPanelOpen && !isAnyFullscreen;
+
+  // Docked state per drawer
+  const d1Docked = d1Mode === 'docked' && d1Open && !isAnyFullscreen;
+  const d2Docked = d2Mode === 'docked' && d2Open && !isAnyFullscreen;
+  const d3Docked = d3Mode === 'docked' && d3Open && !isAnyFullscreen;
+  const d4Docked = d4Mode === 'docked' && d4Open && !isAnyFullscreen;
   const terminalFloating = terminalMode === 'floating';
 
-  const toggleLeftDrawer = useCallback(() => {
-    commandRegistry.execute('ui.toggleLeftDrawer', {});
-  }, []);
+  const toggleD1 = useCallback(() => layoutStoreActions.toggleDrawer1(), []);
+  const toggleD2 = useCallback(() => layoutStoreActions.toggleDrawer2(), []);
 
-  const toggleRightDrawer = useCallback(() => {
-    commandRegistry.execute('ui.toggleParamPanel', {});
-  }, []);
+  const openD1Docked = useCallback(() => layoutStoreActions.toggleDrawer1({ docked: true }), []);
+  const openD3Docked = useCallback(() => layoutStoreActions.toggleDrawer3({ docked: true }), []);
 
-  const openLeftDocked = useCallback(() => {
-    commandRegistry.execute('ui.toggleLeftDrawer', { docked: true });
-  }, []);
-
-  const openRightDocked = useCallback(() => {
-    commandRegistry.execute('ui.toggleParamPanel', { docked: true });
-  }, []);
-
-  // Peeking grip dots — reusable for left/right edges when panels are closed
   const gripDots = (
     <div className="flex flex-col gap-[3px]">
       {[0, 1, 2].map((i) => (
@@ -234,24 +295,41 @@ export function AppShell() {
     </div>
   );
 
+  // Check if any right-side drawer is open for right grip
+  const anyRightOpen = d3Open || d4Open;
+
   return (
     <div className="w-screen h-screen bg-black overflow-hidden flex flex-row">
-      {/* Left drawer — docked: full height, sits outside center column */}
-      {leftDocked && (
+      {/* === LEFT DOCKED DRAWERS === */}
+
+      {/* Drawer 1 — Object Manager + Inspector (docked) */}
+      {d1Docked && (
         <DrawerShell
           position="left"
-          size={leftDrawerWidth}
+          size={d1Width}
           collapsed={false}
-          onResize={(size) => layoutStoreActions.setLeftDrawerWidth(size)}
-          onClose={toggleLeftDrawer}
+          onResize={(size) => layoutStoreActions.setDrawer1Width(size)}
+          onClose={toggleD1}
         >
-          <CellPanel panelId="cell-panel" />
+          <Drawer1Content />
         </DrawerShell>
       )}
 
-      {/* Center column: viewports + bottom tray */}
+      {/* Drawer 2 — Card View (docked) */}
+      {d2Docked && (
+        <DrawerShell
+          position="left"
+          size={d2Width}
+          collapsed={false}
+          onResize={(size) => layoutStoreActions.setDrawer2Width(size)}
+          onClose={toggleD2}
+        >
+          <CardViewPanel defaultFilters={['cells']} />
+        </DrawerShell>
+      )}
+
+      {/* === CENTER COLUMN === */}
       <div className="flex flex-col flex-1 min-w-0 min-h-0">
-        {/* Viewports */}
         <div className="flex flex-1 min-h-0 relative">
           {/* Primary viewport */}
           {(!isAnyFullscreen || fullscreenViewportId === 'viewport-1') && (
@@ -265,69 +343,122 @@ export function AppShell() {
           {/* Secondary viewport */}
           {(viewportCount === 2 || fullscreenViewportId === 'viewport-2') &&
             (!isAnyFullscreen || fullscreenViewportId === 'viewport-2') && (
-              <div
-                className={`${viewportCount === 2 && !isAnyFullscreen ? 'w-1/2' : 'w-full'} h-full`}
-              >
+              <div className={`${viewportCount === 2 && !isAnyFullscreen ? 'w-1/2' : 'w-full'} h-full`}>
                 <SimulationViewport viewportId="viewport-2" />
               </div>
             )}
 
-          {/* Peeking grips — at screen edges when side panels are closed */}
-          {!isAnyFullscreen && !isLeftDrawerOpen && (
+          {/* Peeking grips — edges when drawers closed */}
+          {!isAnyFullscreen && !d1Open && !d2Open && (
             <button
               className="absolute left-0 top-1/2 -translate-y-1/2 z-10 group cursor-pointer pl-[2px] pr-[4px] py-4 rounded-r-sm bg-zinc-800/30 hover:bg-zinc-700/50 transition-colors"
-              onClick={openLeftDocked}
-              title="Cells (1)"
+              onClick={openD1Docked}
+              title="Drawer 1 (Objects + Inspector)"
             >
               {gripDots}
             </button>
           )}
-          {!isAnyFullscreen && !isParamPanelOpen && (
+          {!isAnyFullscreen && !anyRightOpen && (
             <button
               className="absolute right-0 top-1/2 -translate-y-1/2 z-10 group cursor-pointer pr-[2px] pl-[4px] py-4 rounded-l-sm bg-zinc-800/30 hover:bg-zinc-700/50 transition-colors"
-              onClick={openRightDocked}
-              title="Parameters (2)"
+              onClick={openD3Docked}
+              title="Drawer 3 (Tags + Globals)"
             >
               {gripDots}
             </button>
           )}
 
-          {/* Floating side panels — inside viewport container so they don't cover bottom tray */}
-          {!leftDocked && isLeftDrawerOpen && !isAnyFullscreen && (
+          {/* Floating drawers (left side) */}
+          {!d1Docked && d1Open && !isAnyFullscreen && (
             <div
-              className="absolute top-0 left-0 bottom-0 z-15 transition-transform duration-200 ease-out pointer-events-auto"
-              style={{ width: leftDrawerWidth }}
+              className="absolute top-0 left-0 bottom-0 z-15 pointer-events-auto"
+              style={{ width: d1Width }}
             >
-              <div className="absolute inset-0 overflow-hidden">
-                <CellPanel panelId="cell-panel" />
+              <div className="absolute inset-0 overflow-hidden bg-zinc-900/95 backdrop-blur-sm border-r border-zinc-700">
+                <Drawer1Content />
               </div>
               <div className="absolute right-1 top-0 bottom-0 z-10 flex">
-                <ResizeHandle direction="horizontal" onResize={(delta) => layoutStoreActions.setLeftDrawerWidth(leftDrawerWidth + delta)} onDoubleClick={toggleLeftDrawer} />
+                <ResizeHandle direction="horizontal" onResize={(delta) => layoutStoreActions.setDrawer1Width(d1Width + delta)} onDoubleClick={toggleD1} />
               </div>
             </div>
           )}
-          {!scriptDocked && isScriptPanelOpen && !isAnyFullscreen && <ScriptPanel />}
-          {!paramDocked && isParamPanelOpen && !isAnyFullscreen && <ParamPanel />}
+          {!d2Docked && d2Open && !isAnyFullscreen && (
+            <div
+              className="absolute top-0 bottom-0 z-14 pointer-events-auto"
+              style={{ width: d2Width, left: d1Open ? d1Width : 0 }}
+            >
+              <div className="absolute inset-0 overflow-hidden bg-zinc-900/95 backdrop-blur-sm border-r border-zinc-700">
+                <CardViewPanel defaultFilters={['cells']} />
+              </div>
+            </div>
+          )}
+
+          {/* Floating drawers (right side) */}
+          {!d3Docked && d3Open && !isAnyFullscreen && (
+            <div
+              className="absolute top-0 bottom-0 z-15 pointer-events-auto"
+              style={{ width: d3Width, right: d4Open ? d4Width : 0 }}
+            >
+              <div className="absolute inset-0 overflow-hidden bg-zinc-900/95 backdrop-blur-sm border-l border-zinc-700">
+                <CardViewPanel defaultFilters={['tags', 'globals']} />
+              </div>
+            </div>
+          )}
+          {!d4Docked && d4Open && !isAnyFullscreen && (
+            <div
+              className="absolute top-0 right-0 bottom-0 z-15 pointer-events-auto"
+              style={{ width: d4Width }}
+            >
+              <div className="absolute inset-0 overflow-hidden bg-zinc-900/95 backdrop-blur-sm border-l border-zinc-700">
+                <MetricsPanel />
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Bottom tray: timeline + controls + terminal */}
         {!isAnyFullscreen && terminalMode === 'docked' && <BottomTray />}
       </div>
 
-      {/* Right drawers — docked: full height, zero gap between siblings */}
-      {scriptDocked && <ScriptPanel docked />}
-      {paramDocked && <ParamPanel docked />}
+      {/* === RIGHT DOCKED DRAWERS === */}
 
-      {/* HUD overlay — pointer-events: none status display */}
+      {/* Drawer 3 — Tags + Globals (docked) */}
+      {d3Docked && (
+        <DrawerShell
+          position="right"
+          size={d3Width}
+          collapsed={false}
+          onResize={(size) => layoutStoreActions.setDrawer3Width(size)}
+          onClose={() => layoutStoreActions.toggleDrawer3()}
+        >
+          <CardViewPanel defaultFilters={['tags', 'globals']} />
+        </DrawerShell>
+      )}
+
+      {/* Drawer 4 — Metrics (docked) */}
+      {d4Docked && (
+        <div className="relative shrink-0 h-full" style={{ width: d4Width }}>
+          <div className="absolute inset-0 overflow-hidden bg-zinc-900 border-l border-zinc-700">
+            <MetricsPanel />
+          </div>
+          <div className="absolute left-1 top-0 bottom-0 z-10 flex">
+            <ResizeHandle
+              direction="horizontal"
+              onResize={(delta) => layoutStoreActions.setDrawer4Width(d4Width - delta)}
+              onDoubleClick={() => layoutStoreActions.toggleDrawer4()}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* HUD overlay */}
       {!isAnyFullscreen && (
         <div className="absolute inset-0 z-10 pointer-events-none">
           <HUD />
-          {/* Floating terminal */}
           {terminalFloating && <Terminal />}
         </div>
       )}
 
-      {/* Hotkey help overlay -- always rendered (visibility controlled internally) */}
       <HotkeyHelp />
     </div>
   );

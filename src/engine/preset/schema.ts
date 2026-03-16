@@ -1,7 +1,9 @@
 /**
  * Zod schema for YAML preset validation.
  *
- * Defines the full preset schema with schema_version "1".
+ * Defines v1 and v2 preset schemas.
+ * v1: flat structure (meta, grid, rule, cell_properties, etc.)
+ * v2: scene-graph tree structure (scene nodes with nested children)
  * This is the community-facing API contract.
  */
 
@@ -136,7 +138,7 @@ const CellTypeSchema = z.object({
   properties: z.array(CellPropertySchema).optional(),
 });
 
-// --- Full Preset Schema ---
+// --- Full Preset v1 Schema ---
 
 export const PresetSchema = z
   .object({
@@ -165,3 +167,102 @@ export const PresetSchema = z
     },
     { message: 'At least one of cell_properties or cell_types must be non-empty' },
   );
+
+// --- v2 Sub-schemas ---
+
+const TagV2Schema = z.object({
+  name: z.string().min(1),
+  code: z.string(),
+  phase: z.enum(['pre-rule', 'rule', 'post-rule']).default('post-rule'),
+  enabled: z.boolean().default(true),
+  source: z.enum(['code', 'link', 'script']).default('code'),
+  inputs: z.array(z.string()).default([]),
+  outputs: z.array(z.string()).default([]),
+  linkMeta: z.object({
+    sourceAddress: z.string(),
+    sourceRange: z.tuple([z.number(), z.number()]),
+    targetRange: z.tuple([z.number(), z.number()]),
+    easing: z.enum(['linear', 'smoothstep', 'easeIn', 'easeOut', 'easeInOut']),
+  }).optional(),
+});
+
+/** Input type for recursive Zod schema (what the user provides before defaults) */
+interface SceneNodeV2Input {
+  type: string;
+  name: string;
+  enabled?: boolean;
+  children?: SceneNodeV2Input[];
+  properties?: Record<string, unknown>;
+  tags?: Array<{
+    name: string;
+    code: string;
+    phase?: 'pre-rule' | 'rule' | 'post-rule';
+    enabled?: boolean;
+    source?: 'code' | 'link' | 'script';
+    inputs?: string[];
+    outputs?: string[];
+    linkMeta?: {
+      sourceAddress: string;
+      sourceRange: [number, number];
+      targetRange: [number, number];
+      easing: 'linear' | 'smoothstep' | 'easeIn' | 'easeOut' | 'easeInOut';
+    };
+  }>;
+}
+
+/** Output type for recursive Zod schema (after defaults are applied) */
+interface SceneNodeV2Output {
+  type: string;
+  name: string;
+  enabled: boolean;
+  children: SceneNodeV2Output[];
+  properties: Record<string, unknown>;
+  tags: Array<{
+    name: string;
+    code: string;
+    phase: 'pre-rule' | 'rule' | 'post-rule';
+    enabled: boolean;
+    source: 'code' | 'link' | 'script';
+    inputs: string[];
+    outputs: string[];
+    linkMeta?: {
+      sourceAddress: string;
+      sourceRange: [number, number];
+      targetRange: [number, number];
+      easing: 'linear' | 'smoothstep' | 'easeIn' | 'easeOut' | 'easeInOut';
+    };
+  }>;
+}
+
+const SceneNodeV2Schema: z.ZodType<SceneNodeV2Output, z.ZodTypeDef, SceneNodeV2Input> = z.lazy(() =>
+  z.object({
+    type: z.string().min(1),
+    name: z.string().min(1),
+    enabled: z.boolean().default(true),
+    children: z.array(SceneNodeV2Schema).default([]),
+    properties: z.record(z.unknown()).default({}),
+    tags: z.array(TagV2Schema).default([]),
+  }),
+);
+
+const GridV2Schema = z.object({
+  width: z.number().int().positive(),
+  height: z.number().int().positive(),
+  topology: z.string().default('toroidal'),
+});
+
+// --- Full Preset v2 Schema ---
+
+export const PresetV2Schema = z.object({
+  schema_version: z.literal('2', {
+    errorMap: () => ({ message: "schema_version must be '2' for v2 presets" }),
+  }),
+  grid: GridV2Schema,
+  scene: z.array(SceneNodeV2Schema).min(1, 'scene must contain at least one node'),
+});
+
+// --- Exported v2 types ---
+
+export type PresetV2Config = z.infer<typeof PresetV2Schema>;
+export type SceneNodeV2 = z.infer<typeof SceneNodeV2Schema>;
+export type TagV2 = z.infer<typeof TagV2Schema>;

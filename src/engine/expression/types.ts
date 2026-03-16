@@ -9,10 +9,15 @@
 /** Easing functions (shared with the linking system) */
 export type { EasingType, AddressNamespace, ParsedAddress } from '../linking/types';
 
-/** When in the tick pipeline this tag evaluates */
-export type ExpressionPhase = 'pre-rule' | 'post-rule';
+/** When in the tick pipeline this tag evaluates.
+ * 'rule' = THE simulation rule tag on a SimRoot. Receives RuleContext. */
+export type ExpressionPhase = 'pre-rule' | 'rule' | 'post-rule';
 
-/** How the tag was authored (determines fast-path eligibility) */
+/**
+ * How the tag was authored.
+ * Links are a creation wizard, not a source type — they generate 'code' tags with linkMeta.
+ * The 'link' source is deprecated; existing 'link' tags are migrated to 'code' on load.
+ */
 export type ExpressionSource = 'code' | 'link' | 'script';
 
 /** What type of object owns this tag */
@@ -58,7 +63,7 @@ export interface ExpressionTag {
   inputs: string[];
   /** Declared output addresses (for dependency tracking) */
   outputs: string[];
-  /** Link metadata — only present when source === 'link' */
+  /** Link metadata — present on tags created via link wizard. Enables JS fast-path resolution. */
   linkMeta?: LinkMeta;
 }
 

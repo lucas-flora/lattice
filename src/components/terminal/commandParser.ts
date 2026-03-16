@@ -72,6 +72,23 @@ const PARAM_MAPPINGS: Record<string, string[]> = {
   'tag.copy': ['id', 'ownerType', '?ownerId'],
   'tag.enable': ['id'],
   'tag.disable': ['id'],
+  'tag.add': ['source', '?property', '?...code'],
+  'tag.remove': ['id'],
+  'tag.edit': ['id', '?...code'],
+  'scene.select': ['id'],
+  'scene.deselect': [],
+  'scene.add': ['type', 'name', '?parentId'],
+  'scene.remove': ['id'],
+  'scene.move': ['id', 'parentId', '?index'],
+  'scene.rename': ['id', 'name'],
+  'scene.enable': ['id'],
+  'scene.disable': ['id'],
+  'scene.expand': ['id'],
+  'scene.collapse': ['id'],
+  'scene.list': ['?type'],
+  'scene.buildTree': [],
+  'scene.group': [],
+  'scene.ungroup': ['id'],
 };
 
 /**
@@ -120,6 +137,9 @@ const ARG_HINTS: Record<string, string> = {
   'tag.copy': '<id> <ownerType> [ownerId]',
   'tag.enable': '<id>',
   'tag.disable': '<id>',
+  'tag.add': '<code|link|script> [property] [code]',
+  'tag.remove': '<id>',
+  'tag.edit': '<id> [code]',
 };
 
 /**

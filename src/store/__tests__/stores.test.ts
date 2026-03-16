@@ -35,10 +35,10 @@ describe('Zustand Stores', () => {
     expect(state.isTerminalOpen).toBe(false);
     expect(state.isParamPanelOpen).toBe(false);
     expect(state.terminalHeight).toBe(250);
-    expect(state.paramPanelWidth).toBe(300);
+    expect(state.paramPanelWidth).toBe(280);
     expect(state.terminalMode).toBe('docked');
-    expect(state.paramPanelMode).toBe('floating');
-    expect(state.leftDrawerMode).toBe('floating');
+    expect(state.paramPanelMode).toBe('docked');
+    expect(state.leftDrawerMode).toBe('docked');
     expect(state.viewportCount).toBe(1);
     expect(state.fullscreenViewportId).toBeNull();
     expect(state.zones.center).toBeDefined();
@@ -71,9 +71,9 @@ describe('Zustand Stores', () => {
     layoutStoreActions.setParamPanelWidth(400);
     expect(useLayoutStore.getState().paramPanelWidth).toBe(400);
 
-    // Above maximum (50% of window width)
+    // Above maximum (40% of window width — drawer 2 max)
     layoutStoreActions.setParamPanelWidth(99999);
-    const maxW = window.innerWidth * 0.5;
+    const maxW = window.innerWidth * 0.4;
     expect(useLayoutStore.getState().paramPanelWidth).toBe(maxW);
 
     // Reset

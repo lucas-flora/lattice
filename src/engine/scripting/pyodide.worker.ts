@@ -16,6 +16,12 @@ const ctx = self as unknown as DedicatedWorkerGlobalScope;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let pyodide: any = null;
 
+/** Serial execution queue — Pyodide is single-threaded, concurrent calls corrupt globals. */
+let execQueue: Promise<void> = Promise.resolve();
+function enqueue(fn: () => Promise<void>): void {
+  execQueue = execQueue.then(fn, fn);
+}
+
 function post(msg: PyodideOutMessage): void {
   ctx.postMessage(msg);
 }
@@ -30,7 +36,7 @@ async function handleInit(indexURL?: string): Promise<void> {
     post({ type: 'init-progress', phase: 'loading-pyodide', progress: 0.3 });
 
     pyodide = await loadPyodide({
-      indexURL: indexURL ?? 'https://cdn.jsdelivr.net/pyodide/v0.27.5/full/',
+      indexURL: indexURL ?? 'https://cdn.jsdelivr.net/pyodide/v0.29.3/full/',
     });
 
     post({ type: 'init-progress', phase: 'loading-numpy', progress: 0.7 });
@@ -236,7 +242,7 @@ ctx.addEventListener('message', (event: MessageEvent<PyodideInMessage>) => {
       void handleInit(msg.indexURL);
       break;
     case 'exec-rule':
-      void handleExecRule(
+      enqueue(() => handleExecRule(
         msg.id,
         msg.code,
         msg.buffers,
@@ -244,10 +250,10 @@ ctx.addEventListener('message', (event: MessageEvent<PyodideInMessage>) => {
         msg.gridHeight,
         msg.gridDepth,
         msg.params,
-      );
+      ));
       break;
     case 'exec-expressions':
-      void handleExecExpressions(
+      enqueue(() => handleExecExpressions(
         msg.id,
         msg.code,
         msg.buffers,
@@ -256,10 +262,10 @@ ctx.addEventListener('message', (event: MessageEvent<PyodideInMessage>) => {
         msg.gridDepth,
         msg.params,
         msg.globalVars,
-      );
+      ));
       break;
     case 'exec-script':
-      void handleExecScript(
+      enqueue(() => handleExecScript(
         msg.id,
         msg.code,
         msg.params,
@@ -267,7 +273,7 @@ ctx.addEventListener('message', (event: MessageEvent<PyodideInMessage>) => {
         msg.gridWidth,
         msg.gridHeight,
         msg.gridDepth,
-      );
+      ));
       break;
     case 'dispose':
       handleDispose();

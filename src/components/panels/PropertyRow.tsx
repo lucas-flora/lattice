@@ -6,6 +6,8 @@
  *   - Green = active tag
  *   - Gray = disabled tag
  * Clicking the badge expands an inline preview of the tag.
+ *
+ * When no tag exists, shows a `+` button on hover to create one inline.
  */
 
 'use client';
@@ -14,6 +16,7 @@ import { useState, useCallback } from 'react';
 import type { CellPropertyType } from '@/engine/cell/types';
 import type { ExpressionTag } from '@/engine/expression/types';
 import { commandRegistry } from '@/commands/CommandRegistry';
+import { TagAddForm } from './TagAddForm';
 
 const TYPE_COLORS: Record<CellPropertyType, string> = {
   bool: 'text-blue-400 bg-blue-400/10',
@@ -38,6 +41,8 @@ interface PropertyRowProps {
   isInherent?: boolean;
   /** ExpressionTag that writes to this property (if any) */
   expression?: ExpressionTag;
+  /** Cell type name for tag creation (sets owner) */
+  cellTypeName?: string;
 }
 
 function formatDefault(value: number | number[], type: CellPropertyType): string {
@@ -49,9 +54,10 @@ function formatDefault(value: number | number[], type: CellPropertyType): string
   return String(value);
 }
 
-export function PropertyRow({ name, type, defaultValue, role, isInherent, expression }: PropertyRowProps) {
+export function PropertyRow({ name, type, defaultValue, role, isInherent, expression, cellTypeName }: PropertyRowProps) {
   const colorClass = TYPE_COLORS[type] ?? 'text-zinc-400 bg-zinc-400/10';
   const [expanded, setExpanded] = useState(false);
+  const [showAddForm, setShowAddForm] = useState(false);
 
   const handleToggleEnabled = useCallback(() => {
     if (!expression) return;
@@ -70,8 +76,8 @@ export function PropertyRow({ name, type, defaultValue, role, isInherent, expres
           )}
         </span>
 
-        {/* Expression tag indicator */}
-        {expression && (
+        {/* Expression tag indicator OR add button */}
+        {expression ? (
           <button
             onClick={() => setExpanded(!expanded)}
             className={`text-[9px] font-mono px-1 py-0.5 rounded cursor-pointer ${
@@ -83,6 +89,15 @@ export function PropertyRow({ name, type, defaultValue, role, isInherent, expres
             data-testid="expression-indicator"
           >
             {SOURCE_LABELS[expression.source] ?? 'ƒ'}
+          </button>
+        ) : (
+          <button
+            onClick={() => setShowAddForm(!showAddForm)}
+            className="text-[9px] text-zinc-600 hover:text-green-400 opacity-0 group-hover:opacity-100 cursor-pointer transition-opacity"
+            title="Add tag"
+            data-testid="property-add-tag"
+          >
+            +
           </button>
         )}
 
@@ -131,6 +146,17 @@ export function PropertyRow({ name, type, defaultValue, role, isInherent, expres
           <pre className="text-[10px] font-mono text-zinc-500 whitespace-pre-wrap break-all max-h-16 overflow-hidden">
             {expression.code}
           </pre>
+        </div>
+      )}
+
+      {/* Inline tag creation form */}
+      {showAddForm && !expression && (
+        <div className="ml-2 mb-1">
+          <TagAddForm
+            onClose={() => setShowAddForm(false)}
+            defaultSource="code"
+            defaultTarget={`cell.${name}`}
+          />
         </div>
       )}
     </div>

@@ -43,6 +43,12 @@ except Exception as _e:
     })
     .join('\n');
 
+  // Build shorthand variable assignments for cell properties and globals
+  // so users can write `age / 100` instead of `cell["age"] / 100`
+  const propShorthands = propertyNames
+    .map((n) => `${n} = cell['${n}']`)
+    .join('\n');
+
   return `
 import numpy as np
 import math
@@ -61,12 +67,20 @@ for name in [${propList}]:
         arr = arr.reshape((height, width))
     cell[name] = arr
 
+# Shorthand: property names as local variables (e.g. age, alive, alpha)
+${propShorthands}
+
 # Environment params and global vars
 env = dict(_input_params)
 glob = dict(_input_globals)
 generation = env.get('_generation', 0)
 dt = env.get('_dt', 1.0)
 time = generation * dt
+
+# Shorthand: global variables as local variables (e.g. ageLimit, threshold)
+for _k, _v in glob.items():
+    if not _k.startswith('_'):
+        globals()[_k] = _v
 
 # Built-in helper functions
 def clamp(x, lo=0.0, hi=1.0):

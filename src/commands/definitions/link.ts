@@ -133,7 +133,7 @@ export function registerLinkCommands(
       // Also remove the corresponding tag
       if (tagRegistry && link) {
         const matchingTags = tagRegistry.getAll().filter(
-          (t) => t.source === 'link' && t.linkMeta?.sourceAddress === link.source && t.outputs.includes(link.target),
+          (t) => t.linkMeta?.sourceAddress === link.source && t.outputs.includes(link.target),
         );
         for (const tag of matchingTags) {
           tagRegistry.remove(tag.id);
@@ -176,7 +176,7 @@ export function registerLinkCommands(
       // Also clear link-sourced tags
       const tagRegistry = controller.getTagRegistry();
       if (tagRegistry) {
-        const linkTags = tagRegistry.getAll().filter((t) => t.source === 'link');
+        const linkTags = tagRegistry.getAll().filter((t) => t.linkMeta !== undefined);
         for (const tag of linkTags) {
           tagRegistry.remove(tag.id);
         }
@@ -210,7 +210,7 @@ export function registerLinkCommands(
       const tagRegistry = controller.getTagRegistry();
       if (tagRegistry) {
         const matchingTags = tagRegistry.getAll().filter(
-          (t) => t.source === 'link' && t.linkMeta?.sourceAddress === link.source && t.outputs.includes(link.target),
+          (t) => t.linkMeta?.sourceAddress === link.source && t.outputs.includes(link.target),
         );
         for (const tag of matchingTags) {
           tagRegistry.enable(tag.id);
@@ -245,7 +245,7 @@ export function registerLinkCommands(
       const tagRegistry = controller.getTagRegistry();
       if (tagRegistry) {
         const matchingTags = tagRegistry.getAll().filter(
-          (t) => t.source === 'link' && t.linkMeta?.sourceAddress === link.source && t.outputs.includes(link.target),
+          (t) => t.linkMeta?.sourceAddress === link.source && t.outputs.includes(link.target),
         );
         for (const tag of matchingTags) {
           tagRegistry.disable(tag.id);
@@ -295,7 +295,7 @@ export function registerLinkCommands(
       const tagRegistry = controller.getTagRegistry();
       if (tagRegistry && link) {
         const matchingTags = tagRegistry.getAll().filter(
-          (t) => t.source === 'link' && t.linkMeta?.sourceAddress === link.source && t.outputs.includes(link.target),
+          (t) => t.linkMeta?.sourceAddress === link.source && t.outputs.includes(link.target),
         );
         for (const tag of matchingTags) {
           const updatedMeta = {

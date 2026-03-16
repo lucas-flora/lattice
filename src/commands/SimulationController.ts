@@ -22,6 +22,7 @@ import { linkStoreActions } from '../store/linkStore';
 import { expressionStoreActions } from '../store/expressionStore';
 import type { LinkRegistry } from '../engine/linking/LinkRegistry';
 import type { ExpressionTagRegistry } from '../engine/expression/ExpressionTagRegistry';
+import type { SceneGraph } from '../engine/scene/SceneGraph';
 
 export interface ParamDef {
   name: string;
@@ -57,43 +58,64 @@ function smartExtendDuration(current: number): number {
 
 export type PlaybackMode = 'loop' | 'endless' | 'once';
 
+/**
+ * Snapshot of a SimulationController's per-root state.
+ * Used by SimulationManager to save/restore state when switching active roots.
+ * SG-8: Multi-Sim infrastructure.
+ */
+export interface ControllerStateSnapshot {
+  simulation: Simulation | null;
+  commandHistory: CommandHistory | null;
+  playing: boolean;
+  tickIntervalMs: number;
+  activePresetName: string | null;
+  frameCache: Map<number, TickSnapshot>;
+  computedGeneration: number;
+  initialSnapshot: Map<string, Float32Array> | null;
+  computeAheadTarget: number;
+  pyodideBridge: PyodideBridge | null;
+  playbackGeneration: number;
+  playbackMode: PlaybackMode;
+  timelineDuration: number;
+}
+
 export class SimulationController {
-  private eventBus: EventBus;
-  private simulation: Simulation | null = null;
-  private commandHistory: CommandHistory | null = null;
-  private playing: boolean = false;
-  private tickInterval: ReturnType<typeof setInterval> | null = null;
-  private tickIntervalMs: number;
-  private activePresetName: string | null = null;
+  protected eventBus: EventBus;
+  protected simulation: Simulation | null = null;
+  protected commandHistory: CommandHistory | null = null;
+  protected playing: boolean = false;
+  protected tickInterval: ReturnType<typeof setInterval> | null = null;
+  protected tickIntervalMs: number;
+  protected activePresetName: string | null = null;
 
   /** Frame cache: generation -> snapshot. Replaces the old tickHistory array. */
-  private frameCache: Map<number, TickSnapshot> = new Map();
-  private maxCacheSize: number = 2000;
+  protected frameCache: Map<number, TickSnapshot> = new Map();
+  protected maxCacheSize: number = 2000;
 
   /** How far ahead the sim has been computed (the frontier). */
-  private computedGeneration: number = 0;
+  protected computedGeneration: number = 0;
 
   /** Snapshot of the grid state right after initialization (for seek/reset to replay from) */
-  private initialSnapshot: Map<string, Float32Array> | null = null;
+  protected initialSnapshot: Map<string, Float32Array> | null = null;
 
   /** Compute-ahead state */
-  private computeAheadTimer: ReturnType<typeof setTimeout> | null = null;
-  private computeAheadTarget: number = 0;
+  protected computeAheadTimer: ReturnType<typeof setTimeout> | null = null;
+  protected computeAheadTarget: number = 0;
 
   /** Debounce timer for restarting compute-ahead after grid edits */
-  private editDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+  protected editDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
   /** Optional PyodideBridge for Python rule support */
-  private pyodideBridge: PyodideBridge | null = null;
+  protected pyodideBridge: PyodideBridge | null = null;
 
   /** Current playback generation (may lag behind computedGeneration) */
-  private playbackGeneration: number = 0;
+  protected playbackGeneration: number = 0;
 
   /** What happens when playback reaches the end of the timeline */
-  private playbackMode: PlaybackMode = 'loop';
+  protected playbackMode: PlaybackMode = 'loop';
 
   /** Timeline duration in frames (for end-of-timeline detection) */
-  private timelineDuration: number = 256;
+  protected timelineDuration: number = 256;
 
   constructor(eventBus: EventBus, tickIntervalMs: number = 100) {
     this.eventBus = eventBus;
@@ -561,6 +583,12 @@ export class SimulationController {
   }
 
   /**
+   * Get the scene graph. Returns undefined until scene graph is built.
+   * Intentionally a method that can be overridden or extended.
+   */
+  getSceneGraph?: () => SceneGraph | undefined;
+
+  /**
    * Get the current tick interval in milliseconds.
    */
   getTickIntervalMs(): number {
@@ -871,6 +899,23 @@ export class SimulationController {
     // Use smaller chunks during playback to avoid blocking playback ticks
     const maxChunk = this.playing ? PLAYBACK_CHUNK_SIZE : COMPUTE_CHUNK_SIZE;
     const chunkSize = Math.min(maxChunk, remaining);
+
+    // If the tick pipeline requires async (expressions, scripts, Python rules),
+    // use the async path so Pyodide-based evaluations actually execute.
+    if (this.needsAsyncTick()) {
+      void this.computeFramesAsync(chunkSize).then(() => {
+        // Restore the grid to the playback frame so the visible state isn't corrupted.
+        if (this.frameCache.has(this.playbackGeneration)) {
+          this.applySnapshot(this.frameCache.get(this.playbackGeneration)!);
+        }
+        // Schedule next chunk
+        this.computeAheadTimer = setTimeout(() => {
+          this.runComputeAheadChunk();
+        }, 0);
+      });
+      return;
+    }
+
     this.computeFrames(chunkSize);
 
     // Restore the grid to the playback frame so the visible state isn't corrupted.
@@ -1175,5 +1220,95 @@ export class SimulationController {
     this.simulation = null;
     this.commandHistory = null;
     this.frameCache.clear();
+  }
+
+  // --- SG-8: State snapshot methods for multi-sim root switching ---
+
+  /**
+   * Save the controller's current per-root state to a snapshot.
+   * Used by SimulationManager when switching active roots.
+   * Stops timers (playback loop, compute-ahead) before saving — the new root
+   * will start its own timers as needed.
+   */
+  saveState(): ControllerStateSnapshot {
+    // Stop timers before saving — they're runtime artifacts, not persistent state.
+    // The playback loop and compute-ahead will be restarted for the new root.
+    this.stopPlaybackLoop();
+    this.stopComputeAhead();
+    if (this.editDebounceTimer) {
+      clearTimeout(this.editDebounceTimer);
+      this.editDebounceTimer = null;
+    }
+
+    const snapshot: ControllerStateSnapshot = {
+      simulation: this.simulation,
+      commandHistory: this.commandHistory,
+      playing: this.playing,
+      tickIntervalMs: this.tickIntervalMs,
+      activePresetName: this.activePresetName,
+      frameCache: this.frameCache,
+      computedGeneration: this.computedGeneration,
+      initialSnapshot: this.initialSnapshot,
+      computeAheadTarget: this.computeAheadTarget,
+      pyodideBridge: this.pyodideBridge,
+      playbackGeneration: this.playbackGeneration,
+      playbackMode: this.playbackMode,
+      timelineDuration: this.timelineDuration,
+    };
+
+    // Reset controller fields to a clean slate (the new root will restore its own state)
+    this.simulation = null;
+    this.commandHistory = null;
+    this.playing = false;
+    this.activePresetName = null;
+    this.frameCache = new Map();
+    this.computedGeneration = 0;
+    this.initialSnapshot = null;
+    this.computeAheadTarget = 0;
+    this.pyodideBridge = null;
+    this.playbackGeneration = 0;
+    this.playbackMode = 'loop';
+    this.timelineDuration = 256;
+
+    return snapshot;
+  }
+
+  /**
+   * Restore the controller's per-root state from a snapshot.
+   * Used by SimulationManager when switching active roots.
+   * Restarts playback loop if the restored state was playing.
+   */
+  restoreState(snapshot: ControllerStateSnapshot): void {
+    // Stop any existing timers first
+    this.stopPlaybackLoop();
+    this.stopComputeAhead();
+    if (this.editDebounceTimer) {
+      clearTimeout(this.editDebounceTimer);
+      this.editDebounceTimer = null;
+    }
+
+    this.simulation = snapshot.simulation;
+    this.commandHistory = snapshot.commandHistory;
+    this.playing = snapshot.playing;
+    this.tickIntervalMs = snapshot.tickIntervalMs;
+    this.activePresetName = snapshot.activePresetName;
+    this.frameCache = snapshot.frameCache;
+    this.computedGeneration = snapshot.computedGeneration;
+    this.initialSnapshot = snapshot.initialSnapshot;
+    this.computeAheadTarget = snapshot.computeAheadTarget;
+    this.pyodideBridge = snapshot.pyodideBridge;
+    this.playbackGeneration = snapshot.playbackGeneration;
+    this.playbackMode = snapshot.playbackMode;
+    this.timelineDuration = snapshot.timelineDuration;
+
+    // Restart playback loop if the restored state was playing
+    if (this.playing && this.simulation) {
+      this.startPlaybackLoop();
+    }
+
+    // Restart compute-ahead if there was a target
+    if (this.computeAheadTarget > this.computedGeneration) {
+      this.computeAhead(this.computeAheadTarget);
+    }
   }
 }

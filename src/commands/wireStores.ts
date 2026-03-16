@@ -16,6 +16,7 @@ import { layoutStoreActions } from '../store/layoutStore';
 import { scriptStoreActions } from '../store/scriptStore';
 import { linkStoreActions } from '../store/linkStore';
 import { expressionStoreActions } from '../store/expressionStore';
+import { sceneStoreActions } from '../store/sceneStore';
 // aiStore wiring deferred to Phase 8
 
 /**
@@ -226,6 +227,20 @@ export function wireStores(eventBus: EventBus): () => void {
   eventBus.on('tag:updated', onTagUpdated);
   eventBus.on('tag:reset', onTagReset);
 
+  // --- sceneStore wiring ---
+  const onSceneNodeAdded = (payload: { id: string; type: string; name: string; parentId: string | null }) => {
+    // Node addition handled by scene commands directly via sceneStoreActions
+    // This event is for external listeners
+    void payload;
+  };
+
+  const onSceneSelectionChanged = (payload: { id: string | null }) => {
+    sceneStoreActions.select(payload.id);
+  };
+
+  eventBus.on('scene:selectionChanged', onSceneSelectionChanged);
+  eventBus.on('scene:nodeAdded', onSceneNodeAdded);
+
   // aiStore: Phase 8 will wire AI-specific events here
 
   // Return cleanup function
@@ -263,5 +278,7 @@ export function wireStores(eventBus: EventBus): () => void {
     eventBus.off('tag:removed', onTagRemoved);
     eventBus.off('tag:updated', onTagUpdated);
     eventBus.off('tag:reset', onTagReset);
+    eventBus.off('scene:selectionChanged', onSceneSelectionChanged);
+    eventBus.off('scene:nodeAdded', onSceneNodeAdded);
   };
 }

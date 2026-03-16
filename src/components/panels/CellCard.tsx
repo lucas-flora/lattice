@@ -82,6 +82,7 @@ export function CellCard({ typeName, color, properties }: CellCardProps) {
                 role={prop.role}
                 isInherent={prop.isInherent}
                 expression={propTag}
+                cellTypeName={typeName}
               />
             );
           })}

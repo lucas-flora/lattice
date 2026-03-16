@@ -1,14 +1,17 @@
 /**
- * UI commands: toggle terminal, toggle param panel.
+ * UI commands: toggle drawers and panels.
  *
- * Controls UI panel visibility through the CommandRegistry.
- * Supports floating (overlay) and docked (takes layout space) modes.
- * Panel visibility/mode state lives in layoutStore.
+ * Drawers are numbered by hotkey:
+ *   ` = terminal (bottom)
+ *   1 = Object Manager + Inspector (left)
+ *   2 = Card View (left)
+ *   3 = Scripting (right)
+ *   4 = Metrics (far right)
  */
 
 import { z } from 'zod';
 import type { CommandRegistry } from '../CommandRegistry';
-import { useLayoutStore } from '../../store/layoutStore';
+import { useLayoutStore, layoutStoreActions } from '../../store/layoutStore';
 import { useUiStore } from '../../store/uiStore';
 
 const NoParams = z.object({}).describe('none');
@@ -18,6 +21,7 @@ export function registerUiCommands(
   registry: CommandRegistry,
   _eventBus: unknown,
 ): void {
+  // --- Terminal (`) ---
   registry.register({
     name: 'ui.toggleTerminal',
     description: 'Toggle terminal panel visibility',
@@ -28,7 +32,6 @@ export function registerUiCommands(
       const { isTerminalOpen, terminalMode } = useLayoutStore.getState();
 
       if (p?.docked !== undefined) {
-        // Explicit mode request: switch mode or toggle off if already in that mode
         const requestedMode = p.docked ? 'docked' : 'floating';
         if (isTerminalOpen && terminalMode === requestedMode) {
           useLayoutStore.setState({ isTerminalOpen: false });
@@ -36,82 +39,78 @@ export function registerUiCommands(
           useLayoutStore.setState({ isTerminalOpen: true, terminalMode: requestedMode });
         }
       } else {
-        // No mode specified: just toggle visibility, keep current mode
         useLayoutStore.setState({ isTerminalOpen: !isTerminalOpen });
       }
       return { success: true, data: { isTerminalOpen: useLayoutStore.getState().isTerminalOpen } };
     },
   });
 
-  registry.register({
-    name: 'ui.toggleParamPanel',
-    description: 'Toggle parameter panel visibility',
-    category: 'ui',
-    params: ToggleParams,
-    execute: async (params: unknown) => {
-      const p = params as { docked?: boolean } | undefined;
-      const { isParamPanelOpen, paramPanelMode } = useLayoutStore.getState();
-
-      if (p?.docked !== undefined) {
-        const requestedMode = p.docked ? 'docked' : 'floating';
-        if (isParamPanelOpen && paramPanelMode === requestedMode) {
-          useLayoutStore.setState({ isParamPanelOpen: false });
-        } else {
-          useLayoutStore.setState({ isParamPanelOpen: true, paramPanelMode: requestedMode });
-        }
-      } else {
-        useLayoutStore.setState({ isParamPanelOpen: !isParamPanelOpen });
-      }
-      return { success: true, data: { isParamPanelOpen: useLayoutStore.getState().isParamPanelOpen } };
-    },
-  });
-
+  // --- Drawer 1: Object Manager + Inspector ---
   registry.register({
     name: 'ui.toggleLeftDrawer',
-    description: 'Toggle left drawer (cell cards) visibility',
+    description: 'Toggle drawer 1 (Object Manager + Inspector)',
     category: 'ui',
     params: ToggleParams,
     execute: async (params: unknown) => {
       const p = params as { docked?: boolean } | undefined;
-      const { isLeftDrawerOpen, leftDrawerMode } = useLayoutStore.getState();
-
-      if (p?.docked !== undefined) {
-        const requestedMode = p.docked ? 'docked' : 'floating';
-        if (isLeftDrawerOpen && leftDrawerMode === requestedMode) {
-          useLayoutStore.setState({ isLeftDrawerOpen: false });
-        } else {
-          useLayoutStore.setState({ isLeftDrawerOpen: true, leftDrawerMode: requestedMode });
-        }
-      } else {
-        useLayoutStore.setState({ isLeftDrawerOpen: !isLeftDrawerOpen });
-      }
-      return { success: true, data: { isLeftDrawerOpen: useLayoutStore.getState().isLeftDrawerOpen } };
+      layoutStoreActions.toggleDrawer1(p);
+      return { success: true, data: { isDrawer1Open: useLayoutStore.getState().isDrawer1Open } };
     },
   });
 
+  // --- Drawer 2: Card View (replaces ParamPanel) ---
+  registry.register({
+    name: 'ui.toggleParamPanel',
+    description: 'Toggle drawer 2 (Card View)',
+    category: 'ui',
+    params: ToggleParams,
+    execute: async (params: unknown) => {
+      const p = params as { docked?: boolean } | undefined;
+      layoutStoreActions.toggleDrawer2(p);
+      return { success: true, data: { isDrawer2Open: useLayoutStore.getState().isDrawer2Open } };
+    },
+  });
+
+  // --- Drawer 3: Scripting ---
   registry.register({
     name: 'ui.toggleScriptPanel',
-    description: 'Toggle script panel visibility',
+    description: 'Toggle drawer 3 (Scripting)',
     category: 'ui',
     params: ToggleParams,
     execute: async (params: unknown) => {
       const p = params as { docked?: boolean } | undefined;
-      const { isScriptPanelOpen, scriptPanelMode } = useLayoutStore.getState();
-
-      if (p?.docked !== undefined) {
-        const requestedMode = p.docked ? 'docked' : 'floating';
-        if (isScriptPanelOpen && scriptPanelMode === requestedMode) {
-          useLayoutStore.setState({ isScriptPanelOpen: false });
-        } else {
-          useLayoutStore.setState({ isScriptPanelOpen: true, scriptPanelMode: requestedMode });
-        }
-      } else {
-        useLayoutStore.setState({ isScriptPanelOpen: !isScriptPanelOpen });
-      }
-      return { success: true, data: { isScriptPanelOpen: useLayoutStore.getState().isScriptPanelOpen } };
+      layoutStoreActions.toggleDrawer3(p);
+      return { success: true, data: { isDrawer3Open: useLayoutStore.getState().isDrawer3Open } };
     },
   });
 
+  // --- Drawer 4: Metrics ---
+  registry.register({
+    name: 'ui.toggleMetrics',
+    description: 'Toggle drawer 4 (Metrics)',
+    category: 'ui',
+    params: ToggleParams,
+    execute: async (params: unknown) => {
+      const p = params as { docked?: boolean } | undefined;
+      layoutStoreActions.toggleDrawer4(p);
+      return { success: true, data: { isDrawer4Open: useLayoutStore.getState().isDrawer4Open } };
+    },
+  });
+
+  // --- Legacy aliases (kept for backward compat) ---
+  registry.register({
+    name: 'ui.toggleInspector',
+    description: 'Toggle inspector (part of drawer 1)',
+    category: 'ui',
+    params: ToggleParams,
+    execute: async (params: unknown) => {
+      const p = params as { docked?: boolean } | undefined;
+      layoutStoreActions.toggleDrawer1(p);
+      return { success: true, data: { isDrawer1Open: useLayoutStore.getState().isDrawer1Open } };
+    },
+  });
+
+  // --- Hotkey Help ---
   registry.register({
     name: 'ui.toggleHotkeyHelp',
     description: 'Toggle keyboard shortcut help overlay',
@@ -125,6 +124,7 @@ export function registerUiCommands(
     },
   });
 
+  // --- Focus Toggle ---
   registry.register({
     name: 'ui.focusToggle',
     description: 'Switch focus between terminal and simulation',
@@ -134,11 +134,9 @@ export function registerUiCommands(
       const terminalInput = document.querySelector('[data-testid="terminal-input"]') as HTMLElement | null;
       const active = document.activeElement;
       if (active === terminalInput) {
-        // Terminal focused → blur to sim area
         (active as HTMLElement).blur();
         return { success: true, data: { focus: 'simulation' } };
       } else if (terminalInput) {
-        // Sim area → focus terminal input
         terminalInput.focus();
         return { success: true, data: { focus: 'terminal' } };
       }

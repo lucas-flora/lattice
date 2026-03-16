@@ -15,6 +15,8 @@ export interface ViewState {
   cameraX: number;
   /** Camera Y position */
   cameraY: number;
+  /** SG-8: Optional root ID this viewport is bound to. undefined = active root. */
+  rootId?: string;
 }
 
 export const useViewStore = create<ViewState>()(
@@ -35,5 +37,9 @@ export const viewStoreActions = {
   },
   updateView: (partial: Partial<ViewState>): void => {
     useViewStore.setState(partial);
+  },
+  /** SG-8: Bind this viewport to a specific simulation root */
+  setRootId: (rootId: string | undefined): void => {
+    useViewStore.setState({ rootId });
   },
 };

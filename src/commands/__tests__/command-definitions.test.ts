@@ -95,7 +95,38 @@ describe('Command Definitions', () => {
     expect(names).toContain('tag.enable');
     expect(names).toContain('tag.disable');
 
-    expect(list.length).toBe(71);
+    // Phase 8: +3 tag CRUD commands (tag.add, tag.remove, tag.edit)
+    expect(names).toContain('tag.add');
+    expect(names).toContain('tag.remove');
+    expect(names).toContain('tag.edit');
+
+    // Scene graph commands
+    expect(names).toContain('scene.select');
+    expect(names).toContain('scene.deselect');
+    expect(names).toContain('scene.add');
+    expect(names).toContain('scene.remove');
+    expect(names).toContain('scene.move');
+    expect(names).toContain('scene.rename');
+    expect(names).toContain('scene.enable');
+    expect(names).toContain('scene.disable');
+    expect(names).toContain('scene.expand');
+    expect(names).toContain('scene.collapse');
+    expect(names).toContain('scene.group');
+    expect(names).toContain('scene.ungroup');
+    expect(names).toContain('scene.list');
+    expect(names).toContain('scene.buildTree');
+
+    // SG-8: Multi-sim commands
+    expect(names).toContain('sim.addRoot');
+    expect(names).toContain('sim.removeRoot');
+    expect(names).toContain('sim.setRoot');
+    expect(names).toContain('sim.listRoots');
+
+    // Drawer UI commands
+    expect(names).toContain('ui.toggleInspector');
+    expect(names).toContain('ui.toggleMetrics');
+
+    expect(list.length).toBe(94);
   });
 
   it('TestCommandDefinitions_SimPlay_StartsSimulation', async () => {

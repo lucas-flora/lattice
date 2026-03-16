@@ -2,11 +2,14 @@
  * Simulation commands: play, pause, step, stepBack, reset, clear, speed, seek, status.
  *
  * All simulation control flows through these commands via the CommandRegistry.
+ * SG-8: Multi-sim commands (sim.addRoot, sim.removeRoot, sim.setRoot, sim.listRoots).
  */
 
 import { z } from 'zod';
 import type { CommandRegistry } from '../CommandRegistry';
 import type { SimulationController } from '../SimulationController';
+import { SimulationManager } from '../SimulationManager';
+import { simStoreActions } from '../../store/simStore';
 import { useUiStore, uiStoreActions } from '../../store/uiStore';
 
 const NoParams = z.object({}).describe('none');
@@ -179,6 +182,88 @@ export function registerSimCommands(
       controller.setTimelineDuration(frames);
       uiStoreActions.setTimelineDuration(frames);
       return { success: true, data: { duration: frames } };
+    },
+  });
+
+  // --- SG-8: Multi-sim commands ---
+  // These commands are only available when the controller is a SimulationManager.
+  // When using a plain SimulationController, they gracefully return errors.
+
+  const RootIdParams = z.object({
+    rootId: z.string().min(1),
+  }).describe('{ rootId: string }');
+
+  registry.register({
+    name: 'sim.addRoot',
+    description: 'Add a new simulation root',
+    category: 'sim',
+    params: RootIdParams,
+    execute: async (params) => {
+      const { rootId } = params as z.infer<typeof RootIdParams>;
+      if (!(controller instanceof SimulationManager)) {
+        return { success: false, error: 'Multi-sim not supported (controller is not a SimulationManager)' };
+      }
+      const instance = controller.addRoot(rootId);
+      simStoreActions.addRootId(rootId);
+      return { success: true, data: { rootId: instance.rootId, roots: controller.listRoots() } };
+    },
+  });
+
+  registry.register({
+    name: 'sim.removeRoot',
+    description: 'Remove a simulation root',
+    category: 'sim',
+    params: RootIdParams,
+    execute: async (params) => {
+      const { rootId } = params as z.infer<typeof RootIdParams>;
+      if (!(controller instanceof SimulationManager)) {
+        return { success: false, error: 'Multi-sim not supported (controller is not a SimulationManager)' };
+      }
+      const removed = controller.removeRoot(rootId);
+      if (!removed) {
+        return { success: false, error: `Cannot remove root "${rootId}" (not found or is default)` };
+      }
+      simStoreActions.removeRootId(rootId);
+      simStoreActions.setActiveRootId(controller.activeRootId);
+      return { success: true, data: { roots: controller.listRoots() } };
+    },
+  });
+
+  registry.register({
+    name: 'sim.setRoot',
+    description: 'Set the active simulation root',
+    category: 'sim',
+    params: RootIdParams,
+    execute: async (params) => {
+      const { rootId } = params as z.infer<typeof RootIdParams>;
+      if (!(controller instanceof SimulationManager)) {
+        return { success: false, error: 'Multi-sim not supported (controller is not a SimulationManager)' };
+      }
+      if (!controller.getInstance(rootId)) {
+        return { success: false, error: `Unknown root: "${rootId}"` };
+      }
+      controller.setActiveRoot(rootId);
+      simStoreActions.setActiveRootId(rootId);
+      return { success: true, data: { activeRootId: controller.activeRootId } };
+    },
+  });
+
+  registry.register({
+    name: 'sim.listRoots',
+    description: 'List all simulation roots',
+    category: 'sim',
+    params: NoParams,
+    execute: async () => {
+      if (!(controller instanceof SimulationManager)) {
+        return { success: true, data: { roots: ['default'], activeRootId: 'default' } };
+      }
+      return {
+        success: true,
+        data: {
+          roots: controller.listRoots(),
+          activeRootId: controller.activeRootId,
+        },
+      };
     },
   });
 }

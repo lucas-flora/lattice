@@ -25,6 +25,8 @@ function makeSimState(overrides: Partial<SimState> = {}): SimState {
     params: {},
     cellProperties: [],
     cellTypes: [],
+    activeRootId: 'default',
+    rootIds: ['default'],
     ...overrides,
   };
 }

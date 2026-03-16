@@ -61,6 +61,10 @@ export interface SimState {
   cellProperties: CellPropertySummary[];
   /** Cell type definitions from CellTypeRegistry */
   cellTypes: CellTypeSummary[];
+  /** SG-8: Active simulation root ID (multi-sim) */
+  activeRootId: string;
+  /** SG-8: List of all simulation root IDs */
+  rootIds: string[];
 }
 
 /** Default initial state */
@@ -78,6 +82,8 @@ const initialSimState: SimState = {
   params: {},
   cellProperties: [],
   cellTypes: [],
+  activeRootId: 'default',
+  rootIds: ['default'],
 };
 
 export const useSimStore = create<SimState>()(
@@ -135,5 +141,25 @@ export const simStoreActions = {
   },
   setCellTypes: (cellTypes: CellTypeSummary[]): void => {
     useSimStore.setState({ cellTypes });
+  },
+  /** SG-8: Set the active root ID */
+  setActiveRootId: (activeRootId: string): void => {
+    useSimStore.setState({ activeRootId });
+  },
+  /** SG-8: Set the list of all root IDs */
+  setRootIds: (rootIds: string[]): void => {
+    useSimStore.setState({ rootIds });
+  },
+  /** SG-8: Add a root ID to the list */
+  addRootId: (rootId: string): void => {
+    useSimStore.setState((s) => ({
+      rootIds: s.rootIds.includes(rootId) ? s.rootIds : [...s.rootIds, rootId],
+    }));
+  },
+  /** SG-8: Remove a root ID from the list */
+  removeRootId: (rootId: string): void => {
+    useSimStore.setState((s) => ({
+      rootIds: s.rootIds.filter((id) => id !== rootId),
+    }));
   },
 };

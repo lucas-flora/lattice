@@ -55,9 +55,10 @@ export function registerExpressionCommands(
       // Also create/update an ExpressionTag in the unified registry
       const tagRegistry = controller.getTagRegistry();
       if (tagRegistry && eventBus) {
-        // Remove existing tag for this property (if any)
+        // Remove existing expression tag for this property (if any)
+        // Exclude link-created tags (they have linkMeta) — only replace pure expression tags
         const existing = tagRegistry.getAll().find(
-          (t) => t.source === 'code' && t.outputs.includes(`cell.${property}`),
+          (t) => t.source === 'code' && !t.linkMeta && t.outputs.includes(`cell.${property}`),
         );
         if (existing) {
           tagRegistry.remove(existing.id);
@@ -85,11 +86,11 @@ export function registerExpressionCommands(
       }
       engine.clearExpression(property);
 
-      // Also remove the corresponding tag
+      // Also remove the corresponding expression tag (not link-created tags)
       const tagRegistry = controller.getTagRegistry();
       if (tagRegistry && eventBus) {
         const existing = tagRegistry.getAll().find(
-          (t) => t.source === 'code' && t.outputs.includes(`cell.${property}`),
+          (t) => t.source === 'code' && !t.linkMeta && t.outputs.includes(`cell.${property}`),
         );
         if (existing) {
           tagRegistry.remove(existing.id);

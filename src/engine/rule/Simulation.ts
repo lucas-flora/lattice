@@ -82,6 +82,12 @@ export class Simulation {
       this.linkRegistry.loadFromConfig(preset.parameter_links);
       this.tagRegistry.loadLinksFromConfig(preset.parameter_links);
     }
+
+    // Create a rule tag from the preset's compute body (SG-6: rule-as-tag)
+    const computeBody = preset.rule.compute || '';
+    if (computeBody) {
+      this.tagRegistry.addFromRule(preset.meta.name, computeBody, preset.rule.type as 'typescript' | 'wasm' | 'python');
+    }
   }
 
   /**
@@ -121,9 +127,14 @@ export class Simulation {
 
   /**
    * Resolve all parameter links. Called before the rule in both sync and async paths.
-   * Uses both the legacy LinkRegistry and the new ExpressionTagRegistry pre-rule tags.
+   *
+   * During the migration period, both LinkRegistry (deprecated) and ExpressionTagRegistry
+   * are called. Once LinkRegistry is removed (SG-5 completion), only
+   * ExpressionTagRegistry.resolvePreRule() will remain.
    */
   private resolveLinks(): void {
+    // TODO(SG-5): Remove linkRegistry.resolveAll() once LinkRegistry is fully phased out.
+    // ExpressionTagRegistry.resolvePreRule() handles the same resolution via JS fast-path.
     if (this.linkRegistry.hasLinks()) {
       this.linkRegistry.resolveAll(this.grid, this.params, this.variableStore);
     }
@@ -133,11 +144,32 @@ export class Simulation {
   }
 
   /**
+   * Check whether the rule tag is enabled. If no rule tag exists, rule runs (legacy).
+   * If a rule tag exists but is disabled, the rule is skipped (no-op tick).
+   */
+  private isRuleEnabled(): boolean {
+    const ruleTag = this.tagRegistry.getRuleTag();
+    // getRuleTag() returns enabled tags only. If no rule-phase tag exists at all,
+    // fall back to legacy behavior (always run). If one exists but is disabled,
+    // getRuleTag() returns undefined while the tag is still present.
+    const allRuleTags = this.tagRegistry.getAll().filter(t => t.phase === 'rule');
+    if (allRuleTags.length === 0) return true; // no rule tag → legacy
+    return ruleTag !== undefined; // tag exists → only run if enabled
+  }
+
+  /**
    * Run one tick of the simulation.
    * Throws if the runner is Python-only (use tickAsync instead).
    */
   tick(): TickResult {
     this.resolveLinks();
+    if (!this.isRuleEnabled()) {
+      // Rule tag disabled → no-op tick (just swap buffers + advance generation)
+      this.grid.swap();
+      const gen = this.runner.getGeneration() + 1;
+      this.runner.setGeneration(gen);
+      return { generation: gen };
+    }
     return this.runner.tick();
   }
 
@@ -161,9 +193,14 @@ export class Simulation {
     // Step 0: Resolve parameter links (before rule)
     this.resolveLinks();
 
-    // Step 1: Execute rule
+    // Step 1: Execute rule (skip if rule tag is disabled)
     let result: TickResult;
-    if (this.runner instanceof PythonRuleRunner) {
+    if (!this.isRuleEnabled()) {
+      this.grid.swap();
+      const gen = this.runner.getGeneration() + 1;
+      this.runner.setGeneration(gen);
+      result = { generation: gen };
+    } else if (this.runner instanceof PythonRuleRunner) {
       result = await this.runner.tickAsync();
     } else {
       result = this.runner.tick();
@@ -224,7 +261,7 @@ export class Simulation {
   tickN(n: number): TickResult {
     let result: TickResult = { generation: 0 };
     for (let i = 0; i < n; i++) {
-      result = this.runner.tick();
+      result = this.tick();
     }
     return result;
   }

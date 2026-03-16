@@ -88,7 +88,7 @@ describe('ExpressionTagRegistry', () => {
       true,
     );
 
-    expect(tag.source).toBe('link');
+    expect(tag.source).toBe('code');
     expect(tag.phase).toBe('pre-rule');
     expect(tag.linkMeta).toBeDefined();
     expect(tag.linkMeta!.sourceAddress).toBe('env.feedRate');
@@ -428,7 +428,7 @@ describe('ExpressionTagRegistry', () => {
         owner: { type: 'root' },
         inputs: ['env.feedRate'],
         outputs: ['cell.alive'],
-        source: 'link',
+        source: 'code',
         linkMeta: {
           sourceAddress: 'env.feedRate',
           sourceRange: [0, 1],
@@ -548,9 +548,9 @@ describe('ExpressionTagRegistry', () => {
     expect(link2.linkMeta!.easing).toBe('easeIn');
     expect(link2.enabled).toBe(false);
 
-    // All are link-sourced pre-rule tags
+    // All are code-sourced (via link wizard) pre-rule tags with linkMeta
     for (const tag of all) {
-      expect(tag.source).toBe('link');
+      expect(tag.source).toBe('code');
       expect(tag.phase).toBe('pre-rule');
       expect(tag.linkMeta).toBeDefined();
     }

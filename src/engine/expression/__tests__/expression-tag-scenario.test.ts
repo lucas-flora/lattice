@@ -50,7 +50,7 @@ describe('ExpressionTag Scenarios', () => {
 
     // Step 2: Verify tag appears in store
     let tags = useExpressionStore.getState().tags;
-    let linkTag = tags.find((t) => t.source === 'link' && t.outputs.includes('cell.alpha'));
+    let linkTag = tags.find((t) => t.linkMeta !== undefined && t.outputs.includes('cell.alpha'));
     expect(linkTag).toBeDefined();
     expect(linkTag!.linkMeta!.sourceRange).toEqual([0, 100]);
     expect(linkTag!.linkMeta!.targetRange).toEqual([0, 1]);
@@ -68,7 +68,7 @@ describe('ExpressionTag Scenarios', () => {
 
     // Step 4: Verify the tag's linkMeta was updated in the store
     tags = useExpressionStore.getState().tags;
-    linkTag = tags.find((t) => t.source === 'link' && t.outputs.includes('cell.alpha'));
+    linkTag = tags.find((t) => t.linkMeta !== undefined && t.outputs.includes('cell.alpha'));
     expect(linkTag).toBeDefined();
     expect(linkTag!.linkMeta!.sourceRange).toEqual([0, 200]);
     expect(linkTag!.linkMeta!.targetRange).toEqual([0.5, 1]);
@@ -124,12 +124,12 @@ describe('ExpressionTag Scenarios', () => {
     const alphaTags = tags.filter((t) => t.outputs.includes('cell.alpha'));
     expect(alphaTags.length).toBeGreaterThanOrEqual(2);
 
-    const linkTag = alphaTags.find((t) => t.source === 'link');
-    const codeTag = alphaTags.find((t) => t.source === 'code');
+    const linkTag = alphaTags.find((t) => t.linkMeta !== undefined);
+    const codeTag = alphaTags.find((t) => t.linkMeta === undefined && t.source === 'code');
     expect(linkTag).toBeDefined();
     expect(codeTag).toBeDefined();
 
-    // Verify they have different phases (link=pre-rule, code=post-rule)
+    // Verify they have different phases (link-created=pre-rule, expr=post-rule)
     expect(linkTag!.phase).toBe('pre-rule');
     expect(codeTag!.phase).toBe('post-rule');
 

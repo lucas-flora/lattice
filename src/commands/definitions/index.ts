@@ -23,6 +23,7 @@ import { registerExpressionCommands } from './expression';
 import { registerScriptCommands } from './script';
 import { registerLinkCommands } from './link';
 import { registerTagCommands } from './tag';
+import { registerSceneCommands } from './scene';
 
 /**
  * Register all commands in the registry.
@@ -44,7 +45,8 @@ export function registerAllCommands(
   registerLayoutCommands(registry);
   registerVariableCommands(registry, controller);
   registerExpressionCommands(registry, controller, eventBus);
-  registerScriptCommands(registry, controller);
+  registerScriptCommands(registry, controller, eventBus);
   registerLinkCommands(registry, controller, eventBus);
   registerTagCommands(registry, controller, eventBus);
+  registerSceneCommands(registry, controller, eventBus);
 }

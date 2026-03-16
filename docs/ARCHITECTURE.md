@@ -77,7 +77,8 @@ Lattice is a universal simulation substrate. Cellular automata, reaction-diffusi
                            │
 ┌──────────────────────────┴───────────────────────────────────────────┐
 │ STORE LAYER (Zustand, read-only mirrors of engine state)             │
-│  simStore  uiStore  viewStore  layoutStore  expressionStore  instStore│
+│  simStore  uiStore  viewStore  layoutStore  expressionStore          │
+│  sceneStore  scriptStore  aiStore                                    │
 └──────────────────────────┬───────────────────────────────────────────┘
                            │ React subscriptions
 ┌──────────────────────────┴───────────────────────────────────────────┐
@@ -90,30 +91,44 @@ Lattice is a universal simulation substrate. Cellular automata, reaction-diffusi
 
 ---
 
-## App Shell: 4 Zones + Pinned Bar
+## App Shell: Numbered Drawers + Pinned Bar
 
 ```
-┌──────────────┬───────────────────────┬──────────────┐
-│ Left Drawer   │  Center               │ Right Drawer │
-│ (cells)       │  (viewports)          │ (environment)│
-│ collapsible   │  layout tree          │ collapsible  │
-│ 280px default │                       │ 320px default│
-├──────────────┴───────────────────────┴──────────────┤
-│ [Timeline — full width, pinned]                      │
-│ [ControlBar — full width, pinned]                    │
-├──────────────────────────────────────────────────────┤
-│ Bottom Drawer (terminal default, customizable)       │
-│ collapsible, 200px default                           │
-└──────────────────────────────────────────────────────┘
+┌───────────────┬───────────────────────┬──────────────┬────────┐
+│ Drawer 1 (L)  │  Center               │ Drawer 3 (R) │ D4 (R) │
+│ ObjMgr (35%)  │  (viewports)          │ Card View    │ Metrics│
+│ ─────────────│                       │ tags+globals  │        │
+│ Inspector(65%)│                       │              │        │
+├───────────────┤                       ├──────────────┤        │
+│ Drawer 2 (L)  │                       │              │        │
+│ Card View     │                       │              │        │
+│ cells         │                       │              │        │
+├───────────────┴───────────────────────┴──────────────┴────────┤
+│ [Timeline — full width, pinned]                                │
+│ [ControlBar — full width, pinned]                              │
+├────────────────────────────────────────────────────────────────┤
+│ ` = Terminal (bottom tray, collapsible)                        │
+└────────────────────────────────────────────────────────────────┘
 ```
+
+**Drawer layout (hotkey → content):**
+| Hotkey | Drawer | Content | Position | Default Width |
+|--------|--------|---------|----------|---------------|
+| `` ` `` | Terminal | CLI terminal | Bottom | 250px |
+| `1` | Drawer 1 | Object Manager (top) + Inspector (bottom), draggable split | Left | 320px |
+| `2` | Drawer 2 | Card View, `defaultFilters=['cells']` | Left | 300px |
+| `3` | Drawer 3 | Card View, `defaultFilters=['tags', 'globals']` | Right | 300px |
+| `4` | Drawer 4 | Metrics (sparkline graphs, tick rate) | Right | 280px |
 
 **Zone rules:**
-- Each zone has its own layout subtree (splits, tabs, panels).
-- Any panel type can go in any zone.
-- Bottom drawer gets full width. Left/right drawers get remaining height (between top and Timeline).
+- Drawers toggle via hotkey or commands (`ui.toggleDrawer1` through `ui.toggleDrawer4`).
+- Each drawer supports docked and floating modes.
 - Timeline + ControlBar sit between center and bottom — they are never part of a zone's layout tree.
 - Drawers can collapse/expand. Center zone always exists.
-- Panel types can be moved between zones via commands (drag-and-drop is a later enhancement).
+- Grip dots appear at viewport edges when drawers are closed.
+- Drawer 1 has a draggable vertical split between Object Manager and Inspector (`drawer1SplitRatio` in layoutStore).
+
+**Unified Card View:** Drawers 2 and 3 render the same `CardViewPanel` component with different `defaultFilters`. Multi-select type filters (Cells, Env, Vars, Tags). Collapsible sections with per-section + buttons. Tag cards use TagRow for rich editing. Variable cards have inline value editing.
 
 ### Layout Tree
 
@@ -285,6 +300,39 @@ Addresses are used in: expressions, scripts, links, commands, serialization.
 
 ---
 
+## Scene Graph
+
+> Full spec: `docs/SCENE_GRAPH.md`
+
+The simulation IS a scoped object tree. Every object — SimRoot, CellType, Environment, Globals, Group — is a `SceneNode`, one generic data structure. Type is metadata, not a different class. Tags attach computation to nodes. Panels are filtered views of the tree. Multiple roots enable independent simulations.
+
+The `SceneNode` primitive replaces the flat stores as the foundational data model. Variable resolution walks up the tree. Rule is a tag (`phase: 'rule'`). Links are a creation wizard, not a source type. The Object Manager panel shows the raw tree; the Inspector shows the selected node's details.
+
+### Scene Graph Phases
+
+All SG phases (SG-0 through SG-9) are **complete**. Post-SG UI alignment also complete (ParamPanel killed, unified Card View, numbered drawers).
+
+| Phase | Name | Status | Key Outcome |
+|-------|------|--------|-------------|
+| SG-0 | Documentation | Done | `docs/SCENE_GRAPH.md` |
+| SG-1 | Data Model | Done | `SceneNode` + `SceneGraph` class in `src/engine/scene/` |
+| SG-2 | Store + Commands | Done | `sceneStore` + 14 `scene.*` commands + selection |
+| SG-3 | Object Manager | Done | Tree view panel in drawer 1 (top) |
+| SG-4 | Inspector | Done | Context-sensitive detail panel in drawer 1 (bottom) |
+| SG-5 | Link Wizard | Done | `source: 'link'` → `source: 'code'` + `linkMeta` |
+| SG-6 | Rule-as-Tag | Done | Preset loading creates `phase: 'rule'` tag on root |
+| SG-7 | Scope Resolution | Done | `ScopeResolver` walks up ancestors, stops at SimRoot |
+| SG-8 | Multi-Sim | Done | `SimulationManager` with `sim.addRoot/removeRoot/setRoot` |
+| SG-9 | YAML v2 | Done | v2 schema + `loadPresetV2()` + backward compat |
+| UI | Panel Alignment | Done | ParamPanel killed, Card View unified, numbered drawers |
+
+**Remaining architectural work:**
+- Tree-as-source-of-truth migration (currently derived view via `fromSimulation()`)
+- Copy semantics (`self.*` adaptation) wired to UI
+- Node-based scripting (visual node editor)
+
+---
+
 ## Unified Expression System
 
 > Full spec: `docs/EXPRESSION_SYSTEM.md`
@@ -306,10 +354,18 @@ interface ExpressionTag {
 }
 ```
 
-**Sugar commands:**
+**Tag CRUD commands** (primary interface):
+- `tag.add { source: 'code'|'link'|'script', ... }` — create a tag (routes to legacy system + tag registry)
+- `tag.remove { id }` — remove a tag and clean up legacy system
+- `tag.edit { id, code?, phase?, ... }` — update tag and mirror changes to legacy
+
+**Sugar commands** (create tags as side effect):
 - `link.add cell.age cell.alpha` → creates an ExpressionTag with `source: 'link'` and JS fast-path resolution
 - `expr.set alpha "age / 100"` → creates an ExpressionTag with `source: 'code'` and Python evaluation
-- Both produce the same underlying ExpressionTag. The `tag.*` commands operate on all tags directly.
+- `script.add monitor "..."` → creates an ExpressionTag with `source: 'script'`
+- All three produce the same underlying ExpressionTag. The `tag.*` commands operate on all tags directly.
+
+**UI**: Card View (drawer 3, `defaultFilters=['tags', 'globals']`) shows tag cards with TagRow editing + variable cards with inline editing. Multi-select filters allow viewing any combination. Tags use rich expand-to-edit forms (name, code, phase). Variables have inline value editing. TagAddForm supports expression, link wizard, and script creation modes. `expressionStore` is the canonical tag data source; `scriptStore` holds global variables.
 
 **Fast-path optimization:** Link-sourced tags with `linkMeta` use JS rangeMap — no Pyodide needed. Performance parity with the legacy LinkRegistry.
 
@@ -590,6 +646,7 @@ A GitHub Actions workflow hits the Lattice REST API: loads each built-in preset,
 | 5     | Python Scripting         | Expressions, global scripts, global variable store.         |
 | 6     | Parameter Linking        | C4D-style property-to-property links with range + easing.   |
 | 7     | Multi-Cell Types + Tags  | Multiple types per grid. Stackable behavior tags.           |
+| SG-0–9| Scene Graph              | C4D object tree. SceneNode primitive. See `docs/SCENE_GRAPH.md`. |
 | 8     | Node-Based Scripting     | Visual node editor as panel type. Compiles to Python.       |
 | 9     | Independent Viewports    | Each viewport can be its own SimulationInstance.             |
 | 10    | YAML + URL Sharing       | Full serialization. Share via URL hash.                     |
