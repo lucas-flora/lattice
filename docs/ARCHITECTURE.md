@@ -77,7 +77,7 @@ Lattice is a universal simulation substrate. Cellular automata, reaction-diffusi
                            │
 ┌──────────────────────────┴───────────────────────────────────────────┐
 │ STORE LAYER (Zustand, read-only mirrors of engine state)             │
-│  simStore    uiStore    viewStore    layoutStore    instanceStore     │
+│  simStore  uiStore  viewStore  layoutStore  expressionStore  instStore│
 └──────────────────────────┬───────────────────────────────────────────┘
                            │ React subscriptions
 ┌──────────────────────────┴───────────────────────────────────────────┐
@@ -285,21 +285,33 @@ Addresses are used in: expressions, scripts, links, commands, serialization.
 
 ---
 
-## Parameter Linking
+## Unified Expression System
 
-C4D-style property-to-property linking with range mapping and easing:
+> Full spec: `docs/EXPRESSION_SYSTEM.md`
+
+All computation logic — links, per-property expressions, global scripts, and future node graphs — is unified under the **ExpressionTag** primitive. An ExpressionTag lives on an object in the hierarchy, has a code body, declares inputs/outputs, and evaluates in a specific pipeline phase.
 
 ```typescript
-interface ParameterLink {
-  source: string;       // address: "cell.age"
-  target: string;       // address: "cell.alpha"
-  sourceRange: [number, number];  // [0, 100]
-  targetRange: [number, number];  // [1.0, 0.0]  (inverted = fade out)
-  easing: EasingType;   // 'linear' | 'easeIn' | 'easeOut' | 'smoothstep' | ...
+interface ExpressionTag {
+  id: string;
+  name: string;
+  owner: TagOwner;        // { type: 'cell-type'|'environment'|'global'|'root', id?: string }
+  code: string;           // Python code (or auto-generated from link)
+  phase: ExpressionPhase; // 'pre-rule' | 'post-rule'
+  enabled: boolean;
+  source: ExpressionSource; // 'code' | 'link' | 'script'
+  inputs: string[];       // declared input addresses
+  outputs: string[];      // declared output addresses
+  linkMeta?: LinkMeta;    // range mapping data (only for link-sourced tags)
 }
 ```
 
-Links are resolved during the tick pipeline, after expressions and before rule execution.
+**Sugar commands:**
+- `link.add cell.age cell.alpha` → creates an ExpressionTag with `source: 'link'` and JS fast-path resolution
+- `expr.set alpha "age / 100"` → creates an ExpressionTag with `source: 'code'` and Python evaluation
+- Both produce the same underlying ExpressionTag. The `tag.*` commands operate on all tags directly.
+
+**Fast-path optimization:** Link-sourced tags with `linkMeta` use JS rangeMap — no Pyodide needed. Performance parity with the legacy LinkRegistry.
 
 ---
 
@@ -336,17 +348,16 @@ Any surface (GUI click, CLI command, AI tool call, MCP request, API endpoint)
 For scripting:
 ```
 Tick pipeline (per frame):
-  1. Resolve parameter links
-  2. Execute rule (TS/WASM for built-in, Python for custom)
-  3. Swap buffers (rule output becomes current)
-  4. Evaluate expressions (post-rule, reads rule output, writes current in-place)
-  5. Run tags (per-cell post-processing)
-  6. Run global scripts (per-frame)
-  7. Emit sim:tick
+  0. Resolve pre-rule tags (ExpressionTags with phase='pre-rule', JS fast-path for links)
+  1. Execute rule (TS/WASM for built-in, Python for custom)
+  2. Swap buffers (rule output becomes current)
+  3. Evaluate post-rule tags (ExpressionTags with phase='post-rule', Python for code/script)
+  4. Run global scripts (per-frame)
+  5. Emit sim:tick
 ```
-Note: Expressions run post-rule so they can derive values from the rule's
-output (e.g. `alpha = age / 50.0`). When the dependency graph lands, this
-can become configurable per-expression (pre-rule vs post-rule).
+Tags within each phase are evaluated in dependency order (topological sort).
+Pre-rule link tags use JS rangeMap for speed. Post-rule code tags go through
+the Pyodide Python harness.
 
 ---
 

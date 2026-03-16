@@ -94,6 +94,16 @@ export class LinkRegistry {
     if (link) link.enabled = false;
   }
 
+  /** Update a link's range or easing properties. Returns updated link or null if not found. */
+  update(id: string, patch: { sourceRange?: [number, number]; targetRange?: [number, number]; easing?: EasingType }): ParameterLink | null {
+    const link = this.links.get(id);
+    if (!link) return null;
+    if (patch.sourceRange) link.sourceRange = patch.sourceRange;
+    if (patch.targetRange) link.targetRange = patch.targetRange;
+    if (patch.easing) link.easing = patch.easing;
+    return link;
+  }
+
   /** Get a link by ID */
   get(id: string): ParameterLink | undefined {
     return this.links.get(id);

@@ -15,6 +15,7 @@ import { uiStoreActions } from '../store/uiStore';
 import { layoutStoreActions } from '../store/layoutStore';
 import { scriptStoreActions } from '../store/scriptStore';
 import { linkStoreActions } from '../store/linkStore';
+import { expressionStoreActions } from '../store/expressionStore';
 // aiStore wiring deferred to Phase 8
 
 /**
@@ -138,6 +139,10 @@ export function wireStores(eventBus: EventBus): () => void {
     scriptStoreActions.setVariable(payload.name, payload.value);
   };
 
+  const onVariableDeleted = (payload: { name: string }) => {
+    scriptStoreActions.deleteVariable(payload.name);
+  };
+
   const onVariablesReset = () => {
     scriptStoreActions.resetVariables();
   };
@@ -166,6 +171,7 @@ export function wireStores(eventBus: EventBus): () => void {
   eventBus.on('pyodide:ready', onPyodideReady);
   eventBus.on('pyodide:error', onPyodideError);
   eventBus.on('script:variableChanged', onVariableChanged);
+  eventBus.on('script:variableDeleted', onVariableDeleted);
   eventBus.on('script:variablesReset', onVariablesReset);
   eventBus.on('script:scriptAdded', onScriptAdded);
   eventBus.on('script:scriptRemoved', onScriptRemoved);
@@ -182,8 +188,9 @@ export function wireStores(eventBus: EventBus): () => void {
     linkStoreActions.removeLink(payload.id);
   };
 
-  const onLinkUpdated = (payload: { id: string; enabled: boolean }) => {
-    linkStoreActions.updateLink(payload.id, payload.enabled);
+  const onLinkUpdated = (payload: { id: string; enabled?: boolean; sourceRange?: [number, number]; targetRange?: [number, number]; easing?: string }) => {
+    const { id, ...patch } = payload;
+    linkStoreActions.updateLink(id, patch);
   };
 
   const onLinkReset = () => {
@@ -194,6 +201,30 @@ export function wireStores(eventBus: EventBus): () => void {
   eventBus.on('link:removed', onLinkRemoved);
   eventBus.on('link:updated', onLinkUpdated);
   eventBus.on('link:reset', onLinkReset);
+
+  // --- expressionStore wiring ---
+  const onTagAdded = (payload: { id: string; name: string; source: string; phase: string; enabled: boolean; owner: { type: string; id?: string }; inputs: string[]; outputs: string[]; code: string; linkMeta?: { sourceAddress: string; sourceRange: [number, number]; targetRange: [number, number]; easing: string } }) => {
+    expressionStoreActions.addTag(payload as import('../engine/expression/types').ExpressionTag);
+  };
+
+  const onTagRemoved = (payload: { id: string }) => {
+    expressionStoreActions.removeTag(payload.id);
+  };
+
+  const onTagUpdated = (payload: { id: string; name?: string; enabled?: boolean; phase?: string; code?: string; source?: string }) => {
+    const { id, ...rest } = payload;
+    // Cast to Partial<ExpressionTag> — EventBus payloads use string for union types
+    expressionStoreActions.updateTag(id, rest as Partial<import('../engine/expression/types').ExpressionTag>);
+  };
+
+  const onTagReset = () => {
+    expressionStoreActions.resetAll();
+  };
+
+  eventBus.on('tag:added', onTagAdded);
+  eventBus.on('tag:removed', onTagRemoved);
+  eventBus.on('tag:updated', onTagUpdated);
+  eventBus.on('tag:reset', onTagReset);
 
   // aiStore: Phase 8 will wire AI-specific events here
 
@@ -217,6 +248,7 @@ export function wireStores(eventBus: EventBus): () => void {
     eventBus.off('pyodide:ready', onPyodideReady);
     eventBus.off('pyodide:error', onPyodideError);
     eventBus.off('script:variableChanged', onVariableChanged);
+    eventBus.off('script:variableDeleted', onVariableDeleted);
     eventBus.off('script:variablesReset', onVariablesReset);
     eventBus.off('script:scriptAdded', onScriptAdded);
     eventBus.off('script:scriptRemoved', onScriptRemoved);
@@ -227,5 +259,9 @@ export function wireStores(eventBus: EventBus): () => void {
     eventBus.off('link:removed', onLinkRemoved);
     eventBus.off('link:updated', onLinkUpdated);
     eventBus.off('link:reset', onLinkReset);
+    eventBus.off('tag:added', onTagAdded);
+    eventBus.off('tag:removed', onTagRemoved);
+    eventBus.off('tag:updated', onTagUpdated);
+    eventBus.off('tag:reset', onTagReset);
   };
 }

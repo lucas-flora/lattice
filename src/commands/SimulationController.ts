@@ -19,7 +19,9 @@ import { ExpressionEngine } from '../engine/scripting/ExpressionEngine';
 import { GlobalScriptRunner } from '../engine/scripting/GlobalScriptRunner';
 import { scriptStoreActions } from '../store/scriptStore';
 import { linkStoreActions } from '../store/linkStore';
+import { expressionStoreActions } from '../store/expressionStore';
 import type { LinkRegistry } from '../engine/linking/LinkRegistry';
+import type { ExpressionTagRegistry } from '../engine/expression/ExpressionTagRegistry';
 
 export interface ParamDef {
   name: string;
@@ -119,13 +121,15 @@ export class SimulationController {
         }
       }
     }
-    // Clear links
+    // Clear links and tags
     if (this.simulation) {
       this.simulation.linkRegistry.clear();
+      this.simulation.tagRegistry.clear();
     }
     // Reset the Zustand stores directly (covers cases where engine objects are about to be replaced)
     scriptStoreActions.resetAll();
     linkStoreActions.resetAll();
+    expressionStoreActions.resetAll();
   }
 
   /**
@@ -233,9 +237,23 @@ export class SimulationController {
   }
 
   /**
-   * Notify the controller that links changed. Invalidates cache.
+   * Get the expression tag registry from the current simulation.
+   */
+  getTagRegistry(): ExpressionTagRegistry | null {
+    return this.simulation?.tagRegistry ?? null;
+  }
+
+  /**
+   * Notify the controller that links/tags changed. Invalidates cache.
    */
   onLinkChanged(): void {
+    this.invalidateCacheFrom(this.playbackGeneration + 1);
+  }
+
+  /**
+   * Alias for onLinkChanged — used when tags change.
+   */
+  onTagChanged(): void {
     this.invalidateCacheFrom(this.playbackGeneration + 1);
   }
 
@@ -1077,12 +1095,14 @@ export class SimulationController {
   }
 
   /**
-   * Sync link store with registry state after preset load.
+   * Sync link store and tag store with registry state after preset load.
    */
   private syncLinkStore(): void {
     if (!this.simulation) return;
     const links = this.simulation.linkRegistry.getAll();
     linkStoreActions.setLinks(links);
+    const tags = this.simulation.tagRegistry.getAll();
+    expressionStoreActions.setTags(tags);
   }
 
   // --- Grid Configuration Methods ---

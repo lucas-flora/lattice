@@ -1,15 +1,15 @@
 /**
  * CellCard: displays a cell type with name, color swatch, and expandable property list.
  *
- * Phase 2: single card for the current preset's cell type (read-only shell).
- * Phase 3 will wire this to CellTypeDefinition with real type hierarchy.
- * Phase 7 will add multi-type support, color picker, and property editing.
+ * Subscribes to useExpressionStore to find tags that write to each property,
+ * passing them to PropertyRow for the `ƒ` indicator display.
  */
 
 'use client';
 
 import { useState } from 'react';
 import { PropertyRow } from './PropertyRow';
+import { useExpressionStore } from '@/store/expressionStore';
 import type { CellPropertyType } from '@/engine/cell/types';
 
 export interface CellPropertyInfo {
@@ -31,6 +31,7 @@ interface CellCardProps {
 
 export function CellCard({ typeName, color, properties }: CellCardProps) {
   const [expanded, setExpanded] = useState(true);
+  const tags = useExpressionStore((s) => s.tags);
 
   return (
     <div
@@ -67,16 +68,23 @@ export function CellCard({ typeName, color, properties }: CellCardProps) {
       {/* Property list */}
       {expanded && properties.length > 0 && (
         <div className="px-3 pb-2 border-t border-zinc-700/30">
-          {properties.map((prop) => (
-            <PropertyRow
-              key={prop.name}
-              name={prop.name}
-              type={prop.type}
-              defaultValue={prop.default}
-              role={prop.role}
-              isInherent={prop.isInherent}
-            />
-          ))}
+          {properties.map((prop) => {
+            // Find tags that write to this property (cell.propName)
+            const propTag = tags.find(
+              (t) => t.outputs.some((o) => o === `cell.${prop.name}`),
+            );
+            return (
+              <PropertyRow
+                key={prop.name}
+                name={prop.name}
+                type={prop.type}
+                defaultValue={prop.default}
+                role={prop.role}
+                isInherent={prop.isInherent}
+                expression={propTag}
+              />
+            );
+          })}
         </div>
       )}
     </div>

@@ -65,6 +65,13 @@ const PARAM_MAPPINGS: Record<string, string[]> = {
   'link.clear': [],
   'link.enable': ['id'],
   'link.disable': ['id'],
+  'link.edit': ['id', '?easing', '?srcMin', '?srcMax', '?dstMin', '?dstMax'],
+  'tag.list': [],
+  'tag.show': ['id'],
+  'tag.setPhase': ['id', 'phase'],
+  'tag.copy': ['id', 'ownerType', '?ownerId'],
+  'tag.enable': ['id'],
+  'tag.disable': ['id'],
 };
 
 /**
@@ -106,6 +113,13 @@ const ARG_HINTS: Record<string, string> = {
   'link.clear': '',
   'link.enable': '<id>',
   'link.disable': '<id>',
+  'link.edit': '<id> [easing] [srcMin] [srcMax] [dstMin] [dstMax]',
+  'tag.list': '',
+  'tag.show': '<id>',
+  'tag.setPhase': '<id> <pre-rule|post-rule>',
+  'tag.copy': '<id> <ownerType> [ownerId]',
+  'tag.enable': '<id>',
+  'tag.disable': '<id>',
 };
 
 /**

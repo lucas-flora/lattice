@@ -103,6 +103,26 @@ const ParameterLinkSchema = z.object({
   enabled: z.boolean().optional().default(true),
 });
 
+const ExpressionTagSchema = z.object({
+  name: z.string().min(1),
+  owner: z.object({
+    type: z.enum(['cell-type', 'environment', 'global', 'root']),
+    id: z.string().optional(),
+  }),
+  code: z.string(),
+  phase: z.enum(['pre-rule', 'post-rule']).default('post-rule'),
+  enabled: z.boolean().default(true),
+  source: z.enum(['code', 'link', 'script']).default('code'),
+  inputs: z.array(z.string()).default([]),
+  outputs: z.array(z.string()).default([]),
+  linkMeta: z.object({
+    sourceAddress: z.string(),
+    sourceRange: z.tuple([z.number(), z.number()]),
+    targetRange: z.tuple([z.number(), z.number()]),
+    easing: z.enum(['linear', 'smoothstep', 'easeIn', 'easeOut', 'easeInOut']),
+  }).optional(),
+});
+
 const AiContextSchema = z.object({
   description: z.string().optional(),
   hints: z.array(z.string()).optional(),
@@ -132,6 +152,7 @@ export const PresetSchema = z
     global_variables: z.array(GlobalVariableSchema).optional(),
     global_scripts: z.array(GlobalScriptSchema).optional(),
     parameter_links: z.array(ParameterLinkSchema).optional(),
+    expression_tags: z.array(ExpressionTagSchema).optional(),
     visual_mappings: z.array(VisualMappingSchema).optional(),
     ai_context: AiContextSchema.optional(),
   })

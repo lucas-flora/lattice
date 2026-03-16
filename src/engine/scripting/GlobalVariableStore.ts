@@ -47,7 +47,7 @@ export class GlobalVariableStore {
   delete(name: string): boolean {
     const existed = this.vars.delete(name);
     if (existed) {
-      eventBus.emit('script:variableChanged', { name, value: 0 });
+      eventBus.emit('script:variableDeleted', { name });
     }
     return existed;
   }

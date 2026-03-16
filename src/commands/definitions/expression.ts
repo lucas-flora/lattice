@@ -1,12 +1,14 @@
 /**
  * Expression commands: set, clear, list per-property Python expressions.
  *
+ * Each expr.set now also creates an ExpressionTag in the unified registry.
  * Lazily creates PyodideBridge and ExpressionEngine on first use.
  */
 
 import { z } from 'zod';
 import type { CommandRegistry } from '../CommandRegistry';
 import type { SimulationController } from '../SimulationController';
+import type { EventBus } from '../../engine/core/EventBus';
 
 const SetParams = z.object({
   property: z.string(),
@@ -22,6 +24,7 @@ const NoParams = z.object({}).describe('none');
 export function registerExpressionCommands(
   registry: CommandRegistry,
   controller: SimulationController,
+  eventBus?: EventBus,
 ): void {
   registry.register({
     name: 'expr.set',
@@ -48,6 +51,23 @@ export function registerExpressionCommands(
       }
 
       engines.expressionEngine.setExpression(property, expression);
+
+      // Also create/update an ExpressionTag in the unified registry
+      const tagRegistry = controller.getTagRegistry();
+      if (tagRegistry && eventBus) {
+        // Remove existing tag for this property (if any)
+        const existing = tagRegistry.getAll().find(
+          (t) => t.source === 'code' && t.outputs.includes(`cell.${property}`),
+        );
+        if (existing) {
+          tagRegistry.remove(existing.id);
+          eventBus.emit('tag:removed', { id: existing.id });
+        }
+
+        const tag = tagRegistry.addFromExpression(property, expression);
+        eventBus.emit('tag:added', tag);
+      }
+
       return { success: true, data: { property, expression } };
     },
   });
@@ -64,6 +84,19 @@ export function registerExpressionCommands(
         return { success: true, data: { property } }; // No engine = nothing to clear
       }
       engine.clearExpression(property);
+
+      // Also remove the corresponding tag
+      const tagRegistry = controller.getTagRegistry();
+      if (tagRegistry && eventBus) {
+        const existing = tagRegistry.getAll().find(
+          (t) => t.source === 'code' && t.outputs.includes(`cell.${property}`),
+        );
+        if (existing) {
+          tagRegistry.remove(existing.id);
+          eventBus.emit('tag:removed', { id: existing.id });
+        }
+      }
+
       return { success: true, data: { property } };
     },
   });
@@ -96,6 +129,17 @@ export function registerExpressionCommands(
       for (const prop of Object.keys(all)) {
         engine.clearExpression(prop);
       }
+
+      // Also clear all code-sourced tags
+      const tagRegistry = controller.getTagRegistry();
+      if (tagRegistry && eventBus) {
+        const codeTags = tagRegistry.getAll().filter((t) => t.source === 'code');
+        for (const tag of codeTags) {
+          tagRegistry.remove(tag.id);
+          eventBus.emit('tag:removed', { id: tag.id });
+        }
+      }
+
       return { success: true, data: { cleared: Object.keys(all).length } };
     },
   });

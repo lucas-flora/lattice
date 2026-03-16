@@ -87,7 +87,15 @@ describe('Command Definitions', () => {
     // Phase 2 new commands
     expect(names).toContain('ui.toggleLeftDrawer');
 
-    expect(list.length).toBe(64);
+    // Phase 7: +6 tag commands (tag.list, tag.show, tag.setPhase, tag.copy, tag.enable, tag.disable)
+    expect(names).toContain('tag.list');
+    expect(names).toContain('tag.show');
+    expect(names).toContain('tag.setPhase');
+    expect(names).toContain('tag.copy');
+    expect(names).toContain('tag.enable');
+    expect(names).toContain('tag.disable');
+
+    expect(list.length).toBe(71);
   });
 
   it('TestCommandDefinitions_SimPlay_StartsSimulation', async () => {

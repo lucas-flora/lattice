@@ -33,9 +33,11 @@ export const linkStoreActions = {
     }));
   },
 
-  updateLink: (id: string, enabled: boolean): void => {
+  updateLink: (id: string, patch: { enabled?: boolean; sourceRange?: [number, number]; targetRange?: [number, number]; easing?: string }): void => {
     useLinkStore.setState((s) => ({
-      links: s.links.map((l) => (l.id === id ? { ...l, enabled } : l)),
+      links: s.links.map((l) =>
+        l.id === id ? { ...l, ...patch, easing: (patch.easing ?? l.easing) as ParameterLink['easing'] } : l,
+      ),
     }));
   },
 

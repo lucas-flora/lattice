@@ -22,6 +22,7 @@ import { GlobalVariableStore } from '../scripting/GlobalVariableStore';
 import { ExpressionEngine } from '../scripting/ExpressionEngine';
 import { GlobalScriptRunner } from '../scripting/GlobalScriptRunner';
 import { LinkRegistry } from '../linking/LinkRegistry';
+import { ExpressionTagRegistry } from '../expression/ExpressionTagRegistry';
 import type { TickResult } from './types';
 
 export class Simulation {
@@ -32,6 +33,7 @@ export class Simulation {
   readonly typeRegistry: CellTypeRegistry;
   readonly variableStore: GlobalVariableStore = new GlobalVariableStore();
   readonly linkRegistry: LinkRegistry = new LinkRegistry();
+  readonly tagRegistry: ExpressionTagRegistry = new ExpressionTagRegistry();
   expressionEngine: ExpressionEngine | null = null;
   globalScriptRunner: GlobalScriptRunner | null = null;
 
@@ -75,9 +77,10 @@ export class Simulation {
       this.variableStore.loadFromConfig(preset.global_variables);
     }
 
-    // Load parameter links from preset
+    // Load parameter links from preset (into both old and new registries)
     if (preset.parameter_links) {
       this.linkRegistry.loadFromConfig(preset.parameter_links);
+      this.tagRegistry.loadLinksFromConfig(preset.parameter_links);
     }
   }
 
@@ -118,10 +121,14 @@ export class Simulation {
 
   /**
    * Resolve all parameter links. Called before the rule in both sync and async paths.
+   * Uses both the legacy LinkRegistry and the new ExpressionTagRegistry pre-rule tags.
    */
   private resolveLinks(): void {
     if (this.linkRegistry.hasLinks()) {
       this.linkRegistry.resolveAll(this.grid, this.params, this.variableStore);
+    }
+    if (this.tagRegistry.hasPreRuleTags()) {
+      this.tagRegistry.resolvePreRule(this.grid, this.params, this.variableStore);
     }
   }
 

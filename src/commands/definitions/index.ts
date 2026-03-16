@@ -22,6 +22,7 @@ import { registerVariableCommands } from './variable';
 import { registerExpressionCommands } from './expression';
 import { registerScriptCommands } from './script';
 import { registerLinkCommands } from './link';
+import { registerTagCommands } from './tag';
 
 /**
  * Register all commands in the registry.
@@ -42,7 +43,8 @@ export function registerAllCommands(
   registerRuleCommands(registry, controller);
   registerLayoutCommands(registry);
   registerVariableCommands(registry, controller);
-  registerExpressionCommands(registry, controller);
+  registerExpressionCommands(registry, controller, eventBus);
   registerScriptCommands(registry, controller);
   registerLinkCommands(registry, controller, eventBus);
+  registerTagCommands(registry, controller, eventBus);
 }
