@@ -90,23 +90,19 @@ export class Simulation {
     if (preset.expression_tags) {
       for (const tagDef of preset.expression_tags) {
         const outputs = tagDef.outputs ?? [];
-        if (outputs.length <= 1) {
-          // Single-output tag: create one expression
-          const propName = outputs[0]?.replace('cell.', '') ?? tagDef.name ?? 'unnamed';
-          this.tagRegistry.addFromExpression(propName, tagDef.code);
-        } else {
-          // Multi-output tag: single tag with all outputs
-          this.tagRegistry.add({
-            name: tagDef.name ?? 'unnamed',
-            owner: tagDef.owner ?? { type: 'root' },
-            code: tagDef.code,
-            phase: (tagDef.phase as 'pre-rule' | 'post-rule' | 'rule') ?? 'post-rule',
-            enabled: tagDef.enabled ?? true,
-            source: (tagDef.source as 'code' | 'script') ?? 'code',
-            inputs: (tagDef.inputs ?? []) as string[],
-            outputs,
-          });
-        }
+        const name = tagDef.name ?? (outputs.length === 1
+          ? `expr: ${outputs[0]?.replace('cell.', '') ?? 'unnamed'}`
+          : 'unnamed');
+        this.tagRegistry.add({
+          name,
+          owner: tagDef.owner ?? { type: 'cell-type' },
+          code: tagDef.code,
+          phase: (tagDef.phase as 'pre-rule' | 'post-rule' | 'rule') ?? 'post-rule',
+          enabled: tagDef.enabled ?? true,
+          source: (tagDef.source as 'code' | 'script') ?? 'code',
+          inputs: (tagDef.inputs ?? []) as string[],
+          outputs,
+        });
       }
     }
 
