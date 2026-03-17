@@ -274,8 +274,9 @@ export class SimulationController {
    * resets to frame 0 so the simulation replays cleanly from start state.
    */
   onTagChanged(): void {
-    logMin('ctrl', `onTagChanged() — computedGen=${this.computedGeneration}, playbackGen=${this.playbackGeneration}, hasSnapshot=${!!this.initialSnapshot}`);
-    // Stop all in-flight computation first
+    logMin('ctrl', `onTagChanged() — playing=${this.playing}, computedGen=${this.computedGeneration}, playbackGen=${this.playbackGeneration}, hasSnapshot=${!!this.initialSnapshot}`);
+    // Full stop: pause playback, kill timers, cancel async work
+    this.pause();
     this.stopComputeAhead();
     // Clear all cached frames (tags changed → every frame is stale)
     this.frameCache.clear();
@@ -285,10 +286,8 @@ export class SimulationController {
     this.restoreInitialState();
     // Cache the clean initial frame
     this.cacheCurrentFrame();
-    this.eventBus.emit('sim:tick', {
-      generation: 0,
-      liveCellCount: this.getLiveCellCount(),
-    });
+    // Emit sim:reset so stores (simStore, timeline) snap back to gen 0
+    this.eventBus.emit('sim:reset', {});
     // Restart compute-ahead from clean state
     if (this.computeAheadTarget > 0) {
       this.computeAhead(this.computeAheadTarget);
