@@ -13,6 +13,7 @@ import { CellPanel } from '../components/panels/CellPanel';
 import { ScriptPanelWrapper } from '../components/panels/ScriptPanelWrapper';
 import { ObjectManagerPanel } from '../components/panels/ObjectManagerPanel';
 import { InspectorPanel } from '../components/panels/InspectorPanel';
+import { CardViewPanel } from '../components/panels/CardViewPanel';
 
 export function registerPanels(): void {
   panelRegistry.register({
@@ -62,5 +63,12 @@ export function registerPanels(): void {
     label: 'Inspector',
     component: InspectorPanel,
     allowMultiple: false,
+  });
+
+  panelRegistry.register({
+    type: 'cardView',
+    label: 'Card View',
+    component: CardViewPanel,
+    allowMultiple: true,
   });
 }

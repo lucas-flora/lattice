@@ -89,10 +89,10 @@ function SectionHeader({
   onAdd?: () => void;
 }) {
   return (
-    <div className="flex items-center justify-between py-1.5 px-1">
+    <div className="flex items-center justify-between py-1 px-0.5">
       <button
         onClick={onToggle}
-        className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-zinc-500 hover:text-zinc-300 cursor-pointer"
+        className="flex items-center gap-1 text-[9px] font-medium uppercase tracking-wider text-zinc-500 hover:text-zinc-300 cursor-pointer"
       >
         <span className="text-zinc-600">{open ? '\u25B4' : '\u25BE'}</span>
         <span>{title}</span>
@@ -101,7 +101,7 @@ function SectionHeader({
       {onAdd && (
         <button
           onClick={onAdd}
-          className="text-zinc-600 hover:text-green-400 text-xs cursor-pointer px-1 leading-none"
+          className="text-zinc-600 hover:text-green-400 text-[11px] cursor-pointer leading-none"
           title={`Add ${title.toLowerCase()}`}
         >
           +
@@ -144,14 +144,14 @@ function VariableCard({
   onDelete: () => void;
 }) {
   return (
-    <div className="bg-zinc-800/60 rounded border border-zinc-700/50 px-3 py-2 group" data-testid={`var-card-${name}`}>
-      <div className="flex items-center justify-between text-xs font-mono">
+    <div className="bg-zinc-800/60 rounded border border-zinc-700/50 px-2 py-1 group" data-testid={`var-card-${name}`}>
+      <div className="flex items-center justify-between text-[11px] font-mono">
         <span className="text-zinc-300 truncate">{name}</span>
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1">
           <span className="text-[9px] text-zinc-600">{type}</span>
           {isEditing ? (
             <input
-              className="w-20 bg-zinc-900 text-xs text-green-400 rounded px-1.5 py-0.5 font-mono tabular-nums outline-none focus:ring-1 focus:ring-green-500/50"
+              className="w-16 bg-zinc-900 text-[11px] text-green-400 rounded px-1 py-0.5 font-mono tabular-nums outline-none focus:ring-1 focus:ring-green-500/50"
               value={editValue}
               onChange={(e) => onEditChange(e.target.value)}
               onKeyDown={(e) => {
@@ -173,7 +173,7 @@ function VariableCard({
           )}
           <button
             onClick={onDelete}
-            className="text-zinc-600 hover:text-red-400 opacity-0 group-hover:opacity-100 cursor-pointer transition-opacity"
+            className="text-zinc-600 hover:text-red-400 opacity-0 group-hover:opacity-100 cursor-pointer transition-opacity text-[9px]"
             title="Delete"
             data-testid="var-delete-btn"
           >
@@ -206,10 +206,10 @@ function VariableAddForm({ onClose }: { onClose: () => void }) {
   }, [name, value, type, onClose]);
 
   return (
-    <div className="bg-zinc-900 border border-zinc-700 rounded p-2 space-y-1.5 mb-2" data-testid="var-add-form">
-      <div className="flex gap-1">
+    <div className="bg-zinc-900 border border-zinc-700/50 rounded p-1.5 space-y-1 mb-1" data-testid="var-add-form">
+      <div className="flex gap-1 items-center">
         <input
-          className="flex-1 bg-zinc-800 text-xs text-zinc-200 rounded px-2 py-1 font-mono outline-none focus:ring-1 focus:ring-green-500/50"
+          className="flex-1 min-w-0 bg-zinc-800 text-[11px] text-zinc-200 rounded px-1.5 py-0.5 font-mono outline-none focus:ring-1 focus:ring-green-500/50"
           placeholder="name"
           value={name}
           onChange={(e) => setName(e.target.value)}
@@ -218,17 +218,15 @@ function VariableAddForm({ onClose }: { onClose: () => void }) {
           autoFocus
         />
         <input
-          className="w-20 bg-zinc-800 text-xs text-zinc-200 rounded px-2 py-1 font-mono outline-none focus:ring-1 focus:ring-green-500/50"
+          className="w-14 bg-zinc-800 text-[11px] text-zinc-200 rounded px-1.5 py-0.5 font-mono outline-none focus:ring-1 focus:ring-green-500/50"
           placeholder="value"
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
           data-testid="var-value-input"
         />
-      </div>
-      <div className="flex gap-1 items-center">
         <select
-          className="bg-zinc-800 text-xs text-zinc-300 rounded px-1.5 py-1 outline-none cursor-pointer"
+          className="bg-zinc-800 text-[11px] text-zinc-300 rounded px-1 py-0.5 outline-none cursor-pointer"
           value={type}
           onChange={(e) => setType(e.target.value as 'float' | 'int' | 'string')}
           data-testid="var-type-select"
@@ -237,15 +235,17 @@ function VariableAddForm({ onClose }: { onClose: () => void }) {
           <option value="int">int</option>
           <option value="string">string</option>
         </select>
+      </div>
+      <div className="flex gap-1 items-center">
         <button
-          className="text-xs bg-green-600 hover:bg-green-500 text-white rounded px-2 py-1 cursor-pointer"
+          className="text-[11px] bg-green-600 hover:bg-green-500 text-white rounded px-1.5 py-0.5 cursor-pointer"
           onClick={handleAdd}
           data-testid="var-add-btn"
         >
           Add
         </button>
         <button
-          className="text-xs text-zinc-500 hover:text-zinc-300 cursor-pointer px-1"
+          className="text-[11px] text-zinc-500 hover:text-zinc-300 cursor-pointer px-1"
           onClick={onClose}
         >
           Cancel
@@ -344,6 +344,7 @@ function CellCards({
             >
               <CellCard
                 typeName={ct.name}
+                typeId={ct.id}
                 color={ct.color}
                 properties={ct.properties.map((p) => ({
                   name: p.name,
@@ -370,6 +371,7 @@ function CellCards({
       >
         <CellCard
           typeName="Cell"
+          typeId="default"
           color="#4ade80"
           properties={cellProperties.map((p) => ({
             name: p.name,
@@ -444,10 +446,10 @@ function GenericCards({
             }`}
             data-testid={`card-node-${node.id}`}
           >
-            <div className="px-3 py-2 flex items-center gap-2">
-              <div className={`w-2 h-2 rounded-full shrink-0 ${node.enabled ? 'bg-green-400' : 'bg-zinc-600'}`} />
-              <span className="text-xs font-mono text-zinc-200 flex-1 truncate">{node.name}</span>
-              <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded ${badgeClass}`}>{node.type}</span>
+            <div className="px-2 py-1 flex items-center gap-1.5">
+              <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${node.enabled ? 'bg-green-400' : 'bg-zinc-600'}`} />
+              <span className="text-[11px] font-mono text-zinc-200 flex-1 truncate">{node.name}</span>
+              <span className={`text-[9px] font-mono px-1 rounded leading-tight ${badgeClass}`}>{node.type}</span>
               <span className="text-[9px] font-mono text-zinc-600 tabular-nums">
                 {propCount > 0 ? `${propCount}p` : ''}
                 {node.childIds.length > 0 ? ` ${node.childIds.length}c` : ''}
@@ -603,7 +605,7 @@ export function CardViewPanel({ defaultFilters }: CardViewPanelProps) {
             onToggle={() => toggleSection(key)}
             onAdd={canAdd ? () => handleAddForSection(key) : undefined}
           />
-          {sectionContent && <div className="space-y-1.5 px-1 pb-2">{sectionContent}</div>}
+          {sectionContent && <div className="space-y-1 px-0.5 pb-1">{sectionContent}</div>}
         </div>
       );
     }
@@ -619,14 +621,14 @@ export function CardViewPanel({ defaultFilters }: CardViewPanelProps) {
   return (
     <div className="h-full bg-zinc-900/95 overflow-y-auto" data-testid="card-view-panel">
       {/* Filter bar */}
-      <div className="flex items-center gap-1 px-3 py-2 border-b border-zinc-800/50">
+      <div className="flex items-center gap-1 px-2 py-1.5 border-b border-zinc-800/50">
         {FILTER_DEFS.map((f) => {
           const active = activeFilters.has(f.key);
           return (
             <button
               key={f.key}
               onClick={() => toggleFilter(f.key)}
-              className={`text-[10px] font-mono px-2 py-0.5 rounded transition-colors cursor-pointer ${
+              className={`text-[10px] font-mono px-1.5 py-0.5 rounded transition-colors cursor-pointer ${
                 active
                   ? 'bg-green-500/20 text-green-400 border border-green-500/30'
                   : 'text-zinc-600 hover:text-zinc-400 border border-transparent'
@@ -663,7 +665,7 @@ export function CardViewPanel({ defaultFilters }: CardViewPanelProps) {
       {showPyodide && <PyodideStatus />}
 
       {/* Cards */}
-      <div className="px-3 py-2">
+      <div className="px-2 py-1.5">
         {activeSections.map(renderSection)}
 
         {totalCount === 0 && !showTagAddForm && !showVarAddForm && (

@@ -23,6 +23,20 @@ const ResetParams = z.object({
   name: z.string().optional(),
 }).describe('{ name?: string }');
 
+const AddParams = z.object({
+  name: z.string(),
+  type: z.enum(['float', 'int']).default('float'),
+  default: z.number().default(0),
+  min: z.number().optional(),
+  max: z.number().optional(),
+  step: z.number().optional(),
+  label: z.string().optional(),
+}).describe('{ name, type?, default?, min?, max?, step?, label? }');
+
+const RemoveParams = z.object({
+  name: z.string(),
+}).describe('{ name: string }');
+
 export function registerParamCommands(
   registry: CommandRegistry,
   controller: SimulationController,
@@ -100,6 +114,40 @@ export function registerParamCommands(
       }
       controller.resetParams();
       return { success: true };
+    },
+  });
+
+  registry.register({
+    name: 'param.add',
+    description: 'Add a user-defined runtime parameter',
+    category: 'param',
+    params: AddParams,
+    execute: async (params) => {
+      const { name, type, default: defaultVal, min, max, step, label } = params as z.infer<typeof AddParams>;
+      const existing = controller.getParamDefs();
+      if (existing.some((d) => d.name === name)) {
+        return { success: false, error: `Parameter "${name}" already exists` };
+      }
+      controller.addParamDef({ name, type, default: defaultVal, min, max, step, label });
+      return { success: true, data: { name, type, default: defaultVal, min, max, step } };
+    },
+  });
+
+  registry.register({
+    name: 'param.remove',
+    description: 'Remove a user-added runtime parameter (cannot remove preset params)',
+    category: 'param',
+    params: RemoveParams,
+    execute: async (params) => {
+      const { name } = params as z.infer<typeof RemoveParams>;
+      if (!controller.isUserParam(name)) {
+        return { success: false, error: `Cannot remove "${name}": not a user-added parameter (preset params cannot be removed)` };
+      }
+      const removed = controller.removeParamDef(name);
+      if (!removed) {
+        return { success: false, error: `Parameter "${name}" not found` };
+      }
+      return { success: true, data: { name } };
     },
   });
 }

@@ -16,6 +16,7 @@ import { useSimStore } from '@/store/simStore';
 import { useLayoutStore, layoutStoreActions } from '@/store/layoutStore';
 import { commandRegistry } from '@/commands/CommandRegistry';
 import { ParamGraph } from './ParamGraph';
+import { ParamSlider } from './ParamSlider';
 import { TimelineGraph } from './TimelineGraph';
 import { ParamGraphBuffer, TimelineDataBuffer } from '@/lib/paramGraphData';
 import { BUILTIN_PRESET_NAMES_CLIENT as BUILTIN_PRESET_NAMES } from '@/engine/preset/builtinPresetsClient';
@@ -288,19 +289,12 @@ export function ParamPanel({ docked = false }: ParamPanelProps) {
                         {def.type === 'int' ? value : value.toFixed(4)}
                       </span>
                     </div>
-                    <input
-                      type="range"
+                    <ParamSlider
+                      name={def.name}
+                      value={value}
                       min={def.min ?? 0}
                       max={def.max ?? 1}
                       step={def.step ?? (def.type === 'int' ? 1 : 0.001)}
-                      value={value}
-                      onChange={(e) => {
-                        commandRegistry.execute('param.set', {
-                          name: def.name,
-                          value: parseFloat(e.target.value),
-                        });
-                      }}
-                      className="w-full"
                       data-testid={`param-slider-${def.name}`}
                     />
                   </div>

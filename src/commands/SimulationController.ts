@@ -166,6 +166,7 @@ export class SimulationController {
     // Create Pyodide bridge BEFORE emitting presetLoaded, so that
     // onPresetLoaded → captureInitialState sees needsAsyncTick()=true
     // and defers compute-ahead until Pyodide is ready (with tickAsync).
+    this.userParamDefs = [];
     this.autoLoadPyodideIfNeeded();
     logMin('ctrl', `loadPreset: bridge=${!!this.pyodideBridge}, bridgeStatus=${this.pyodideBridge?.getStatus()}, needsAsync=${this.needsAsyncTick()}, postRuleTags=${this.simulation.tagRegistry.hasPostRuleTags()}`);
     this.emitPresetLoaded(config);
@@ -194,6 +195,7 @@ export class SimulationController {
     this.computedGeneration = 0;
     this.playbackGeneration = 0;
 
+    this.userParamDefs = [];
     this.autoLoadPyodideIfNeeded();
     logMin('ctrl', `loadPresetConfig: bridge=${!!this.pyodideBridge}, needsAsync=${this.needsAsyncTick()}`);
     this.emitPresetLoaded(config);
@@ -217,6 +219,7 @@ export class SimulationController {
     this.frameCache.clear();
     this.computedGeneration = 0;
     this.playbackGeneration = 0;
+    this.userParamDefs = [];
 
     this.emitPresetLoaded(config);
     this.emitParamDefs();
@@ -1049,7 +1052,7 @@ export class SimulationController {
    */
   setParam(name: string, value: number): void {
     if (!this.simulation) return;
-    const def = this.simulation.preset.params?.find((p) => p.name === name);
+    const def = this.getParamDefs().find((p) => p.name === name);
     if (!def) return;
 
     let clamped = value;
@@ -1135,17 +1138,55 @@ export class SimulationController {
   /**
    * Get all parameter definitions for the current preset.
    */
+  /** User-added parameter definitions (not from preset) */
+  protected userParamDefs: ParamDef[] = [];
+
   getParamDefs(): ParamDef[] {
-    if (!this.simulation?.preset.params) return [];
-    return this.simulation.preset.params.map((p) => ({
-      name: p.name,
-      label: p.label,
-      type: p.type,
-      default: p.default,
-      min: p.min,
-      max: p.max,
-      step: p.step,
-    }));
+    const presetDefs: ParamDef[] = this.simulation?.preset.params
+      ? this.simulation.preset.params.map((p) => ({
+          name: p.name,
+          label: p.label,
+          type: p.type,
+          default: p.default,
+          min: p.min,
+          max: p.max,
+          step: p.step,
+        }))
+      : [];
+    return [...presetDefs, ...this.userParamDefs];
+  }
+
+  /**
+   * Add a user-defined parameter at runtime.
+   */
+  addParamDef(def: ParamDef): void {
+    // Check for duplicates across preset + user params
+    const existing = this.getParamDefs();
+    if (existing.some((d) => d.name === def.name)) return;
+    this.userParamDefs.push(def);
+    // Set initial value on simulation
+    if (this.simulation) {
+      this.simulation.setParam(def.name, def.default);
+    }
+    this.emitParamDefs();
+  }
+
+  /**
+   * Remove a user-defined parameter. Cannot remove preset params.
+   */
+  removeParamDef(name: string): boolean {
+    const idx = this.userParamDefs.findIndex((d) => d.name === name);
+    if (idx === -1) return false;
+    this.userParamDefs.splice(idx, 1);
+    this.emitParamDefs();
+    return true;
+  }
+
+  /**
+   * Check if a param name belongs to user-added (not preset) params.
+   */
+  isUserParam(name: string): boolean {
+    return this.userParamDefs.some((d) => d.name === name);
   }
 
   /**
@@ -1159,9 +1200,10 @@ export class SimulationController {
    * Reset all params to their defaults.
    */
   resetParams(): void {
-    if (!this.simulation?.preset.params) return;
-    for (const p of this.simulation.preset.params) {
-      this.simulation.setParam(p.name, p.default);
+    const allDefs = this.getParamDefs();
+    if (allDefs.length === 0) return;
+    for (const p of allDefs) {
+      this.simulation?.setParam(p.name, p.default);
     }
     this.invalidateCacheFrom(this.playbackGeneration + 1);
     this.eventBus.emit('sim:paramsReset', {});
@@ -1217,7 +1259,10 @@ export class SimulationController {
    * Emit param defs after preset load.
    */
   private emitParamDefs(): void {
-    const defs = this.getParamDefs();
+    const defs = this.getParamDefs().map((d) => ({
+      ...d,
+      isUser: this.userParamDefs.some((u) => u.name === d.name),
+    }));
     const values = this.getParamValues();
     this.eventBus.emit('sim:paramDefsChanged', { defs, values });
   }

@@ -8,6 +8,7 @@ import type { SimulationController } from '../SimulationController';
 import type { EventBus } from '../../engine/core/EventBus';
 import type { CellPropertyType } from '../../engine/cell/types';
 import { CHANNELS_PER_TYPE, INHERENT_PROPERTIES } from '../../engine/cell/types';
+import type { Simulation } from '../../engine/rule/Simulation';
 
 const SetDefaultParams = z.object({
   type: z.string(),
@@ -31,6 +32,44 @@ const ListPropertiesParams = z.object({
   type: z.string().optional(),
 }).describe('{ [type]: string }');
 
+/** Build the full presetLoaded payload including cellTypes */
+function emitCellUpdate(sim: Simulation, eventBus: EventBus): void {
+  const registry = sim.typeRegistry;
+  const cellTypes = registry.getTypes().map((typeDef) => {
+    const resolved = registry.resolveProperties(typeDef.id);
+    return {
+      id: typeDef.id,
+      name: typeDef.name,
+      color: typeDef.color,
+      properties: resolved
+        .filter((p) => p.name !== '_cellType')
+        .map((p) => ({
+          name: p.name,
+          type: p.type,
+          default: p.default,
+          role: p.role,
+          isInherent: registry.isInherent(p.name),
+        })),
+    };
+  });
+
+  eventBus.emit('sim:presetLoaded', {
+    name: sim.preset.meta.name,
+    width: sim.grid.config.width,
+    height: sim.grid.config.height,
+    cellProperties: registry.getPropertyUnion()
+      .filter((p) => p.name !== '_cellType')
+      .map(p => ({
+        name: p.name,
+        type: p.type,
+        default: p.default,
+        role: p.role,
+        isInherent: INHERENT_PROPERTIES.some(ip => ip.name === p.name),
+      })),
+    cellTypes,
+  });
+}
+
 export function registerCellCommands(
   registry: CommandRegistry,
   controller: SimulationController,
@@ -49,27 +88,12 @@ export function registerCellCommands(
       const typeDef = sim.typeRegistry.getType(type);
       if (!typeDef) return { success: false, error: `Cell type "${type}" not found` };
 
-      // Find the property in own properties or inherent
       const allProps = sim.typeRegistry.resolveProperties(type);
       const prop = allProps.find(p => p.name === property);
       if (!prop) return { success: false, error: `Property "${property}" not found on type "${type}"` };
 
-      // Update the definition's own properties
       typeDef.setPropertyDefault(property, value);
-
-      // Notify UI
-      eventBus.emit('sim:presetLoaded', {
-        name: sim.preset.meta.name,
-        width: sim.grid.config.width,
-        height: sim.grid.config.height,
-        cellProperties: sim.typeRegistry.getPropertyUnion().map(p => ({
-          name: p.name,
-          type: p.type,
-          default: p.default,
-          role: p.role,
-          isInherent: INHERENT_PROPERTIES.some(ip => ip.name === p.name),
-        })),
-      });
+      emitCellUpdate(sim, eventBus);
 
       return { success: true, data: { type, property, value } };
     },
@@ -88,7 +112,6 @@ export function registerCellCommands(
       const typeDef = sim.typeRegistry.getType(type);
       if (!typeDef) return { success: false, error: `Cell type "${type}" not found` };
 
-      // Check for duplicates
       const allProps = sim.typeRegistry.resolveProperties(type);
       if (allProps.some(p => p.name === name)) {
         return { success: false, error: `Property "${name}" already exists on type "${type}"` };
@@ -96,7 +119,6 @@ export function registerCellCommands(
 
       const resolvedDefault = defaultVal ?? 0;
 
-      // Add to type definition
       typeDef.addProperty({
         name,
         type: propType as CellPropertyType,
@@ -104,23 +126,10 @@ export function registerCellCommands(
         role: 'output',
       });
 
-      // Add buffer to grid
       const channels = CHANNELS_PER_TYPE[propType as CellPropertyType];
       sim.grid.addProperty(name, channels, resolvedDefault);
 
-      // Notify UI
-      eventBus.emit('sim:presetLoaded', {
-        name: sim.preset.meta.name,
-        width: sim.grid.config.width,
-        height: sim.grid.config.height,
-        cellProperties: sim.typeRegistry.getPropertyUnion().map(p => ({
-          name: p.name,
-          type: p.type,
-          default: p.default,
-          role: p.role,
-          isInherent: INHERENT_PROPERTIES.some(ip => ip.name === p.name),
-        })),
-      });
+      emitCellUpdate(sim, eventBus);
 
       return { success: true, data: { type, name, propType, default: resolvedDefault } };
     },
@@ -139,7 +148,6 @@ export function registerCellCommands(
       const typeDef = sim.typeRegistry.getType(type);
       if (!typeDef) return { success: false, error: `Cell type "${type}" not found` };
 
-      // Guard against removing inherent properties
       if (INHERENT_PROPERTIES.some(p => p.name === name)) {
         return { success: false, error: `Cannot remove inherent property "${name}"` };
       }
@@ -149,19 +157,7 @@ export function registerCellCommands(
         return { success: false, error: `Property "${name}" not found on type "${type}"` };
       }
 
-      // Notify UI
-      eventBus.emit('sim:presetLoaded', {
-        name: sim.preset.meta.name,
-        width: sim.grid.config.width,
-        height: sim.grid.config.height,
-        cellProperties: sim.typeRegistry.getPropertyUnion().map(p => ({
-          name: p.name,
-          type: p.type,
-          default: p.default,
-          role: p.role,
-          isInherent: INHERENT_PROPERTIES.some(ip => ip.name === p.name),
-        })),
-      });
+      emitCellUpdate(sim, eventBus);
 
       return { success: true, data: { type, name } };
     },
@@ -177,7 +173,6 @@ export function registerCellCommands(
       const sim = controller.getSimulation();
       if (!sim) return { success: false, error: 'No simulation loaded' };
 
-      // Default to first type
       const typeId = type ?? sim.typeRegistry.getTypes()[0]?.id;
       if (!typeId) return { success: false, error: 'No cell types defined' };
 

@@ -17,6 +17,8 @@ export interface ParamDef {
   min?: number;
   max?: number;
   step?: number;
+  /** True if this param was added at runtime (not from preset) */
+  isUser?: boolean;
 }
 
 export interface CellPropertySummary {

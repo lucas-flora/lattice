@@ -43,6 +43,7 @@ export function CellPanel(_props: PanelProps) {
             <CellCard
               key={ct.id}
               typeName={ct.name}
+              typeId={ct.id}
               color={ct.color}
               properties={ct.properties.map((p) => ({
                 name: p.name,
@@ -56,6 +57,7 @@ export function CellPanel(_props: PanelProps) {
         ) : cellProperties.length > 0 ? (
           <CellCard
             typeName="Cell"
+            typeId="default"
             color="#4ade80"
             properties={cellProperties.map((p) => ({
               name: p.name,

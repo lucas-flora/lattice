@@ -121,16 +121,16 @@ export function TagAddForm({ onClose, defaultSource = 'code', defaultTarget = ''
 
   return (
     <div
-      className="bg-zinc-900 border border-zinc-700 rounded p-2 space-y-2 mb-2"
+      className="bg-zinc-900 border border-zinc-700/50 rounded p-1.5 space-y-1 mb-1"
       data-testid="tag-add-form"
     >
-      {/* Source type selector — compact icon+label */}
-      <div className="flex rounded overflow-hidden border border-zinc-700" data-testid="tag-add-source-selector">
+      {/* Source type selector */}
+      <div className="flex rounded overflow-hidden border border-zinc-700/50" data-testid="tag-add-source-selector">
         {SOURCE_BUTTONS.map((btn) => (
           <button
             key={btn.value}
             onClick={() => setSource(btn.value)}
-            className={`flex-1 text-[10px] font-mono py-1 transition-colors cursor-pointer ${
+            className={`flex-1 text-[10px] font-mono py-0.5 transition-colors cursor-pointer ${
               source === btn.value
                 ? 'bg-green-600 text-white'
                 : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-300'
@@ -143,11 +143,11 @@ export function TagAddForm({ onClose, defaultSource = 'code', defaultTarget = ''
 
       {/* Expression fields */}
       {source === 'code' && (
-        <div className="space-y-1.5">
+        <div className="space-y-1">
           <select
             value={exprProperty}
             onChange={(e) => setExprProperty(e.target.value)}
-            className="w-full bg-zinc-800 text-zinc-200 text-xs font-mono rounded px-2 py-1 border border-zinc-700 outline-none"
+            className="w-full bg-zinc-800 text-zinc-200 text-[11px] font-mono rounded px-1.5 py-0.5 border border-zinc-700/50 outline-none"
           >
             {cellProperties.map((prop) => (
               <option key={prop.name} value={prop.name}>
@@ -158,30 +158,30 @@ export function TagAddForm({ onClose, defaultSource = 'code', defaultTarget = ''
           <textarea
             value={exprCode}
             onChange={(e) => setExprCode(e.target.value)}
-            rows={3}
+            rows={2}
             spellCheck={false}
-            className="w-full bg-zinc-800 text-zinc-200 text-xs font-mono rounded px-2 py-1 border border-zinc-700 outline-none resize-y"
+            className="w-full bg-zinc-800 text-zinc-200 text-[11px] font-mono rounded px-1.5 py-0.5 border border-zinc-700/50 outline-none resize-y"
             placeholder="e.g. age / 100"
           />
-          <div className="text-[10px] font-mono text-zinc-600">Phase: post-rule</div>
+          <div className="text-[9px] font-mono text-zinc-600">Phase: post-rule</div>
         </div>
       )}
 
       {/* Link fields */}
       {source === 'link' && (
-        <div className="space-y-1.5">
+        <div className="space-y-1">
           <input
             type="text"
             value={linkSource}
             onChange={(e) => setLinkSource(e.target.value)}
-            className="w-full bg-zinc-800 text-zinc-200 text-xs font-mono rounded px-2 py-1 border border-zinc-700 outline-none"
+            className="w-full bg-zinc-800 text-zinc-200 text-[11px] font-mono rounded px-1.5 py-0.5 border border-zinc-700/50 outline-none"
             placeholder="source: cell.age"
           />
           <input
             type="text"
             value={linkTarget}
             onChange={(e) => setLinkTarget(e.target.value)}
-            className="w-full bg-zinc-800 text-zinc-200 text-xs font-mono rounded px-2 py-1 border border-zinc-700 outline-none"
+            className="w-full bg-zinc-800 text-zinc-200 text-[11px] font-mono rounded px-1.5 py-0.5 border border-zinc-700/50 outline-none"
             placeholder="target: cell.alpha"
           />
           <div className="flex gap-1">
@@ -189,92 +189,92 @@ export function TagAddForm({ onClose, defaultSource = 'code', defaultTarget = ''
               type="text"
               value={srcMin}
               onChange={(e) => setSrcMin(e.target.value)}
-              className="w-1/4 bg-zinc-800 text-zinc-200 text-xs font-mono tabular-nums rounded px-1.5 py-1 border border-zinc-700 outline-none"
+              className="w-1/4 bg-zinc-800 text-zinc-200 text-[11px] font-mono tabular-nums rounded px-1 py-0.5 border border-zinc-700/50 outline-none"
               placeholder="s.min"
             />
             <input
               type="text"
               value={srcMax}
               onChange={(e) => setSrcMax(e.target.value)}
-              className="w-1/4 bg-zinc-800 text-zinc-200 text-xs font-mono tabular-nums rounded px-1.5 py-1 border border-zinc-700 outline-none"
+              className="w-1/4 bg-zinc-800 text-zinc-200 text-[11px] font-mono tabular-nums rounded px-1 py-0.5 border border-zinc-700/50 outline-none"
               placeholder="s.max"
             />
             <input
               type="text"
               value={tgtMin}
               onChange={(e) => setTgtMin(e.target.value)}
-              className="w-1/4 bg-zinc-800 text-zinc-200 text-xs font-mono tabular-nums rounded px-1.5 py-1 border border-zinc-700 outline-none"
+              className="w-1/4 bg-zinc-800 text-zinc-200 text-[11px] font-mono tabular-nums rounded px-1 py-0.5 border border-zinc-700/50 outline-none"
               placeholder="t.min"
             />
             <input
               type="text"
               value={tgtMax}
               onChange={(e) => setTgtMax(e.target.value)}
-              className="w-1/4 bg-zinc-800 text-zinc-200 text-xs font-mono tabular-nums rounded px-1.5 py-1 border border-zinc-700 outline-none"
+              className="w-1/4 bg-zinc-800 text-zinc-200 text-[11px] font-mono tabular-nums rounded px-1 py-0.5 border border-zinc-700/50 outline-none"
               placeholder="t.max"
             />
           </div>
           <select
             value={easing}
             onChange={(e) => setEasing(e.target.value as (typeof EASING_OPTIONS)[number])}
-            className="w-full bg-zinc-800 text-zinc-200 text-xs font-mono rounded px-2 py-1 border border-zinc-700 outline-none"
+            className="w-full bg-zinc-800 text-zinc-200 text-[11px] font-mono rounded px-1.5 py-0.5 border border-zinc-700/50 outline-none"
           >
             {EASING_OPTIONS.map((opt) => (
               <option key={opt} value={opt}>{opt}</option>
             ))}
           </select>
-          <div className="text-[10px] font-mono text-zinc-600">Phase: pre-rule</div>
+          <div className="text-[9px] font-mono text-zinc-600">Phase: pre-rule</div>
         </div>
       )}
 
       {/* Script fields */}
       {source === 'script' && (
-        <div className="space-y-1.5">
+        <div className="space-y-1">
           <input
             type="text"
             value={scriptName}
             onChange={(e) => setScriptName(e.target.value)}
-            className="w-full bg-zinc-800 text-zinc-200 text-xs font-mono rounded px-2 py-1 border border-zinc-700 outline-none"
+            className="w-full bg-zinc-800 text-zinc-200 text-[11px] font-mono rounded px-1.5 py-0.5 border border-zinc-700/50 outline-none"
             placeholder="name"
           />
           <textarea
             value={scriptCode}
             onChange={(e) => setScriptCode(e.target.value)}
-            rows={3}
+            rows={2}
             spellCheck={false}
-            className="w-full bg-zinc-800 text-zinc-200 text-xs font-mono rounded px-2 py-1 border border-zinc-700 outline-none resize-y"
+            className="w-full bg-zinc-800 text-zinc-200 text-[11px] font-mono rounded px-1.5 py-0.5 border border-zinc-700/50 outline-none resize-y"
             placeholder="Python code..."
           />
           <input
             type="text"
             value={scriptInputs}
             onChange={(e) => setScriptInputs(e.target.value)}
-            className="w-full bg-zinc-800 text-zinc-200 text-xs font-mono rounded px-2 py-1 border border-zinc-700 outline-none"
+            className="w-full bg-zinc-800 text-zinc-200 text-[11px] font-mono rounded px-1.5 py-0.5 border border-zinc-700/50 outline-none"
             placeholder="inputs: cell.age, env.feedRate"
           />
           <input
             type="text"
             value={scriptOutputs}
             onChange={(e) => setScriptOutputs(e.target.value)}
-            className="w-full bg-zinc-800 text-zinc-200 text-xs font-mono rounded px-2 py-1 border border-zinc-700 outline-none"
+            className="w-full bg-zinc-800 text-zinc-200 text-[11px] font-mono rounded px-1.5 py-0.5 border border-zinc-700/50 outline-none"
             placeholder="outputs: cell.alpha"
           />
-          <div className="text-[10px] font-mono text-zinc-600">Phase: post-rule</div>
+          <div className="text-[9px] font-mono text-zinc-600">Phase: post-rule</div>
         </div>
       )}
 
       {/* Actions */}
-      <div className="flex justify-end gap-1.5">
+      <div className="flex justify-end gap-1">
         <button
           onClick={onClose}
-          className="text-xs font-mono text-zinc-500 hover:text-zinc-300 px-2 py-1 cursor-pointer"
+          className="text-[11px] font-mono text-zinc-500 hover:text-zinc-300 px-1 cursor-pointer"
           data-testid="tag-add-cancel"
         >
           Cancel
         </button>
         <button
           onClick={handleSubmit}
-          className="text-xs font-mono bg-green-600 hover:bg-green-500 text-white px-2 py-1 rounded cursor-pointer"
+          className="text-[11px] font-mono bg-green-600 hover:bg-green-500 text-white px-1.5 py-0.5 rounded cursor-pointer"
           data-testid="tag-add-submit"
         >
           Add

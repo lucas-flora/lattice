@@ -50,10 +50,10 @@ function TagEditForm({
       : null;
 
   return (
-    <div className="mt-1.5 space-y-1.5" data-testid="tag-row-edit-form">
+    <div className="mt-1 space-y-1" data-testid="tag-row-edit-form">
       {/* Name */}
       <input
-        className="w-full bg-zinc-900 text-xs text-zinc-200 rounded px-2 py-1 font-mono outline-none focus:ring-1 focus:ring-green-500/50"
+        className="w-full bg-zinc-900 text-[11px] text-zinc-200 rounded px-1.5 py-0.5 font-mono outline-none focus:ring-1 focus:ring-green-500/50"
         value={name}
         onChange={(e) => setName(e.target.value)}
         placeholder="tag name"
@@ -61,69 +61,49 @@ function TagEditForm({
 
       {/* I/O info (read-only) */}
       {ioDisplay && (
-        <div className="text-[10px] font-mono text-zinc-500 truncate" title={ioDisplay}>
+        <div className="text-[9px] font-mono text-zinc-500 truncate" title={ioDisplay}>
           {ioDisplay}
         </div>
       )}
 
       {/* Code textarea */}
       <textarea
-        className="w-full h-24 bg-zinc-900 text-xs text-zinc-200 rounded px-2 py-1 font-mono outline-none resize-y focus:ring-1 focus:ring-green-500/50"
+        className="w-full h-20 bg-zinc-900 text-[11px] text-zinc-200 rounded px-1.5 py-0.5 font-mono outline-none resize-y focus:ring-1 focus:ring-green-500/50"
         value={code}
         onChange={(e) => setCode(e.target.value)}
         autoFocus
       />
 
-      {/* Phase selector */}
-      <div className="flex items-center gap-3 text-[10px]">
-        <label className="flex items-center gap-1 cursor-pointer">
-          <input
-            type="radio"
-            name={`phase-${tag.id}`}
-            checked={phase === 'pre-rule'}
-            onChange={() => setPhase('pre-rule')}
-            className="accent-blue-400"
-          />
+      {/* Phase selector + actions */}
+      <div className="flex items-center gap-2 text-[9px]">
+        <label className="flex items-center gap-0.5 cursor-pointer">
+          <input type="radio" name={`phase-${tag.id}`} checked={phase === 'pre-rule'} onChange={() => setPhase('pre-rule')} className="accent-blue-400 w-3 h-3" />
           <span className="text-blue-400">pre</span>
         </label>
-        <label className="flex items-center gap-1 cursor-pointer">
-          <input
-            type="radio"
-            name={`phase-${tag.id}`}
-            checked={phase === 'rule'}
-            onChange={() => setPhase('rule')}
-            className="accent-red-400"
-          />
+        <label className="flex items-center gap-0.5 cursor-pointer">
+          <input type="radio" name={`phase-${tag.id}`} checked={phase === 'rule'} onChange={() => setPhase('rule')} className="accent-red-400 w-3 h-3" />
           <span className="text-red-400">rule</span>
         </label>
-        <label className="flex items-center gap-1 cursor-pointer">
-          <input
-            type="radio"
-            name={`phase-${tag.id}`}
-            checked={phase === 'post-rule'}
-            onChange={() => setPhase('post-rule')}
-            className="accent-amber-400"
-          />
+        <label className="flex items-center gap-0.5 cursor-pointer">
+          <input type="radio" name={`phase-${tag.id}`} checked={phase === 'post-rule'} onChange={() => setPhase('post-rule')} className="accent-amber-400 w-3 h-3" />
           <span className="text-amber-400">post</span>
         </label>
-      </div>
-
-      {/* Apply / Cancel */}
-      <div className="flex gap-1">
-        <button
-          className="text-xs bg-green-600 hover:bg-green-500 text-white rounded px-2 py-0.5 cursor-pointer"
-          onClick={() => onApply({ name, code, phase })}
-          data-testid="tag-row-apply"
-        >
-          Apply
-        </button>
-        <button
-          className="text-xs text-zinc-400 hover:text-zinc-200 cursor-pointer"
-          onClick={onCancel}
-          data-testid="tag-row-cancel"
-        >
-          Cancel
-        </button>
+        <div className="ml-auto flex gap-1">
+          <button
+            className="text-[11px] bg-green-600 hover:bg-green-500 text-white rounded px-1.5 py-0.5 cursor-pointer"
+            onClick={() => onApply({ name, code, phase })}
+            data-testid="tag-row-apply"
+          >
+            Apply
+          </button>
+          <button
+            className="text-[11px] text-zinc-400 hover:text-zinc-200 cursor-pointer"
+            onClick={onCancel}
+            data-testid="tag-row-cancel"
+          >
+            Cancel
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -168,11 +148,11 @@ export function TagRow({ tag }: TagRowProps) {
   }, []);
 
   return (
-    <div className="bg-zinc-800 rounded p-2 group" data-testid="tag-row">
+    <div className="bg-zinc-800 rounded px-1.5 py-1 group" data-testid="tag-row">
       {/* --- Collapsed row (always visible) --- */}
-      <div className="flex items-center gap-1.5">
+      <div className="flex items-center gap-1">
         {/* Source badge */}
-        <span className={`text-[9px] font-mono px-1 py-0.5 rounded shrink-0 ${badge.class}`}>
+        <span className={`text-[9px] font-mono px-0.5 rounded shrink-0 leading-tight ${badge.class}`}>
           {badge.label}
         </span>
 
@@ -185,7 +165,7 @@ export function TagRow({ tag }: TagRowProps) {
 
         {/* Name (click to expand) */}
         <button
-          className="text-xs font-mono text-zinc-300 truncate text-left flex-1 min-w-0 cursor-pointer hover:text-zinc-100"
+          className="text-[11px] font-mono text-zinc-300 truncate text-left flex-1 min-w-0 cursor-pointer hover:text-zinc-100"
           onClick={handleToggleExpand}
           data-testid="tag-row-toggle"
         >
@@ -194,14 +174,14 @@ export function TagRow({ tag }: TagRowProps) {
 
         {/* Owner badge */}
         {owner && (
-          <span className="text-[9px] font-mono px-1 py-0.5 rounded bg-zinc-700 text-zinc-400 shrink-0">
+          <span className="text-[9px] font-mono px-0.5 rounded bg-zinc-700 text-zinc-400 shrink-0 leading-tight">
             {owner}
           </span>
         )}
 
         {/* Phase badge */}
         <span
-          className={`text-[9px] px-1 py-0.5 rounded shrink-0 ${
+          className={`text-[9px] px-0.5 rounded shrink-0 leading-tight ${
             tag.phase === 'pre-rule'
               ? 'bg-blue-500/10 text-blue-400'
               : tag.phase === 'rule'
@@ -215,7 +195,7 @@ export function TagRow({ tag }: TagRowProps) {
         {/* ON/OFF toggle */}
         <button
           onClick={handleToggleEnabled}
-          className={`text-[10px] px-1.5 py-0.5 rounded cursor-pointer shrink-0 ${
+          className={`text-[9px] px-1 rounded cursor-pointer shrink-0 leading-tight ${
             tag.enabled
               ? 'bg-green-500/20 text-green-400'
               : 'bg-zinc-700 text-zinc-500'
@@ -228,7 +208,7 @@ export function TagRow({ tag }: TagRowProps) {
         {/* Delete button (hover-visible) */}
         <button
           onClick={handleDelete}
-          className="text-zinc-600 hover:text-red-400 text-xs cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+          className="text-zinc-600 hover:text-red-400 text-[9px] cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
           title="Remove tag"
           data-testid="tag-row-delete"
         >

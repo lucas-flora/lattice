@@ -126,7 +126,7 @@ describe('Command Definitions', () => {
     expect(names).toContain('ui.toggleInspector');
     expect(names).toContain('ui.toggleMetrics');
 
-    expect(list.length).toBe(98);
+    expect(list.length).toBe(100);
   });
 
   it('TestCommandDefinitions_SimPlay_StartsSimulation', async () => {

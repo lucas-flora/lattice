@@ -128,7 +128,21 @@ Lattice is a universal simulation substrate. Cellular automata, reaction-diffusi
 - Grip dots appear at viewport edges when drawers are closed.
 - Drawer 1 has a draggable vertical split between Object Manager and Inspector (`drawer1SplitRatio` in layoutStore).
 
-**Unified Card View:** Drawers 2 and 3 render the same `CardViewPanel` component with different `defaultFilters`. Multi-select type filters (Cells, Env, Vars, Tags). Collapsible sections with per-section + buttons. Tag cards use TagRow for rich editing. Variable cards have inline value editing.
+**Unified Card View:** Drawers 2 and 3 render the same `CardViewPanel` component with different `defaultFilters`. Registered in the panel registry as `'cardView'` with `allowMultiple: true`. Multi-select type filters (Cells, Env, Vars, Tags). Collapsible sections with per-section + buttons. Tag cards use TagRow for rich editing. Variable cards have inline value editing.
+
+**Interactive property editing:** CellCard and CellTypeSection (Inspector) support full CRUD on cell properties:
+- Click-to-edit default values (PropertyRow) — click value → inline input, Enter/blur commits via `cell.setDefault`, Escape cancels.
+- Add property (+) — inline form with name/type/default, commits via `cell.addProperty`.
+- Remove property (x) — hover-visible delete on non-inherent properties, commits via `cell.removeProperty`.
+- CellCard passes `typeId` (registry key) for all commands — display name and registry ID are distinct.
+
+**Interactive environment params:** EnvironmentSection supports dynamic parameter authoring:
+- Add parameter (+) — inline form with name/type/default/min/max/step, commits via `param.add`.
+- Remove parameter (x) — hover-visible on user-added params only (preset params protected), commits via `param.remove`.
+- ParamSlider — responsive slider that updates Zustand store directly during drag for smooth visual feedback, commits via `param.set` on pointer-up.
+
+**Interactive globals:** GlobalsSection supports variable CRUD:
+- Click-to-edit values, add/delete variables via `var.set`/`var.delete` commands.
 
 ### Layout Tree
 
@@ -325,6 +339,8 @@ All SG phases (SG-0 through SG-9) are **complete**. Post-SG UI alignment also co
 | SG-8 | Multi-Sim | Done | `SimulationManager` with `sim.addRoot/removeRoot/setRoot` |
 | SG-9 | YAML v2 | Done | v2 schema + `loadPresetV2()` + backward compat |
 | UI | Panel Alignment | Done | ParamPanel killed, Card View unified, numbered drawers |
+| UI | Interactive Properties | Done | Click-to-edit defaults, add/remove cell properties, dynamic env params |
+| UI | CardView Registration | Done | CardViewPanel registered in panel registry (`allowMultiple: true`) |
 
 **Remaining architectural work:**
 - Tree-as-source-of-truth migration (currently derived view via `fromSimulation()`)
@@ -366,6 +382,22 @@ interface ExpressionTag {
 - All three produce the same underlying ExpressionTag. The `tag.*` commands operate on all tags directly.
 
 **UI**: Card View (drawer 3, `defaultFilters=['tags', 'globals']`) shows tag cards with TagRow editing + variable cards with inline editing. Multi-select filters allow viewing any combination. Tags use rich expand-to-edit forms (name, code, phase). Variables have inline value editing. TagAddForm supports expression, link wizard, and script creation modes. `expressionStore` is the canonical tag data source; `scriptStore` holds global variables.
+
+**Cell property commands:**
+- `cell.addProperty { type, name, propType, default? }` — add a new property to a cell type
+- `cell.removeProperty { type, name }` — remove a user-added property (inherent properties protected)
+- `cell.setDefault { type, property, value }` — change a property's default value
+- `cell.listProperties { type? }` — list all properties on a cell type
+
+**Parameter commands:**
+- `param.set { name, value }` — set a runtime parameter value
+- `param.get { name }` — get current value
+- `param.list` — list all parameters with values
+- `param.reset { name? }` — reset one or all to defaults
+- `param.add { name, type, default, min?, max?, step?, label? }` — add a user-defined runtime parameter
+- `param.remove { name }` — remove a user-added parameter (preset params protected)
+
+User-added params (`param.add`) are stored in `SimulationController.userParamDefs` and merged with preset params in `getParamDefs()`. They are cleared on preset load. The store marks them with `isUser: true` so the UI can distinguish removable vs. protected params.
 
 **Fast-path optimization:** Link-sourced tags with `linkMeta` use JS rangeMap — no Pyodide needed. Performance parity with the legacy LinkRegistry.
 
