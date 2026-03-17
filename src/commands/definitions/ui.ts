@@ -13,6 +13,9 @@ import { z } from 'zod';
 import type { CommandRegistry } from '../CommandRegistry';
 import { useLayoutStore, layoutStoreActions } from '../../store/layoutStore';
 import { useUiStore } from '../../store/uiStore';
+import { useExpressionStore } from '../../store/expressionStore';
+import { addTab } from '../../layout/LayoutTree';
+import { generateLayoutId } from '../../layout/LayoutTree';
 
 const NoParams = z.object({}).describe('none');
 const ToggleParams = z.object({ docked: z.boolean().optional() }).describe('optional docked flag');
@@ -110,29 +113,67 @@ export function registerUiCommands(
     },
   });
 
-  // --- Node Editor (center tab toggle) ---
+  // --- Node Editor (open/focus per-tag editor tab) ---
   registry.register({
     name: 'ui.toggleNodeEditor',
-    description: 'Toggle to node editor tab in center zone',
+    description: 'Open or focus node editor tab (creates per-tag tabs)',
     category: 'ui',
-    params: NoParams,
-    execute: async () => {
+    params: z.object({
+      tagId: z.string().optional(),
+      initProperty: z.string().optional(),
+    }).describe('{ tagId?: string, initProperty?: string }'),
+    execute: async (params) => {
+      const { tagId, initProperty } = params as { tagId?: string; initProperty?: string };
       const { zones } = useLayoutStore.getState();
       const center = zones.center;
-      if (center.type === 'tabs') {
-        // Find the node editor tab index
-        const editorIdx = center.children.findIndex(
-          (c) => c.type === 'panel' && c.panelType === 'nodeEditor',
-        );
-        if (editorIdx >= 0) {
-          const newIndex = center.activeIndex === editorIdx ? 0 : editorIdx;
-          layoutStoreActions.setZoneLayout('center', {
-            ...center,
-            activeIndex: newIndex,
-          });
-          return { success: true, data: { activeIndex: newIndex } };
+
+      if (!tagId) {
+        // No tagId: toggle to first node editor tab or do nothing
+        if (center.type === 'tabs') {
+          const editorIdx = center.children.findIndex(
+            (c) => c.type === 'panel' && c.panelType === 'nodeEditor',
+          );
+          if (editorIdx >= 0) {
+            const newIndex = center.activeIndex !== editorIdx ? editorIdx : 0;
+            layoutStoreActions.setZoneLayout('center', { ...center, activeIndex: newIndex });
+            return { success: true, data: { activeIndex: newIndex } };
+          }
         }
+        return { success: true, data: { activeIndex: 0 } };
       }
+
+      // Look up tag name for tab label
+      const tag = useExpressionStore.getState().tags.find((t) => t.id === tagId);
+      const tabLabel = tag ? `Nodes: ${tag.name}` : 'Node Editor';
+
+      if (center.type === 'tabs') {
+        // Check if a node editor tab for this tagId already exists
+        const existingIdx = center.children.findIndex(
+          (c) => c.type === 'panel' && c.panelType === 'nodeEditor'
+            && (c.config as Record<string, unknown> | undefined)?.tagId === tagId,
+        );
+        if (existingIdx >= 0) {
+          // Focus the existing tab
+          layoutStoreActions.setZoneLayout('center', { ...center, activeIndex: existingIdx });
+          return { success: true, data: { activeIndex: existingIdx } };
+        }
+
+        // Create a new node editor tab for this tag
+        const panelId = generateLayoutId('nodeEditor');
+        const config: Record<string, unknown> = { tagId, label: tabLabel };
+        if (initProperty) config.initProperty = initProperty;
+        const newPanel = {
+          type: 'panel' as const,
+          id: panelId,
+          panelType: 'nodeEditor',
+          config,
+        };
+        const newCenter = addTab(center, center.id, newPanel);
+        layoutStoreActions.setZoneLayout('center', newCenter);
+        const newIndex = center.children.length; // addTab appends and activates
+        return { success: true, data: { activeIndex: newIndex, panelId } };
+      }
+
       return { success: true, data: { activeIndex: 0 } };
     },
   });

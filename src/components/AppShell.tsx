@@ -24,7 +24,6 @@ import { loadBuiltinPresetClient } from '@/engine/preset/builtinPresetsClient';
 import { KeyboardShortcutManager } from '@/commands/KeyboardShortcutManager';
 import { SimulationViewport } from '@/components/viewport/SimulationViewport';
 import { LayoutRenderer } from '@/components/layout/LayoutRenderer';
-import { HUD } from '@/components/hud/HUD';
 import { HotkeyHelp } from '@/components/hud/HotkeyHelp';
 import { BottomTray } from '@/components/layout/BottomTray';
 import { Terminal } from '@/components/terminal/Terminal';
@@ -458,11 +457,10 @@ export function AppShell() {
         </div>
       )}
 
-      {/* HUD overlay */}
-      {!isAnyFullscreen && (
+      {/* Floating overlays (terminal only — HUD is now inside SimulationViewport) */}
+      {!isAnyFullscreen && terminalFloating && (
         <div className="absolute inset-0 z-10 pointer-events-none">
-          <HUD />
-          {terminalFloating && <Terminal />}
+          <Terminal />
         </div>
       )}
 

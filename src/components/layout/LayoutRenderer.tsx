@@ -56,10 +56,20 @@ export function LayoutRenderer({ node, onLayoutChange }: LayoutRendererProps) {
   if (node.type === 'tabs') {
     const labels = node.children.map((child) => {
       if (child.type === 'panel') {
+        // Config label overrides registry label (used for per-tag node editors)
+        if (child.config?.label) return child.config.label as string;
         const descriptor = panelRegistry.get(child.panelType);
         return descriptor?.label ?? child.panelType;
       }
       return 'Group';
+    });
+
+    // Tabs with a config.label are dynamically created and closable
+    const closableIndices = new Set<number>();
+    node.children.forEach((child, i) => {
+      if (child.type === 'panel' && child.config?.label) {
+        closableIndices.add(i);
+      }
     });
 
     return (
@@ -68,6 +78,12 @@ export function LayoutRenderer({ node, onLayoutChange }: LayoutRendererProps) {
         activeIndex={node.activeIndex}
         onTabChange={(index) => {
           onLayoutChange?.({ ...node, activeIndex: index });
+        }}
+        closableIndices={closableIndices.size > 0 ? closableIndices : undefined}
+        onTabClose={(index) => {
+          const newChildren = node.children.filter((_, i) => i !== index);
+          const newActive = Math.min(node.activeIndex, newChildren.length - 1);
+          onLayoutChange?.({ ...node, children: newChildren, activeIndex: Math.max(0, newActive) });
         }}
       >
         {node.children.map((child) => (

@@ -264,10 +264,11 @@ export class SimulationController {
   }
 
   /**
-   * Alias for onLinkChanged — used when tags change.
+   * Notify that a tag's code/behavior changed. Invalidates entire cache and
+   * resets to frame 0 so the simulation replays cleanly from start state.
    */
   onTagChanged(): void {
-    this.invalidateCacheFrom(this.playbackGeneration + 1);
+    this.invalidateCacheFrom(0);
   }
 
   /**

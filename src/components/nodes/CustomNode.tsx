@@ -2,15 +2,21 @@
  * CustomNode: dark zinc-800 card with colored header bar and typed port handles.
  *
  * Renders in the React Flow canvas as a compact, professional node card.
- * Inline value editing for Constant and PropertyRead/Write nodes.
+ * Handles are rendered inline in each port row (position: relative on the row)
+ * so they always align with their labels.
+ *
+ * Inline value editing for Constant, PropertyRead/Write, and Compare nodes.
+ * Unconnected input ports show an editable default value field — typing a
+ * value and pressing Enter spawns a connected Constant node.
  */
 
 'use client';
 
-import { memo, useCallback } from 'react';
+import { memo, useCallback, useContext } from 'react';
 import { Handle, Position, useReactFlow, type NodeProps } from '@xyflow/react';
 import { nodeTypeRegistry } from '@/engine/nodes/NodeTypeRegistry';
 import { CATEGORY_COLORS, PORT_COLORS } from './nodeTheme';
+import { NodeSyncContext } from './NodeEditorCanvas';
 import type { PortType, NodeCategory } from '@/engine/nodes/types';
 
 interface NodeData {
@@ -21,9 +27,12 @@ interface NodeData {
 
 type CustomNodeProps = NodeProps & { data: NodeData };
 
+let _spawnId = 10000;
+
 export const CustomNode = memo(function CustomNode({ id, data, selected }: CustomNodeProps) {
   const typeDef = nodeTypeRegistry.get(data.nodeType);
-  const { updateNodeData } = useReactFlow();
+  const { updateNodeData, addNodes, addEdges, getEdges, getNode } = useReactFlow();
+  const requestSync = useContext(NodeSyncContext);
 
   const category = (typeDef?.category ?? 'utility') as NodeCategory;
   const accentColor = CATEGORY_COLORS[category];
@@ -31,8 +40,39 @@ export const CustomNode = memo(function CustomNode({ id, data, selected }: Custo
   const onDataChange = useCallback(
     (key: string, value: unknown) => {
       updateNodeData(id, { ...data, [key]: value });
+      setTimeout(requestSync, 0);
     },
-    [id, data, updateNodeData],
+    [id, data, updateNodeData, requestSync],
+  );
+
+  // Spawn a Constant node connected to an unconnected input port
+  const spawnConstant = useCallback(
+    (portId: string, value: number, portIndex: number) => {
+      const cId = String(_spawnId++);
+      const parentNode = getNode(id);
+      const px = parentNode?.position?.x ?? 0;
+      const py = parentNode?.position?.y ?? 0;
+      // Align vertically with the target port row (header ~28px + row * 22px)
+      const yOffset = portIndex * 22;
+      const node = {
+        id: cId,
+        type: 'custom' as const,
+        position: { x: px - 200, y: py + yOffset },
+        data: { label: 'Constant', nodeType: 'Constant', value, autoFocus: true },
+      };
+      const edge = {
+        id: `e${Date.now()}_${cId}`,
+        source: cId,
+        sourceHandle: 'value',
+        target: id,
+        targetHandle: portId,
+        type: 'custom',
+      };
+      addNodes([node]);
+      addEdges([edge]);
+      setTimeout(requestSync, 0);
+    },
+    [id, addNodes, addEdges, requestSync, getNode],
   );
 
   if (!typeDef) {
@@ -43,6 +83,33 @@ export const CustomNode = memo(function CustomNode({ id, data, selected }: Custo
     );
   }
 
+  // Check which input ports have edges connected + find downstream target for header hint
+  const connectedInputs = new Set<string>();
+  let downstreamHint = '';
+  try {
+    const edges = getEdges();
+    for (const e of edges) {
+      if (e.target === id && e.targetHandle) {
+        connectedInputs.add(e.targetHandle);
+      }
+    }
+    // For single-output nodes, show where the output goes
+    if (typeDef.outputs.length === 1) {
+      const outEdges = edges.filter((e) => e.source === id);
+      if (outEdges.length === 1) {
+        const tgt = getNode(outEdges[0].target);
+        if (tgt) {
+          const tgtData = tgt.data as NodeData;
+          const tgtType = nodeTypeRegistry.get(tgtData.nodeType);
+          const portLabel = tgtType?.inputs.find((p) => p.id === outEdges[0].targetHandle)?.label
+            ?? outEdges[0].targetHandle ?? '';
+          const tgtName = tgtData.objectName as string || tgtType?.label || tgtData.nodeType;
+          downstreamHint = `${tgtName} > ${portLabel}`;
+        }
+      }
+    }
+  } catch { /* getEdges may fail during init */ }
+
   return (
     <div
       className={`bg-zinc-800 rounded shadow-lg min-w-[140px] ${
@@ -51,104 +118,113 @@ export const CustomNode = memo(function CustomNode({ id, data, selected }: Custo
     >
       {/* Header */}
       <div
-        className="px-2.5 py-1 rounded-t text-[10px] font-mono font-semibold uppercase tracking-wider text-zinc-900"
+        className="px-2.5 py-1 rounded-t text-[10px] font-mono font-semibold uppercase tracking-wider text-zinc-900 flex items-center justify-between gap-2"
         style={{ backgroundColor: accentColor }}
       >
-        {typeDef.label}
+        <span>{typeDef.label}</span>
+        {downstreamHint && (
+          <span className="text-[8px] font-normal normal-case tracking-normal opacity-50 truncate">
+            {downstreamHint}
+          </span>
+        )}
       </div>
 
       {/* Body */}
-      <div className="px-2.5 py-1.5 space-y-1">
+      <div className="py-1">
         {/* Inline data editors */}
         {typeDef.hasData && data.nodeType === 'Constant' && (
-          <input
-            type="number"
-            className="w-full bg-zinc-900 border border-zinc-700 rounded px-1.5 py-0.5 text-xs font-mono text-zinc-300 focus:outline-none focus:border-green-500/50"
-            value={data.value as number ?? 0}
-            onChange={(e) => onDataChange('value', parseFloat(e.target.value) || 0)}
-            onClick={(e) => e.stopPropagation()}
-          />
+          <div className="px-2.5 pb-0.5">
+            <input
+              type="number"
+              className="w-full bg-zinc-900 border border-zinc-700 rounded px-1.5 py-0.5 text-xs font-mono text-zinc-300 focus:outline-none focus:border-green-500/50"
+              value={data.value as number ?? 0}
+              onChange={(e) => onDataChange('value', parseFloat(e.target.value) || 0)}
+              onClick={(e) => e.stopPropagation()}
+              autoFocus={!!data.autoFocus}
+            />
+          </div>
         )}
         {typeDef.hasData && (data.nodeType === 'PropertyRead' || data.nodeType === 'PropertyWrite') && (
-          <input
-            type="text"
-            className="w-full bg-zinc-900 border border-zinc-700 rounded px-1.5 py-0.5 text-xs font-mono text-zinc-300 focus:outline-none focus:border-green-500/50"
-            value={data.address as string ?? ''}
-            onChange={(e) => onDataChange('address', e.target.value)}
-            onClick={(e) => e.stopPropagation()}
-            placeholder="cell.property"
-          />
+          <div className="px-2.5 pb-0.5">
+            <input
+              type="text"
+              className="w-full bg-zinc-900 border border-zinc-700 rounded px-1.5 py-0.5 text-xs font-mono text-zinc-300 focus:outline-none focus:border-green-500/50"
+              value={data.address as string ?? ''}
+              onChange={(e) => onDataChange('address', e.target.value)}
+              onClick={(e) => e.stopPropagation()}
+              placeholder="cell.property"
+            />
+          </div>
         )}
         {typeDef.hasData && data.nodeType === 'Compare' && (
-          <select
-            className="w-full bg-zinc-900 border border-zinc-700 rounded px-1.5 py-0.5 text-xs font-mono text-zinc-300 focus:outline-none"
-            value={data.operator as string ?? '>'}
-            onChange={(e) => onDataChange('operator', e.target.value)}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <option value=">">&gt;</option>
-            <option value="<">&lt;</option>
-            <option value=">=">&gt;=</option>
-            <option value="<=">&lt;=</option>
-            <option value="==">==</option>
-            <option value="!=">!=</option>
-          </select>
+          <div className="px-2.5 pb-0.5">
+            <select
+              className="w-full bg-zinc-900 border border-zinc-700 rounded px-1.5 py-0.5 text-xs font-mono text-zinc-300 focus:outline-none"
+              value={data.operator as string ?? '>'}
+              onChange={(e) => onDataChange('operator', e.target.value)}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <option value=">">&gt;</option>
+              <option value="<">&lt;</option>
+              <option value=">=">&gt;=</option>
+              <option value="<=">&lt;=</option>
+              <option value="==">==</option>
+              <option value="!=">!=</option>
+            </select>
+          </div>
         )}
 
-        {/* Port labels */}
-        {typeDef.inputs.length > 0 && (
-          <div className="space-y-0.5">
-            {typeDef.inputs.map((port) => (
-              <div key={port.id} className="text-[10px] font-mono text-zinc-500 pl-2">
-                {port.label}
-              </div>
-            ))}
+        {/* Input port rows — each row has position:relative so Handle aligns */}
+        {typeDef.inputs.map((port, portIndex) => (
+          <div key={`in-${port.id}`} className="relative flex items-center h-[22px]">
+            <Handle
+              type="target"
+              position={Position.Left}
+              id={port.id}
+              style={{
+                width: 8,
+                height: 8,
+                backgroundColor: PORT_COLORS[port.type as PortType],
+                border: '2px solid #27272a',
+              }}
+            />
+            <span className="text-[10px] font-mono text-zinc-500 pl-3 flex-1">
+              {port.label}
+            </span>
+            {/* Click default value to spawn a wired Constant node */}
+            {!connectedInputs.has(port.id) && (port.type === 'scalar' || port.type === 'array') && (
+              <button
+                className="text-[9px] font-mono text-zinc-700 hover:text-zinc-500 pr-2 cursor-pointer tabular-nums"
+                onClick={(e) => { e.stopPropagation(); spawnConstant(port.id, (port.defaultValue as number) ?? 0, portIndex); }}
+                title="Add value node"
+              >
+                {(port.defaultValue as number) ?? 0}
+              </button>
+            )}
           </div>
-        )}
-        {typeDef.outputs.length > 0 && (
-          <div className="space-y-0.5">
-            {typeDef.outputs.map((port) => (
-              <div key={port.id} className="text-[10px] font-mono text-zinc-500 text-right pr-2">
-                {port.label}
-              </div>
-            ))}
+        ))}
+
+        {/* Output port rows */}
+        {typeDef.outputs.map((port) => (
+          <div key={`out-${port.id}`} className="relative flex items-center h-[22px]">
+            <span className="text-[10px] font-mono text-zinc-500 text-right pr-3 flex-1">
+              {port.label}
+            </span>
+            <Handle
+              type="source"
+              position={Position.Right}
+              id={port.id}
+              style={{
+                width: 8,
+                height: 8,
+                backgroundColor: PORT_COLORS[port.type as PortType],
+                border: '2px solid #27272a',
+              }}
+            />
           </div>
-        )}
+        ))}
       </div>
-
-      {/* Input handles */}
-      {typeDef.inputs.map((port, i) => (
-        <Handle
-          key={`in-${port.id}`}
-          type="target"
-          position={Position.Left}
-          id={port.id}
-          style={{
-            top: `${50 + i * 18}%`,
-            width: 8,
-            height: 8,
-            backgroundColor: PORT_COLORS[port.type as PortType],
-            border: '2px solid #27272a',
-          }}
-        />
-      ))}
-
-      {/* Output handles */}
-      {typeDef.outputs.map((port, i) => (
-        <Handle
-          key={`out-${port.id}`}
-          type="source"
-          position={Position.Right}
-          id={port.id}
-          style={{
-            top: `${50 + i * 18}%`,
-            width: 8,
-            height: 8,
-            backgroundColor: PORT_COLORS[port.type as PortType],
-            border: '2px solid #27272a',
-          }}
-        />
-      ))}
     </div>
   );
 });
+

@@ -13,7 +13,7 @@
 
 'use client';
 
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import type { PanelProps } from '@/layout/types';
 import { NodeEditorCanvas } from '@/components/nodes/NodeEditorCanvas';
 import { NodeEditorToolbar } from '@/components/nodes/NodeEditorToolbar';
@@ -24,6 +24,8 @@ import { registerBuiltinNodes } from '@/engine/nodes/builtinNodes';
 import { nodeTypeRegistry } from '@/engine/nodes/NodeTypeRegistry';
 import { useExpressionStore } from '@/store/expressionStore';
 import { commandRegistry } from '@/commands/CommandRegistry';
+import { layoutStoreActions } from '@/store/layoutStore';
+import { getObjectProperties } from '@/engine/nodes/sceneDataResolver';
 import type { NodeGraph } from '@/engine/nodes/types';
 
 // Register builtin nodes once
@@ -37,16 +39,51 @@ function ensureNodesRegistered() {
 
 const EMPTY_GRAPH: NodeGraph = { nodes: [], edges: [] };
 
-export function NodeEditorPanel({ config }: PanelProps) {
+/** Build an initial ObjectNode graph for a property, or return null */
+function buildInitGraph(initProperty: string): NodeGraph | null {
+  const props = getObjectProperties('cell-type', 'default');
+  if (props.length === 0) return null;
+  return {
+    nodes: [{
+      id: '1',
+      type: 'ObjectNode',
+      position: { x: 0, y: 0 },
+      data: {
+        objectKind: 'cell-type' as const,
+        objectId: 'default',
+        objectName: 'Default Cell',
+        enabledInputs: [initProperty],
+        enabledOutputs: [initProperty],
+        availableProperties: props,
+      },
+    }],
+    edges: [],
+  };
+}
+
+export function NodeEditorPanel({ panelId, config }: PanelProps) {
   ensureNodesRegistered();
 
   const [selectedTagId, setSelectedTagId] = useState<string | undefined>(
     config?.tagId as string | undefined,
   );
+
+  // Sync when config.tagId is changed externally (e.g. from ui.toggleNodeEditor command)
+  useEffect(() => {
+    const configTagId = config?.tagId as string | undefined;
+    if (configTagId && configTagId !== selectedTagId) {
+      setSelectedTagId(configTagId);
+    }
+  }, [config?.tagId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const [graph, setGraph] = useState<NodeGraph>(EMPTY_GRAPH);
+  const graphRef = useRef<NodeGraph>(EMPTY_GRAPH);
   const [compiledCode, setCompiledCode] = useState('');
   const [showCode, setShowCode] = useState(false);
   const [syncStatus, setSyncStatus] = useState<'synced' | 'code-edited' | 'code-only'>('code-only');
+
+  // Auto-init: if config.initProperty is set, seed an ObjectNode once
+  const initDoneRef = useRef(false);
 
   // Get all tags for the selector
   const tags = useExpressionStore((s) => s.tags);
@@ -68,6 +105,7 @@ export function NodeEditorPanel({ config }: PanelProps) {
     if (!tag) return;
 
     if (tag.nodeGraph) {
+      graphRef.current = tag.nodeGraph;
       setGraph(tag.nodeGraph);
       const result = compileNodeGraph(tag.nodeGraph);
       setCompiledCode(result.code);
@@ -75,25 +113,38 @@ export function NodeEditorPanel({ config }: PanelProps) {
     } else if (tag.code) {
       const recovered = decompileCode(tag.code);
       if (recovered) {
+        graphRef.current = recovered;
         setGraph(recovered);
         const result = compileNodeGraph(recovered);
         setCompiledCode(result.code);
         setSyncStatus('synced');
       } else {
+        graphRef.current = EMPTY_GRAPH;
         setGraph(EMPTY_GRAPH);
         setCompiledCode(tag.code);
         setSyncStatus('code-only');
       }
+    } else if (!initDoneRef.current && config?.initProperty) {
+      // Tag is blank (no graph, no code) — seed with an ObjectNode if initProperty is set
+      const initGraph = buildInitGraph(config.initProperty as string);
+      if (initGraph) {
+        initDoneRef.current = true;
+        graphRef.current = initGraph;
+        setGraph(initGraph);
+        setSyncStatus('code-edited');
+      }
     }
-  }, [selectedTagId, tags]);
+  }, [selectedTagId, tags]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Handle graph changes from canvas
   const onGraphChange = useCallback(
     (newGraph: NodeGraph) => {
+      graphRef.current = newGraph;
       setGraph(newGraph);
       try {
         const result = compileNodeGraph(newGraph);
-        setCompiledCode(result.code);
+        const cleanCode = result.code.split('\n').filter((l) => !l.startsWith('# @nodegraph:')).join('\n');
+        setCompiledCode(cleanCode);
         setSyncStatus('synced');
       } catch {
         setSyncStatus('code-edited');
@@ -102,24 +153,27 @@ export function NodeEditorPanel({ config }: PanelProps) {
     [],
   );
 
-  // Compile and push to tag
+  // Compile and push to tag — uses graphRef for always-latest data
   const onCompile = useCallback(() => {
-    if (!selectedTagId || graph.nodes.length === 0) return;
+    const currentGraph = graphRef.current;
+    if (!selectedTagId || currentGraph.nodes.length === 0) return;
     try {
-      const result = compileNodeGraph(graph);
-      setCompiledCode(result.code);
+      const result = compileNodeGraph(currentGraph);
+      // Strip the @nodegraph comment — the graph is stored separately via nodeGraph field
+      const cleanCode = result.code.split('\n').filter((l) => !l.startsWith('# @nodegraph:')).join('\n');
+      setCompiledCode(cleanCode);
       commandRegistry.execute('tag.edit', {
         id: selectedTagId,
-        code: result.code,
+        code: cleanCode,
         inputs: result.inputs,
         outputs: result.outputs,
-        nodeGraph: graph,
+        nodeGraph: currentGraph,
       });
       setSyncStatus('synced');
     } catch (e) {
       console.error('Compile error:', e);
     }
-  }, [selectedTagId, graph]);
+  }, [selectedTagId]);
 
   // Auto-layout (simple left-to-right placement)
   const onAutoLayout = useCallback(() => {
@@ -170,8 +224,12 @@ export function NodeEditorPanel({ config }: PanelProps) {
   }, []);
 
   const onTagChange = useCallback((id: string) => {
-    setSelectedTagId(id || undefined);
-  }, []);
+    const tagId = id || undefined;
+    setSelectedTagId(tagId);
+    const tag = tags.find((t) => t.id === tagId);
+    const label = tag ? `Nodes: ${tag.name}` : undefined;
+    layoutStoreActions.updatePanelConfig(panelId, { tagId, label });
+  }, [panelId, tags]);
 
   return (
     <div className="flex flex-col w-full h-full bg-zinc-950 text-zinc-300">

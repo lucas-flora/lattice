@@ -189,8 +189,9 @@ function VariableAddForm({ onClose }: { onClose: () => void }) {
   const [name, setName] = useState('');
   const [value, setValue] = useState('');
   const [type, setType] = useState<'float' | 'int' | 'string'>('float');
+  const [error, setError] = useState('');
 
-  const handleAdd = useCallback(() => {
+  const handleAdd = useCallback(async () => {
     if (!name.trim()) return;
     let parsed: number | string;
     if (type === 'string') {
@@ -201,18 +202,25 @@ function VariableAddForm({ onClose }: { onClose: () => void }) {
     } else {
       parsed = parseNum(value, 0);
     }
-    commandRegistry.execute('var.set', { name: name.trim(), value: parsed });
+    const result = await commandRegistry.execute('var.set', { name: name.trim(), value: parsed });
+    if (result && !result.success) {
+      setError(result.error ?? 'Failed to set variable');
+      return;
+    }
     onClose();
   }, [name, value, type, onClose]);
 
   return (
     <div className="bg-zinc-900 border border-zinc-700/50 rounded p-1.5 space-y-1 mb-1" data-testid="var-add-form">
+      {error && (
+        <div className="text-[10px] font-mono text-red-400 px-1">{error}</div>
+      )}
       <div className="flex gap-1 items-center">
         <input
           className="flex-1 min-w-0 bg-zinc-800 text-[11px] text-zinc-200 rounded px-1.5 py-0.5 font-mono outline-none focus:ring-1 focus:ring-green-500/50"
           placeholder="name"
           value={name}
-          onChange={(e) => setName(e.target.value)}
+          onChange={(e) => { setName(e.target.value); setError(''); }}
           onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
           data-testid="var-name-input"
           autoFocus

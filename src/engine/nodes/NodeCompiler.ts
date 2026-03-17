@@ -3,12 +3,12 @@
  *
  * 1. Topological sort nodes by edges
  * 2. Each node emits Python via its compile() function
- * 3. Temp variables: _n{id} per node
- * 4. PropertyWrite nodes emit assignments
+ * 3. Single-use expressions are inlined (no temp vars)
+ * 4. Multi-use expressions get readable variable names
  * 5. Embeds the full NodeGraph as a @nodegraph JSON comment for round-trip
  */
 
-import type { NodeGraph, CompilationResult, Edge, NodeInstance } from './types';
+import type { NodeGraph, CompilationResult, Edge, NodeInstance, ObjectNodeData } from './types';
 import { nodeTypeRegistry } from './NodeTypeRegistry';
 
 /**
@@ -55,6 +55,11 @@ export function topologicalSort(nodes: NodeInstance[], edges: Edge[]): string[] 
 
 /**
  * Compile a NodeGraph into Python code + input/output declarations.
+ *
+ * Inlines single-use expressions for clean output. A graph like:
+ *   ObjectNode(age) → RangeMap(0,20,1,0) → ObjectNode(alpha)
+ * compiles to:
+ *   self.alpha = ((cell['age'] - 0) / (20 - 0) * (0 - 1) + 1)
  */
 export function compileNodeGraph(graph: NodeGraph): CompilationResult {
   const { nodes, edges } = graph;
@@ -65,24 +70,87 @@ export function compileNodeGraph(graph: NodeGraph): CompilationResult {
 
   const sorted = topologicalSort(nodes, edges);
 
-  // Map: nodeId → NodeInstance for quick lookup
   const nodeMap = new Map<string, NodeInstance>();
   for (const node of nodes) {
     nodeMap.set(node.id, node);
   }
 
-  // Map: "targetId:targetPort" → expression string
-  // Pre-populated from edges: target port gets source node's output expression
+  // Count how many downstream edges consume each source port
+  const portUsage = new Map<string, number>();
+  for (const edge of edges) {
+    const key = `${edge.source}:${edge.sourcePort}`;
+    portUsage.set(key, (portUsage.get(key) ?? 0) + 1);
+  }
+
+  // Map: "targetId:targetPort" → expression string (may be inlined or a var name)
   const portExprs = new Map<string, string>();
 
-  // Track inputs and outputs for the compiled expression
   const inputs: string[] = [];
   const outputs: string[] = [];
-
   const lines: string[] = [];
+  const usedVarNames = new Set<string>();
 
   for (const nodeId of sorted) {
     const node = nodeMap.get(nodeId)!;
+
+    // --- ObjectNode special case ---
+    if (node.type === 'ObjectNode') {
+      const od = node.data as unknown as ObjectNodeData;
+      const kind = od.objectKind;
+
+      const readExpr = (prop: string) => {
+        if (kind === 'cell-type') return `cell['${prop}']`;
+        if (kind === 'environment') return `env['${prop}']`;
+        return `glob['${prop}']`;
+      };
+      const writeStmt = (prop: string, val: string) => {
+        if (kind === 'cell-type') return `self.${prop} = ${val}`;
+        if (kind === 'environment') return `env['${prop}'] = ${val}`;
+        return `glob['${prop}'] = ${val}`;
+      };
+      const addrPrefix = kind === 'cell-type' ? 'cell' : kind === 'environment' ? 'env' : 'global';
+
+      // Outputs (right side) → reads from object, sends downstream
+      for (const prop of od.enabledOutputs ?? []) {
+        const addr = `${addrPrefix}.${prop}`;
+        if (!inputs.includes(addr)) inputs.push(addr);
+
+        const portKey = `out_${prop}`;
+        const usage = portUsage.get(`${nodeId}:${portKey}`) ?? 0;
+        const outEdges = edges.filter((e) => e.source === nodeId && e.sourcePort === portKey);
+
+        if (usage <= 1) {
+          // Single use → inline the read expression directly
+          for (const edge of outEdges) {
+            portExprs.set(`${edge.target}:${edge.targetPort}`, readExpr(prop));
+          }
+        } else {
+          // Multiple consumers → use property name as variable
+          let varName = prop;
+          if (usedVarNames.has(varName)) varName = `_${prop}_${nodeId}`;
+          usedVarNames.add(varName);
+          lines.push(`${varName} = ${readExpr(prop)}`);
+          for (const edge of outEdges) {
+            portExprs.set(`${edge.target}:${edge.targetPort}`, varName);
+          }
+        }
+      }
+
+      // Inputs (left side) → receives from upstream, writes to object
+      for (const prop of od.enabledInputs ?? []) {
+        const key = `${nodeId}:in_${prop}`;
+        const inputVal = portExprs.get(key);
+        if (inputVal) {
+          lines.push(writeStmt(prop, inputVal));
+          const addr = `${addrPrefix}.${prop}`;
+          if (!outputs.includes(addr)) outputs.push(addr);
+        }
+      }
+
+      continue;
+    }
+
+    // --- Standard node compilation ---
     const typeDef = nodeTypeRegistry.get(node.type);
     if (!typeDef) {
       lines.push(`# Unknown node type: ${node.type}`);
@@ -100,10 +168,10 @@ export function compileNodeGraph(graph: NodeGraph): CompilationResult {
       }
     }
 
-    // Compile this node
+    // Compile this node's expression
     const expr = typeDef.compile(inputExprs, node.data);
 
-    // Track property reads/writes for input/output declarations
+    // Track property reads/writes
     if (node.type === 'PropertyRead') {
       const addr = (node.data.address as string) ?? 'cell.alive';
       if (!inputs.includes(addr)) inputs.push(addr);
@@ -113,19 +181,25 @@ export function compileNodeGraph(graph: NodeGraph): CompilationResult {
       if (!outputs.includes(addr)) outputs.push(addr);
     }
 
-    // PropertyWrite emits a direct assignment, not a temp var
+    // PropertyWrite emits a direct assignment
     if (node.type === 'PropertyWrite') {
       lines.push(expr);
-    } else {
-      // Create temp variable for non-write nodes
-      const varName = `_n${nodeId}`;
-      lines.push(`${varName} = ${expr}`);
+      continue;
+    }
 
-      // Propagate this node's output to all connected downstream ports
-      for (const edge of edges) {
-        if (edge.source === nodeId) {
-          portExprs.set(`${edge.target}:${edge.targetPort}`, varName);
-        }
+    // Check downstream usage — inline if single consumer
+    const outEdges = edges.filter((e) => e.source === nodeId);
+    if (outEdges.length <= 1) {
+      // Single use (or unused) → inline the expression, no temp var
+      for (const edge of outEdges) {
+        portExprs.set(`${edge.target}:${edge.targetPort}`, expr);
+      }
+    } else {
+      // Multiple consumers → emit a readable temp var
+      const varName = `_${node.type.toLowerCase()}_${nodeId}`;
+      lines.push(`${varName} = ${expr}`);
+      for (const edge of outEdges) {
+        portExprs.set(`${edge.target}:${edge.targetPort}`, varName);
       }
     }
   }

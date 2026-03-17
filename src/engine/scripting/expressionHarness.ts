@@ -27,9 +27,18 @@ export function buildExpressionHarness(
   const exprEntries = Object.entries(expressions);
 
   const exprBlocks = exprEntries
+    .filter(([, expr]) => expr.trim().length > 0)
     .map(([prop, expr]) => {
       // Detect multi-line / assignment-style code vs single expression
       const isStatement = expr.includes('\n') || expr.includes('=');
+      // After each expression, propagate its result back to cell dict and shorthands
+      // so subsequent expressions see updated values (e.g., alive can read alpha's result).
+      const propagate = `
+    # Propagate result so downstream expressions see it
+    _upd = _output_buffers['${prop}']
+    cell['${prop}'] = _upd.reshape((height, width)) if height > 1 else _upd.copy()
+    globals()['${prop}'] = cell['${prop}']`;
+
       if (isStatement) {
         // Statement mode: exec the code block, then read self.<prop> for output
         const indentedCode = expr.split('\n').map(line => `    ${line}`).join('\n');
@@ -44,6 +53,7 @@ ${indentedCode}
             _output_buffers['${prop}'] = _val.astype(np.float32).ravel()
         elif isinstance(_val, (int, float)):
             _output_buffers['${prop}'] = np.full(_total_cells, float(_val), dtype=np.float32)
+${propagate}
 except Exception as _e:
     pass  # Expression errors are silently skipped
 `;
@@ -58,6 +68,7 @@ try:
         _output_buffers['${prop}'] = _expr_result.astype(np.float32).ravel()
     else:
         _output_buffers['${prop}'] = np.full(_total_cells, float(_expr_result), dtype=np.float32)
+${propagate}
 except Exception as _e:
     pass  # Expression errors are silently skipped
 `;

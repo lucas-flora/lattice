@@ -90,6 +90,13 @@ function TagEditForm({
         </label>
         <div className="ml-auto flex gap-1">
           <button
+            className="text-[11px] text-cyan-400 hover:text-cyan-300 border border-cyan-400/30 hover:border-cyan-400/50 rounded px-1.5 py-0.5 cursor-pointer"
+            onClick={() => commandRegistry.execute('ui.toggleNodeEditor', { tagId: tag.id })}
+            title="Open in Node Editor"
+          >
+            Nodes
+          </button>
+          <button
             className="text-[11px] bg-green-600 hover:bg-green-500 text-white rounded px-1.5 py-0.5 cursor-pointer"
             onClick={() => onApply({ name, code, phase })}
             data-testid="tag-row-apply"
@@ -147,6 +154,10 @@ export function TagRow({ tag }: TagRowProps) {
     setExpanded(false);
   }, []);
 
+  const handleOpenNodeEditor = useCallback(() => {
+    commandRegistry.execute('ui.toggleNodeEditor', { tagId: tag.id });
+  }, [tag.id]);
+
   return (
     <div className="bg-zinc-800 rounded px-1.5 py-1 group" data-testid="tag-row">
       {/* --- Collapsed row (always visible) --- */}
@@ -191,6 +202,16 @@ export function TagRow({ tag }: TagRowProps) {
         >
           {tag.phase === 'pre-rule' ? 'pre' : tag.phase === 'rule' ? 'rule' : 'post'}
         </span>
+
+        {/* Open in Node Editor */}
+        <button
+          onClick={handleOpenNodeEditor}
+          className="text-[9px] text-cyan-400/60 hover:text-cyan-400 cursor-pointer shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+          title="Open in Node Editor"
+          data-testid="tag-row-node-editor"
+        >
+          {'{\u22EF}'}
+        </button>
 
         {/* ON/OFF toggle */}
         <button

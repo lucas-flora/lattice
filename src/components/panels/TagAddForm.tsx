@@ -52,16 +52,16 @@ export function TagAddForm({ onClose, defaultSource = 'code', defaultTarget = ''
   const [scriptInputs, setScriptInputs] = useState('');
   const [scriptOutputs, setScriptOutputs] = useState('');
 
-  const handleSubmit = useCallback(() => {
+  const handleSubmitAndReturn = useCallback(async () => {
+    let result: { success: boolean; data?: Record<string, unknown> } | undefined;
     if (source === 'code') {
-      commandRegistry.execute('tag.add', {
+      result = await commandRegistry.execute('tag.add', {
         source: 'code',
         property: exprProperty,
         code: exprCode,
         phase: 'post-rule',
-      });
+      }) as { success: boolean; data?: Record<string, unknown> };
     } else if (source === 'link') {
-      // Link wizard: generates a code tag with rangeMap() expression + linkMeta for fast-path
       const sRange: [number, number] = [parseNum(srcMin, 0), parseNum(srcMax, 1)];
       const tRange: [number, number] = [parseNum(tgtMin, 0), parseNum(tgtMax, 1)];
       const linkMeta = {
@@ -71,9 +71,8 @@ export function TagAddForm({ onClose, defaultSource = 'code', defaultTarget = ''
         easing,
       };
       const code = generateLinkCode(linkMeta, linkTarget);
-      // Extract target property name from address (e.g. "cell.alpha" → "alpha")
       const targetProp = linkTarget.startsWith('cell.') ? linkTarget.slice(5) : linkTarget;
-      commandRegistry.execute('tag.add', {
+      result = await commandRegistry.execute('tag.add', {
         source: 'code',
         property: targetProp,
         code,
@@ -81,7 +80,7 @@ export function TagAddForm({ onClose, defaultSource = 'code', defaultTarget = ''
         linkMeta,
         sourceAddress: linkSource,
         targetAddress: linkTarget,
-      });
+      }) as { success: boolean; data?: Record<string, unknown> };
     } else if (source === 'script') {
       const inputs = scriptInputs
         .split(',')
@@ -91,16 +90,17 @@ export function TagAddForm({ onClose, defaultSource = 'code', defaultTarget = ''
         .split(',')
         .map((s) => s.trim())
         .filter(Boolean);
-      commandRegistry.execute('tag.add', {
+      result = await commandRegistry.execute('tag.add', {
         source: 'script',
         name: scriptName || 'untitled',
         code: scriptCode,
         inputs,
         outputs,
         phase: 'post-rule',
-      });
+      }) as { success: boolean; data?: Record<string, unknown> };
     }
     onClose();
+    return result;
   }, [
     source,
     exprProperty,
@@ -118,6 +118,10 @@ export function TagAddForm({ onClose, defaultSource = 'code', defaultTarget = ''
     scriptOutputs,
     onClose,
   ]);
+
+  const handleSubmit = useCallback(() => {
+    handleSubmitAndReturn();
+  }, [handleSubmitAndReturn]);
 
   return (
     <div
@@ -271,6 +275,25 @@ export function TagAddForm({ onClose, defaultSource = 'code', defaultTarget = ''
           data-testid="tag-add-cancel"
         >
           Cancel
+        </button>
+        <button
+          onClick={async () => {
+            // Create the tag and get its ID, then open a node editor tab for it
+            const result = await handleSubmitAndReturn();
+            if (result?.success && result.data?.id) {
+              // Pass the target property so the node editor can auto-create an ObjectNode
+              const initProperty = source === 'code' ? exprProperty : undefined;
+              commandRegistry.execute('ui.toggleNodeEditor', {
+                tagId: result.data.id as string,
+                initProperty,
+              });
+            }
+          }}
+          className="text-[11px] font-mono text-cyan-400 hover:text-cyan-300 border border-cyan-400/30 hover:border-cyan-400/50 px-1.5 py-0.5 rounded cursor-pointer"
+          data-testid="tag-add-node-editor"
+          title="Add tag and open in Node Editor"
+        >
+          + Nodes
         </button>
         <button
           onClick={handleSubmit}

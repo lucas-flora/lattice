@@ -23,6 +23,7 @@ import { commandRegistry } from '@/commands/CommandRegistry';
 import { useLayoutStore, layoutStoreActions } from '@/store/layoutStore';
 import { useUiStore } from '@/store/uiStore';
 import { useSimStore } from '@/store/simStore';
+import { HUD } from '@/components/hud/HUD';
 
 /** Props for multi-viewport support */
 interface SimulationViewportProps {
@@ -440,6 +441,9 @@ export function SimulationViewport({ viewportId = 'viewport-1' }: SimulationView
           {viewportId.replace('-', ' ').replace(/\b\w/g, (c) => c.toUpperCase())}
         </div>
       )}
+
+      {/* HUD — scoped to this viewport */}
+      <HUD />
 
       {/* Fullscreen toggle */}
       <button

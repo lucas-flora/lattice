@@ -299,7 +299,7 @@ export class ExpressionTagRegistry {
   getPostRuleExpressions(): Record<string, string> {
     const expressions: Record<string, string> = {};
     for (const tag of this.tags.values()) {
-      if (!tag.enabled || tag.phase !== 'post-rule' || tag.source !== 'code') continue;
+      if (!tag.enabled || tag.phase !== 'post-rule' || tag.source !== 'code' || !tag.code.trim()) continue;
       // For code/script tags, map each output property to the code
       for (const output of tag.outputs) {
         const addr = parseAddress(output);

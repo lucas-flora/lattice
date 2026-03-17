@@ -22,7 +22,17 @@ export interface PortDefinition {
 }
 
 /** Category for node grouping in the add menu */
-export type NodeCategory = 'property' | 'math' | 'range' | 'logic' | 'utility';
+export type NodeCategory = 'property' | 'math' | 'range' | 'logic' | 'utility' | 'object';
+
+/** Data stored on an ObjectNode instance */
+export interface ObjectNodeData {
+  objectKind: 'cell-type' | 'environment' | 'globals';
+  objectId: string;
+  objectName: string;
+  enabledInputs: string[];
+  enabledOutputs: string[];
+  availableProperties: Array<{ name: string; portType: PortType }>;
+}
 
 /** Static definition of a node type (registered once) */
 export interface NodeTypeDefinition {

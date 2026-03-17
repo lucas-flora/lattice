@@ -340,6 +340,20 @@ const Coordinates: NodeTypeDefinition = {
 };
 
 // ---------------------------------------------------------------------------
+// Object node (skeleton — ports are dynamic, compiler special-cases this)
+// ---------------------------------------------------------------------------
+
+const ObjectNode: NodeTypeDefinition = {
+  type: 'ObjectNode',
+  label: 'Object',
+  category: 'object',
+  inputs: [],
+  outputs: [],
+  hasData: true,
+  compile: () => '# ObjectNode — compiled via special case',
+};
+
+// ---------------------------------------------------------------------------
 // Registration
 // ---------------------------------------------------------------------------
 
@@ -354,6 +368,8 @@ const ALL_NODES: NodeTypeDefinition[] = [
   Compare, And, Or, Not, Select,
   // Utility
   Random, Sum, Mean, MaxNode, MinNode, Count, Coordinates,
+  // Object
+  ObjectNode,
 ];
 
 export function registerBuiltinNodes(): void {

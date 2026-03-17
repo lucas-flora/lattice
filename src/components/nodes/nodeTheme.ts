@@ -19,6 +19,7 @@ export const CATEGORY_COLORS: Record<NodeCategory, string> = {
   range: '#c084fc',    // purple-400
   logic: '#fbbf24',    // amber-400
   utility: '#f472b6',  // pink-400
+  object: '#22d3ee',   // cyan-400
 };
 
 /** Category → label */
@@ -28,4 +29,5 @@ export const CATEGORY_LABELS: Record<NodeCategory, string> = {
   range: 'Range',
   logic: 'Logic',
   utility: 'Utility',
+  object: 'Objects',
 };

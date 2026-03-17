@@ -95,3 +95,20 @@ input[type="range"]:disabled::-webkit-slider-thumb {
 input[type="range"]:disabled::-moz-range-thumb {
   background: #52525b;
 }
+
+/* ── React Flow: enlarge handle hit area for easier connections ── */
+.react-flow__handle {
+  /* Visual dot stays small but hit area is 20x20 via ::after */
+  position: absolute;
+}
+
+.react-flow__handle::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 20px;
+  height: 20px;
+  transform: translate(-50%, -50%);
+  pointer-events: auto;
+}

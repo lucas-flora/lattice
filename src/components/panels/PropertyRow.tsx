@@ -236,15 +236,24 @@ export function PropertyRow({ name, type, defaultValue, role, isInherent, expres
             >
               Delete
             </button>
-            {dirty && (
+            <div className="flex items-center gap-1">
               <button
-                onClick={handleSave}
-                className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-green-500/20 text-green-400 hover:bg-green-500/30 cursor-pointer"
-                data-testid="expression-save"
+                onClick={() => commandRegistry.execute('ui.toggleNodeEditor', { tagId: expression.id })}
+                className="text-[9px] font-mono px-1.5 py-0.5 rounded text-cyan-400 border border-cyan-400/30 hover:border-cyan-400/50 hover:text-cyan-300 cursor-pointer"
+                title="Open in Node Editor"
               >
-                Apply
+                Nodes
               </button>
-            )}
+              {dirty && (
+                <button
+                  onClick={handleSave}
+                  className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-green-500/20 text-green-400 hover:bg-green-500/30 cursor-pointer"
+                  data-testid="expression-save"
+                >
+                  Apply
+                </button>
+              )}
+            </div>
           </div>
         </div>
       )}

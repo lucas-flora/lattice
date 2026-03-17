@@ -39,11 +39,30 @@ The node editor is a visual authoring surface for ExpressionTag code. Nodes comp
 
 1. Topological sort of nodes by edges
 2. Each node emits a Python code fragment via `compile(inputExprs, data)`
-3. Temp variables: `_n{id}` per node
-4. PropertyWrite nodes emit `self.{prop} = _n{id}`
-5. Collect `inputs[]` from PropertyRead addresses, `outputs[]` from PropertyWrite addresses
-6. Generated code includes `# @nodegraph: {json}` comment for round-trip
+3. **Inlining:** Single-use expressions are inlined — no temp vars. Multi-use nodes get readable variable names
+4. ObjectNode outputs read from object (`cell['prop']`), ObjectNode inputs write to object (`self.prop = expr`)
+5. Collect `inputs[]` from read addresses, `outputs[]` from write addresses
+6. `nodeGraph` is stored on the tag separately (not embedded in code)
 7. Code feeds into the existing expression harness unchanged
+
+### Clean Output Examples
+
+Simple comparison: `ObjectNode(alpha) → Compare(> 0) → ObjectNode(alive)`
+```python
+self.alive = (cell['alpha'] > 0)
+```
+
+Range mapping: `ObjectNode(age) → RangeMap(0,20,1,0) → ObjectNode(alpha)`
+```python
+self.alpha = ((cell['age'] - 0) / (20 - 0) * (0 - 1) + 1)
+```
+
+When a node's output feeds multiple consumers, a named temp var is emitted:
+```python
+age = cell['age']
+self.alpha = ((age - 0) / (20 - 0) * (0 - 1) + 1)
+self.colorR = age / 100
+```
 
 ## Round-Trip Strategy
 
@@ -104,6 +123,118 @@ src/commands/definitions/
 | `node.disconnect` | `{ tagId, edgeId }` | Remove edge |
 | `node.openEditor` | `{ tagId? }` | Open/focus node editor panel |
 | `node.autoLayout` | `{ tagId }` | Auto-arrange nodes using dagre |
+
+## Object Nodes (v2)
+
+C4D-style nodes that represent an entire scene object (cell type, environment, or globals)
+with separate input and output property columns.
+
+### Data Model
+
+```ts
+interface ObjectNodeData {
+  objectKind: 'cell-type' | 'environment' | 'globals';
+  objectId: string;          // cell type ID, 'env', or 'globals'
+  objectName: string;        // display name
+  enabledInputs: string[];   // property names with input ports
+  enabledOutputs: string[];  // property names with output ports
+  availableProperties: Array<{ name: string; portType: PortType }>;
+}
+```
+
+Port IDs: `in_{propName}` for inputs, `out_{propName}` for outputs.
+
+### Visual Layout
+
+```
+┌─────────────────────────────────┐
+│  ● Default Cell                 │  ← cyan-400 header
+├────────────────┬────────────────┤
+│   INPUTS       │      OUTPUTS   │
+│ ○ alive        │     alive ○    │  ← enabled = colored handle
+│ ○ age          │       age ○    │
+│   colorR       │    colorR ○    │  ← disabled = dimmed, no handle
+│   colorG       │                │
+├────────────────┴────────────────┤
+│  [Show all properties]          │
+└─────────────────────────────────┘
+```
+
+### Compilation
+
+ObjectNode is special-cased in NodeCompiler:
+- **Enabled outputs (right side):** READ from object — emit `cell['{prop}']` or named var if multi-use
+- **Enabled inputs (left side):** WRITE to object — emit `self.{prop} = {incomingExpr}`
+- Properties tracked in `inputs[]`/`outputs[]` for tag declarations
+- Self-connections blocked (`isValidConnection` rejects same-node wiring)
+
+### Scene Data Resolution
+
+`sceneDataResolver.ts` enumerates available objects from stores:
+- **Cell types:** from `simStore.cellTypes` or `simStore.cellProperties`
+- **Environment:** from `simStore.paramDefs`
+- **Globals:** from `scriptStore.globalVariables`
+
+### Add-Node Menu (Hierarchical)
+
+```
+Objects ▸
+  Cell Types ▸
+    Default Cell → adds ObjectNode
+    Organism     → adds ObjectNode
+  Environment    → adds ObjectNode
+  Globals        → adds ObjectNode
+Math ▸
+  Add, Subtract, ...
+Range ▸
+  ...
+Logic ▸
+  ...
+Utility ▸
+  ...
+Property (advanced) ▸
+  Read Property, Write Property, Constant, Time
+```
+
+Search flattens all items and matches object names + node labels.
+
+### Per-Tag Editor Tabs
+
+Each tag opens in its own dedicated node editor tab:
+- `ui.toggleNodeEditor({ tagId })` creates a new tab labeled `Nodes: {tagName}`
+- Dynamic tabs are closable (close button on hover)
+- Opening from PropertyRow, TagRow, or TagAddForm all use the same mechanism
+- Opening from a property's `+ Nodes` button seeds the canvas with an ObjectNode for that property
+- Tab contents stay mounted when switching tabs (state preserved without compiling)
+
+### Panel State Persistence
+
+`selectedTagId` is persisted to the panel's `config` in the layout tree via
+`layoutStoreActions.updatePanelConfig(panelId, { tagId })`. Survives tab switches
+and supports multiple node editor panels with independent tag bindings.
+
+### Expression Execution Order
+
+When multiple post-rule expressions exist, each expression's output is propagated
+back to the `cell` dict before the next expression runs. This means expression B
+can read expression A's result within the same tick (e.g., `alive` can depend on
+`alpha`'s computed value).
+
+### Cache Invalidation
+
+- **Tag code/phase edits:** Full cache invalidation from frame 0 + reset to start state
+- **Disabled tag edits:** No cache invalidation (tag isn't affecting output)
+- **Metadata-only edits (name, nodeGraph):** No cache invalidation
+- **Tag enable:** Full invalidation (tag starts affecting output)
+- **Tag disable:** Full invalidation (tag stops affecting output)
+- **Removing a disabled tag:** No cache invalidation
+
+### Future: Drag and Drop
+
+Not yet implemented:
+- Drag cell card from CardView → drop on canvas → ObjectNode
+- Drag property item → ObjectNode with single property exposed
+- Drag property onto existing ObjectNode left/right side → add to inputs/outputs
 
 ## Integration Points
 

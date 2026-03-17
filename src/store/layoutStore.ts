@@ -300,6 +300,43 @@ export const layoutStoreActions = {
     useLayoutStore.setState(partial);
   },
 
+  /** Update a PanelNode's config by walking all zone trees to find it by ID */
+  updatePanelConfig: (panelId: string, patch: Record<string, unknown>): void => {
+    const state = useLayoutStore.getState();
+    const zones = { ...state.zones };
+    let changed = false;
+
+    function walk(node: LayoutNode): LayoutNode {
+      if (node.type === 'panel') {
+        if (node.id === panelId) {
+          changed = true;
+          return { ...node, config: { ...node.config, ...patch } };
+        }
+        return node;
+      }
+      if (node.type === 'tabs' || node.type === 'split') {
+        const newChildren = node.children.map(walk);
+        if (newChildren.some((c, i) => c !== node.children[i])) {
+          return { ...node, children: newChildren };
+        }
+      }
+      return node;
+    }
+
+    for (const key of Object.keys(zones) as (keyof ZoneLayouts)[]) {
+      const tree = zones[key];
+      if (!tree) continue;
+      const newTree = walk(tree);
+      if (newTree !== tree) {
+        (zones as Record<string, LayoutNode | null>)[key] = newTree;
+      }
+    }
+
+    if (changed) {
+      useLayoutStore.setState({ zones });
+    }
+  },
+
   /** Reset layout to defaults */
   resetLayout: (): void => {
     useLayoutStore.setState({ ...DEFAULTS });
