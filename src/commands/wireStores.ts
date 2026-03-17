@@ -166,7 +166,7 @@ export function wireStores(eventBus: EventBus): () => void {
     expressionStoreActions.removeTag(payload.id);
   };
 
-  const onTagUpdated = (payload: { id: string; name?: string; enabled?: boolean; phase?: string; code?: string; source?: string }) => {
+  const onTagUpdated = (payload: { id: string; name?: string; enabled?: boolean; phase?: string; code?: string; source?: string; nodeGraph?: unknown; linkMeta?: unknown }) => {
     const { id, ...rest } = payload;
     expressionStoreActions.updateTag(id, rest as Partial<import('../engine/expression/types').ExpressionTag>);
   };

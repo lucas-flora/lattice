@@ -389,7 +389,7 @@ export function registerTagCommands(
       if (!updated) {
         return { success: false, error: `Failed to update tag "${p.id}"` };
       }
-      eventBus.emit('tag:updated', { id: p.id });
+      eventBus.emit('tag:updated', { id: p.id, ...patch });
 
       // Only invalidate cache if the tag is enabled AND output-affecting fields changed
       const affectsOutput = p.code !== undefined || p.phase !== undefined

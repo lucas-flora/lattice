@@ -274,18 +274,25 @@ export class SimulationController {
    * resets to frame 0 so the simulation replays cleanly from start state.
    */
   onTagChanged(): void {
-    this.invalidateCacheFrom(0);
-    // Reset playhead to 0 and restore initial state so the viewport
-    // shows a clean frame instead of stale/corrupted data
+    logMin('ctrl', `onTagChanged() — computedGen=${this.computedGeneration}, playbackGen=${this.playbackGeneration}, hasSnapshot=${!!this.initialSnapshot}`);
+    // Stop all in-flight computation first
+    this.stopComputeAhead();
+    // Clear all cached frames (tags changed → every frame is stale)
+    this.frameCache.clear();
+    this.computedGeneration = 0;
     this.playbackGeneration = 0;
-    if (this.initialSnapshot) {
-      this.restoreInitialState();
-    }
+    // Restore initial state BEFORE anything else touches the grid
+    this.restoreInitialState();
+    // Cache the clean initial frame
     this.cacheCurrentFrame();
     this.eventBus.emit('sim:tick', {
       generation: 0,
       liveCellCount: this.getLiveCellCount(),
     });
+    // Restart compute-ahead from clean state
+    if (this.computeAheadTarget > 0) {
+      this.computeAhead(this.computeAheadTarget);
+    }
   }
 
   /**
@@ -732,6 +739,7 @@ export class SimulationController {
     if (stateNode) {
       const buffers = stateNode.properties.buffers as Record<string, number[]> | undefined;
       if (buffers) {
+        logMin('ctrl', `restoreInitialState() — from scene store node "${stateNode.name}" (${Object.keys(buffers).length} props)`);
         for (const [propName, data] of Object.entries(buffers)) {
           const gridBuf = this.simulation.grid.getCurrentBuffer(propName);
           gridBuf.set(new Float32Array(data));
@@ -742,7 +750,11 @@ export class SimulationController {
     }
 
     // Fall back to in-memory snapshot
-    if (!this.initialSnapshot) return;
+    if (!this.initialSnapshot) {
+      logMin('ctrl', `restoreInitialState() — NO snapshot available, skipping`);
+      return;
+    }
+    logMin('ctrl', `restoreInitialState() — from in-memory snapshot (${this.initialSnapshot.size} props)`);
     for (const [propName, buffer] of this.initialSnapshot) {
       const currentBuf = this.simulation.grid.getCurrentBuffer(propName);
       currentBuf.set(buffer);
@@ -771,11 +783,17 @@ export class SimulationController {
    * Creates or updates the node under the first sim-root.
    */
   syncInitialStateToScene(): void {
-    if (!this.simulation || !this.initialSnapshot) return;
+    if (!this.simulation || !this.initialSnapshot) {
+      logMin('ctrl', `syncInitialStateToScene() — skipped (sim=${!!this.simulation}, snapshot=${!!this.initialSnapshot})`);
+      return;
+    }
 
     const { nodes } = useSceneStore.getState();
     const simRoots = Object.values(nodes).filter((n) => n.type === NODE_TYPES.SIM_ROOT);
-    if (simRoots.length === 0) return;
+    if (simRoots.length === 0) {
+      logMin('ctrl', `syncInitialStateToScene() — no sim-root in store, skipped`);
+      return;
+    }
     const simRootId = simRoots[0].id;
 
     // Convert Float32Array buffers to number[] for serialization
@@ -788,6 +806,7 @@ export class SimulationController {
 
     // Find existing initial-state node or create new
     const existing = this.findInitialStateNode();
+    logMin('ctrl', `syncInitialStateToScene() — ${existing ? 'updating' : 'creating'} state node under ${simRootId} (${propertyNames.length} props)`);
     if (existing) {
       sceneStoreActions.updateNode(existing.id, {
         properties: {
@@ -871,7 +890,7 @@ export class SimulationController {
     }
     // Cache the final frame too
     this.cacheCurrentFrame();
-    logMin('compute', `computeFrames done — computedGen=${this.computedGeneration}`);
+    logDbg('compute', `computeFrames done — computedGen=${this.computedGeneration}`);
 
     // Emit progress
     this.eventBus.emit('sim:computeProgress', { computedGeneration: this.computedGeneration });
@@ -891,7 +910,7 @@ export class SimulationController {
       return;
     }
     this.asyncComputeInFlight = true;
-    logMin('compute', `computeFramesAsync(${count}) START — simGen=${this.simulation.getGeneration()}, computedGen=${this.computedGeneration}, playbackGen=${this.playbackGeneration}, bridgeStatus=${this.pyodideBridge?.getStatus()}`);
+    logDbg('compute', `computeFramesAsync(${count}) START — simGen=${this.simulation.getGeneration()}, computedGen=${this.computedGeneration}, playbackGen=${this.playbackGeneration}, bridgeStatus=${this.pyodideBridge?.getStatus()}`);
 
     // Lock the display: renderer reads frozen snapshot while we compute freely
     const grid = this.simulation.grid;
@@ -922,7 +941,7 @@ export class SimulationController {
         this.cacheCurrentFrame();
       }
 
-      logMin('compute', `computeFramesAsync(${count}) DONE — computedGen=${this.computedGeneration}`);
+      logDbg('compute', `computeFramesAsync(${count}) DONE — computedGen=${this.computedGeneration}`);
       this.eventBus.emit('sim:computeProgress', { computedGeneration: this.computedGeneration });
     } catch (err) {
       logMin('compute', `computeFramesAsync ERROR: ${err}`);
@@ -1137,7 +1156,7 @@ export class SimulationController {
    */
   private runComputeAheadChunk(): void {
     if (this.computedGeneration >= this.computeAheadTarget) {
-      logMin('compute', `runComputeAheadChunk DONE — computedGen=${this.computedGeneration} >= target=${this.computeAheadTarget}`);
+      logDbg('compute', `runComputeAheadChunk DONE — computedGen=${this.computedGeneration} >= target=${this.computeAheadTarget}`);
       this.computeAheadTimer = null;
       return;
     }
@@ -1154,7 +1173,7 @@ export class SimulationController {
         this.computeAheadTimer = null;
         return;
       }
-      logMin('compute', `runComputeAheadChunk — launching async chunk of ${chunkSize}`);
+      logDbg('compute', `runComputeAheadChunk — launching async chunk of ${chunkSize}`);
       const chunkEpoch = this.computeEpoch;
       void this.computeFramesAsync(chunkSize).then(() => {
         // Don't continue if simulation was replaced

@@ -245,6 +245,8 @@ export function AppShell() {
       logMin('ctrl', `captureInitialState(${timelineDuration}) — controller.needsAsync=${controller.needsAsyncTick()}`);
       controller.captureInitialState(timelineDuration);
       commandRegistry.execute('scene.buildTree', {}).then(() => {
+        // Sync initial state after tree is built (scene store now has sim-root)
+        controller.syncInitialStateToScene();
         const { rootIds } = useSceneStore.getState();
         if (rootIds.length > 0) {
           commandRegistry.execute('scene.select', { id: rootIds[0] });
@@ -262,6 +264,8 @@ export function AppShell() {
     controller.captureInitialState(timelineDuration);
 
     commandRegistry.execute('scene.buildTree', {}).then(() => {
+      // Sync initial state after tree is built (scene store now has sim-root)
+      controller.syncInitialStateToScene();
       const { rootIds } = useSceneStore.getState();
       if (rootIds.length > 0) {
         commandRegistry.execute('scene.select', { id: rootIds[0] });
