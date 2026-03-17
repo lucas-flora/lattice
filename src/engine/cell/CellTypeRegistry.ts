@@ -162,7 +162,7 @@ export class CellTypeRegistry {
       // Backward compat: single default type from cell_properties
       registry.register({
         id: 'default',
-        name: preset.meta.name,
+        name: 'Default Cell',
         color: '#4ade80',
         properties: preset.cell_properties,
       });
