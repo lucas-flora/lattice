@@ -126,7 +126,15 @@ describe('Command Definitions', () => {
     expect(names).toContain('ui.toggleInspector');
     expect(names).toContain('ui.toggleMetrics');
 
-    expect(list.length).toBe(108);
+    // State commands
+    expect(names).toContain('state.capture');
+    expect(names).toContain('state.restore');
+    expect(names).toContain('state.setInitial');
+    expect(names).toContain('state.clearInitial');
+    expect(names).toContain('state.list');
+    expect(names).toContain('state.delete');
+
+    expect(list.length).toBe(114);
   });
 
   it('TestCommandDefinitions_SimPlay_StartsSimulation', async () => {

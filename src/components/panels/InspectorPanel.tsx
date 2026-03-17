@@ -25,6 +25,7 @@ import { SimRootSection } from './inspector/SimRootSection';
 import { CellTypeSection } from './inspector/CellTypeSection';
 import { EnvironmentSection } from './inspector/EnvironmentSection';
 import { GlobalsSection } from './inspector/GlobalsSection';
+import { StateSection } from './inspector/StateSection';
 import { TagRow } from './TagRow';
 
 /** Type icon map */
@@ -82,6 +83,7 @@ function InspectorContent() {
         {node.type === NODE_TYPES.CELL_TYPE && <CellTypeSection node={node} />}
         {node.type === NODE_TYPES.ENVIRONMENT && <EnvironmentSection node={node} />}
         {node.type === NODE_TYPES.GLOBALS && <GlobalsSection node={node} />}
+        {node.type === NODE_TYPES.INITIAL_STATE && <StateSection node={node} />}
         {node.type === NODE_TYPES.GROUP && (
           <div className="text-zinc-500 text-[11px]">
             Organizational container. {node.childIds.length} children.

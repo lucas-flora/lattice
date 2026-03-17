@@ -76,6 +76,7 @@ export function registerScriptCommands(
 
       const tag = tagRegistry.addFromScript(name, code, inputs ?? [], outputs ?? [], true);
       eventBus.emit('tag:added', tag);
+      controller.onTagChanged();
 
       return { success: true, data: { name } };
     },
@@ -100,8 +101,12 @@ export function registerScriptCommands(
         return { success: false, error: `Script "${name}" not found` };
       }
 
+      const wasEnabled = matchingTag.enabled;
       tagRegistry.remove(matchingTag.id);
       eventBus.emit('tag:removed', { id: matchingTag.id });
+      if (wasEnabled) {
+        controller.onTagChanged();
+      }
 
       return { success: true, data: { name } };
     },
@@ -128,6 +133,7 @@ export function registerScriptCommands(
 
       tagRegistry.enable(matchingTag.id);
       eventBus.emit('tag:updated', { id: matchingTag.id, enabled: true });
+      controller.onTagChanged();
 
       return { success: true, data: { name, enabled: true } };
     },
@@ -154,6 +160,7 @@ export function registerScriptCommands(
 
       tagRegistry.disable(matchingTag.id);
       eventBus.emit('tag:updated', { id: matchingTag.id, enabled: false });
+      controller.onTagChanged();
 
       return { success: true, data: { name, enabled: false } };
     },
@@ -194,9 +201,13 @@ export function registerScriptCommands(
       }
 
       const scriptTags = tagRegistry.getAll().filter((t) => t.source === 'script');
+      const hadEnabled = scriptTags.some((t) => t.enabled);
       for (const tag of scriptTags) {
         tagRegistry.remove(tag.id);
         eventBus.emit('tag:removed', { id: tag.id });
+      }
+      if (hadEnabled) {
+        controller.onTagChanged();
       }
 
       return { success: true, data: { removed: scriptTags.length } };

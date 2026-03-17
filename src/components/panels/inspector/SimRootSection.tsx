@@ -145,6 +145,19 @@ export const SimRootSection: React.FC<SimRootSectionProps> = ({ node }) => {
           </div>
         </div>
       </div>
+
+      {/* Capture State */}
+      <div>
+        <button
+          onClick={() => {
+            commandRegistry.execute('state.capture', { parentId: node.id });
+          }}
+          className="w-full text-xs font-mono px-2 py-1.5 rounded bg-zinc-800 border border-zinc-700 text-zinc-300 hover:bg-zinc-700 cursor-pointer transition-colors"
+          data-testid="inspector-capture-state"
+        >
+          Capture State
+        </button>
+      </div>
     </div>
   );
 };

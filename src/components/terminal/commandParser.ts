@@ -89,6 +89,12 @@ const PARAM_MAPPINGS: Record<string, string[]> = {
   'scene.buildTree': [],
   'scene.group': [],
   'scene.ungroup': ['id'],
+  'state.capture': ['?name', '?parentId'],
+  'state.restore': ['id'],
+  'state.setInitial': ['id'],
+  'state.clearInitial': ['id'],
+  'state.list': ['?simRootId'],
+  'state.delete': ['id'],
 };
 
 /**
@@ -140,6 +146,12 @@ const ARG_HINTS: Record<string, string> = {
   'tag.add': '<code|link|script> [property] [code]',
   'tag.remove': '<id>',
   'tag.edit': '<id> [code]',
+  'state.capture': '[name] [parentId]',
+  'state.restore': '<id>',
+  'state.setInitial': '<id>',
+  'state.clearInitial': '<id>',
+  'state.list': '[simRootId]',
+  'state.delete': '<id>',
 };
 
 /**

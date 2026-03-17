@@ -342,6 +342,14 @@ All SG phases (SG-0 through SG-9) are **complete**. Post-SG UI alignment also co
 | UI | Interactive Properties | Done | Click-to-edit defaults, add/remove cell properties, dynamic env params |
 | UI | CardView Registration | Done | CardViewPanel registered in panel registry (`allowMultiple: true`) |
 
+**State Objects + Cache Invalidation** (see `docs/STATE_AND_CACHE_AUDIT.md`):
+- `initial-state` scene nodes persist grid snapshots as the canonical reset state
+- 6 `state.*` commands (capture, restore, setInitial, clearInitial, list, delete)
+- `SimulationController.syncInitialStateToScene()` syncs in-memory snapshots to sceneStore
+- All tag-mutating command paths (`script.*`, `expr.*`) now call `controller.onTagChanged()`
+- `onTagChanged()` resets playhead to 0, restoring clean initial state
+- State commands operate on `sceneStore` directly (not `SceneGraph` instance) — same pattern as `scene.*` commands
+
 **Remaining architectural work:**
 - Tree-as-source-of-truth migration (currently derived view via `fromSimulation()`)
 - Copy semantics (`self.*` adaptation) wired to UI

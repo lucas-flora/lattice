@@ -127,9 +127,19 @@ Every node is the same `SceneNode` struct. The `type` string is metadata that te
 **initial-state**:
 ```typescript
 {
-  snapshotData?: Map<string, Float32Array>;
+  buffers: Record<string, number[]>;   // property name → Float32Array as number[] (serializable)
+  width: number;                       // grid width at capture time
+  height: number;                      // grid height at capture time
+  isInitial: boolean;                  // if true, used as canonical reset state
+  capturedAt: string;                  // ISO timestamp
+  propertyNames: string[];             // ordered list of captured property names
 }
 ```
+
+State nodes are managed by `state.*` commands and synced automatically by
+`SimulationController.syncInitialStateToScene()`. On reset, the controller reads
+from the scene store state node first, falling back to the in-memory snapshot.
+See `docs/STATE_AND_CACHE_AUDIT.md` for full details.
 
 ---
 

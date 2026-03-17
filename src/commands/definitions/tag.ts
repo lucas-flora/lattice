@@ -393,7 +393,8 @@ export function registerTagCommands(
 
       // Only invalidate cache if the tag is enabled AND output-affecting fields changed
       const affectsOutput = p.code !== undefined || p.phase !== undefined
-        || p.inputs !== undefined || p.outputs !== undefined;
+        || p.inputs !== undefined || p.outputs !== undefined
+        || p.nodeGraph !== undefined;
       if (updated.enabled && affectsOutput) {
         controller.onTagChanged();
       }

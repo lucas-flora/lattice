@@ -167,6 +167,14 @@ export class SceneGraph {
     return result;
   }
 
+  /** Find the initial-state child of a sim-root with isInitial: true */
+  getInitialStateNode(simRootId: string): SceneNode | null {
+    const children = this.getChildren(simRootId);
+    return children.find(
+      (n) => n.type === NODE_TYPES.INITIAL_STATE && n.properties.isInitial === true,
+    ) ?? null;
+  }
+
   /** Find nodes by name (exact match) */
   findByName(name: string): SceneNode[] {
     const result: SceneNode[] = [];

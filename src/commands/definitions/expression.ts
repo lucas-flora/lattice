@@ -60,6 +60,7 @@ export function registerExpressionCommands(
 
         const tag = tagRegistry.addFromExpression(property, expression);
         eventBus.emit('tag:added', tag);
+        controller.onTagChanged();
       }
 
       return { success: true, data: { property, expression } };
@@ -80,8 +81,12 @@ export function registerExpressionCommands(
           (t) => t.source === 'code' && !t.linkMeta && t.outputs.includes(`cell.${property}`),
         );
         if (existing) {
+          const wasEnabled = existing.enabled;
           tagRegistry.remove(existing.id);
           eventBus.emit('tag:removed', { id: existing.id });
+          if (wasEnabled) {
+            controller.onTagChanged();
+          }
         }
       }
 
@@ -119,9 +124,13 @@ export function registerExpressionCommands(
       const codeTags = tagRegistry.getAll().filter(
         (t) => t.source === 'code' && !t.linkMeta && t.phase === 'post-rule',
       );
+      const hadEnabled = codeTags.some((t) => t.enabled);
       for (const tag of codeTags) {
         tagRegistry.remove(tag.id);
         eventBus.emit('tag:removed', { id: tag.id });
+      }
+      if (hadEnabled) {
+        controller.onTagChanged();
       }
 
       return { success: true, data: { cleared: codeTags.length } };

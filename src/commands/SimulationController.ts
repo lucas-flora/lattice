@@ -18,6 +18,9 @@ import { PyodideBridge } from '../engine/scripting/PyodideBridge';
 import { expressionStoreActions } from '../store/expressionStore';
 import type { ExpressionTagRegistry } from '../engine/expression/ExpressionTagRegistry';
 import type { SceneGraph } from '../engine/scene/SceneGraph';
+import type { SceneNode } from '../engine/scene/SceneNode';
+import { NODE_TYPES, generateNodeId } from '../engine/scene/SceneNode';
+import { sceneStoreActions, useSceneStore } from '../store/sceneStore';
 import { logMin, logDbg } from '../lib/debugLog';
 
 export interface ParamDef {
@@ -149,6 +152,7 @@ export class SimulationController {
   loadPreset(name: string): void {
     logMin('ctrl', `loadPreset("${name}") — playing=${this.playing}, computedGen=${this.computedGeneration}, playbackGen=${this.playbackGeneration}`);
     this.computeEpoch++;  // Cancel any in-flight async work
+    if (this.editDebounceTimer) { clearTimeout(this.editDebounceTimer); this.editDebounceTimer = null; }
     this.pause();
     this.stopComputeAhead();
     this.asyncComputeInFlight = false;
@@ -182,6 +186,7 @@ export class SimulationController {
   loadPresetConfig(config: PresetConfig): void {
     logMin('ctrl', `loadPresetConfig("${config.meta.name}") — playing=${this.playing}, computedGen=${this.computedGeneration}`);
     this.computeEpoch++;  // Cancel any in-flight async work
+    if (this.editDebounceTimer) { clearTimeout(this.editDebounceTimer); this.editDebounceTimer = null; }
     this.pause();
     this.stopComputeAhead();
     this.asyncComputeInFlight = false;
@@ -209,6 +214,7 @@ export class SimulationController {
    * initializes the Python runtime before creating the Simulation.
    */
   async loadPresetConfigAsync(config: PresetConfig, bridge: PyodideBridge): Promise<void> {
+    if (this.editDebounceTimer) { clearTimeout(this.editDebounceTimer); this.editDebounceTimer = null; }
     this.pause();
     this.clearScriptingState();
 
@@ -269,6 +275,41 @@ export class SimulationController {
    */
   onTagChanged(): void {
     this.invalidateCacheFrom(0);
+    // Reset playhead to 0 and restore initial state so the viewport
+    // shows a clean frame instead of stale/corrupted data
+    this.playbackGeneration = 0;
+    if (this.initialSnapshot) {
+      this.restoreInitialState();
+    }
+    this.cacheCurrentFrame();
+    this.eventBus.emit('sim:tick', {
+      generation: 0,
+      liveCellCount: this.getLiveCellCount(),
+    });
+  }
+
+  /**
+   * Called after state.restore writes buffers to the grid.
+   * Resets playhead, updates initialSnapshot, clears cache, emits tick.
+   */
+  onStateRestored(): void {
+    if (!this.simulation) return;
+    this.stopComputeAhead();
+    // Update in-memory snapshot to match what was just restored
+    this.initialSnapshot = new Map();
+    for (const propName of this.simulation.grid.getPropertyNames()) {
+      const buf = this.simulation.grid.getCurrentBuffer(propName);
+      this.initialSnapshot.set(propName, new Float32Array(buf));
+    }
+    this.frameCache.clear();
+    this.computedGeneration = 0;
+    this.playbackGeneration = 0;
+    this.cacheCurrentFrame();
+    this.eventBus.emit('sim:reset', {});
+    this.eventBus.emit('sim:tick', {
+      generation: 0,
+      liveCellCount: this.getLiveCellCount(),
+    });
   }
 
   /**
@@ -424,9 +465,20 @@ export class SimulationController {
     if (!this.simulation) return;
     this.pause();
 
-    const firstProp = this.simulation.typeRegistry.getPropertyUnion()[0].name;
-    const buffer = this.simulation.grid.getCurrentBuffer(firstProp);
-    buffer.fill(0);
+    // Zero all property buffers
+    for (const propName of this.simulation.grid.getPropertyNames()) {
+      const buffer = this.simulation.grid.getCurrentBuffer(propName);
+      buffer.fill(0);
+    }
+
+    // Sync initialSnapshot so reset() after clear() stays cleared
+    if (this.initialSnapshot) {
+      for (const propName of this.simulation.grid.getPropertyNames()) {
+        const buf = this.simulation.grid.getCurrentBuffer(propName);
+        this.initialSnapshot.set(propName, new Float32Array(buf));
+      }
+      this.syncInitialStateToScene();
+    }
 
     this.frameCache.clear();
     this.computedGeneration = 0;
@@ -638,6 +690,8 @@ export class SimulationController {
     }
     // Also cache frame 0
     this.cacheCurrentFrame();
+    // Sync to scene graph for persistence
+    this.syncInitialStateToScene();
 
     // Aggressively start computing ahead immediately
     if (cacheTarget && cacheTarget > 0) {
@@ -650,9 +704,12 @@ export class SimulationController {
         if (this.deferredComputeAheadListener) {
           this.eventBus.off('pyodide:ready', this.deferredComputeAheadListener);
         }
+        const captureEpoch = this.computeEpoch;
         const onReady = () => {
           this.eventBus.off('pyodide:ready', onReady);
           this.deferredComputeAheadListener = null;
+          // If a preset load or resize happened since we deferred, bail out
+          if (this.computeEpoch !== captureEpoch) return;
           this.computeAhead(cacheTarget);
         };
         this.deferredComputeAheadListener = onReady;
@@ -665,14 +722,107 @@ export class SimulationController {
 
   /**
    * Restore grid buffers from the initial snapshot.
+   * Tries scene store state node first, falls back to in-memory snapshot.
    */
   private restoreInitialState(): void {
-    if (!this.simulation || !this.initialSnapshot) return;
+    if (!this.simulation) return;
+
+    // Try scene store state node first
+    const stateNode = this.findInitialStateNode();
+    if (stateNode) {
+      const buffers = stateNode.properties.buffers as Record<string, number[]> | undefined;
+      if (buffers) {
+        for (const [propName, data] of Object.entries(buffers)) {
+          const gridBuf = this.simulation.grid.getCurrentBuffer(propName);
+          gridBuf.set(new Float32Array(data));
+        }
+        this.simulation.runner.setGeneration(0);
+        return;
+      }
+    }
+
+    // Fall back to in-memory snapshot
+    if (!this.initialSnapshot) return;
     for (const [propName, buffer] of this.initialSnapshot) {
       const currentBuf = this.simulation.grid.getCurrentBuffer(propName);
       currentBuf.set(buffer);
     }
     this.simulation.runner.setGeneration(0);
+  }
+
+  /** Find the initial-state node with isInitial:true in the scene store */
+  private findInitialStateNode(): SceneNode | null {
+    const { nodes } = useSceneStore.getState();
+    // Find sim-root, then find its initial-state child with isInitial
+    const simRoots = Object.values(nodes).filter((n) => n.type === NODE_TYPES.SIM_ROOT);
+    for (const root of simRoots) {
+      for (const childId of root.childIds) {
+        const child = nodes[childId];
+        if (child?.type === NODE_TYPES.INITIAL_STATE && child.properties.isInitial === true) {
+          return child;
+        }
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Sync the in-memory initial snapshot to a scene store initial-state node.
+   * Creates or updates the node under the first sim-root.
+   */
+  syncInitialStateToScene(): void {
+    if (!this.simulation || !this.initialSnapshot) return;
+
+    const { nodes } = useSceneStore.getState();
+    const simRoots = Object.values(nodes).filter((n) => n.type === NODE_TYPES.SIM_ROOT);
+    if (simRoots.length === 0) return;
+    const simRootId = simRoots[0].id;
+
+    // Convert Float32Array buffers to number[] for serialization
+    const buffers: Record<string, number[]> = {};
+    const propertyNames: string[] = [];
+    for (const [propName, buf] of this.initialSnapshot) {
+      buffers[propName] = Array.from(buf);
+      propertyNames.push(propName);
+    }
+
+    // Find existing initial-state node or create new
+    const existing = this.findInitialStateNode();
+    if (existing) {
+      sceneStoreActions.updateNode(existing.id, {
+        properties: {
+          ...existing.properties,
+          buffers,
+          width: this.simulation.grid.config.width,
+          height: this.simulation.grid.config.height,
+          propertyNames,
+          capturedAt: new Date().toISOString(),
+        },
+      });
+    } else {
+      const nodeId = generateNodeId();
+      const node: SceneNode = {
+        id: nodeId,
+        type: NODE_TYPES.INITIAL_STATE,
+        name: 'Initial State',
+        parentId: simRootId,
+        childIds: [],
+        enabled: true,
+        properties: {
+          buffers,
+          width: this.simulation.grid.config.width,
+          height: this.simulation.grid.config.height,
+          isInitial: true,
+          capturedAt: new Date().toISOString(),
+          propertyNames,
+        },
+        tags: [],
+      };
+      sceneStoreActions.addNode(node);
+      this.eventBus.emit('scene:nodeAdded', {
+        id: nodeId, type: NODE_TYPES.INITIAL_STATE, name: 'Initial State', parentId: simRootId,
+      });
+    }
   }
 
   /**
@@ -1102,6 +1252,7 @@ export class SimulationController {
         const buf = this.simulation.grid.getCurrentBuffer(propName);
         this.initialSnapshot.set(propName, new Float32Array(buf));
       }
+      this.syncInitialStateToScene();
     }
 
     this.stopComputeAhead();
