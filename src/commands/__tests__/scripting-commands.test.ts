@@ -89,7 +89,7 @@ describe('Expression Commands', () => {
   });
 
   it('TestExpressionCommands_SetAndList', async () => {
-    // expr.set lazily creates PyodideBridge + ExpressionEngine
+    // expr.set lazily creates PyodideBridge
     const result = await registry.execute('expr.set', { property: 'alpha', expression: '0.5' });
     expect(result.success).toBe(true);
     expect(result.data).toEqual({ property: 'alpha', expression: '0.5' });
@@ -139,7 +139,7 @@ describe('Script Commands', () => {
   });
 
   it('TestScriptCommands_AddAndList', async () => {
-    // script.add lazily creates PyodideBridge + GlobalScriptRunner
+    // script.add lazily creates PyodideBridge
     const addResult = await registry.execute('script.add', {
       name: 'test',
       code: 'pass',

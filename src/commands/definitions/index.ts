@@ -24,6 +24,7 @@ import { registerScriptCommands } from './script';
 import { registerLinkCommands } from './link';
 import { registerTagCommands } from './tag';
 import { registerSceneCommands } from './scene';
+import { registerCellCommands } from './cell';
 
 /**
  * Register all commands in the registry.
@@ -49,4 +50,5 @@ export function registerAllCommands(
   registerLinkCommands(registry, controller, eventBus);
   registerTagCommands(registry, controller, eventBus);
   registerSceneCommands(registry, controller, eventBus);
+  registerCellCommands(registry, controller, eventBus);
 }

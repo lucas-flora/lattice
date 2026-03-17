@@ -13,11 +13,18 @@ import { useLayoutStore } from '@/store/layoutStore';
 export function HUD() {
   const generation = useSimStore((s) => s.generation);
   const liveCellCount = useSimStore((s) => s.liveCellCount);
-  const isLeftDrawerOpen = useLayoutStore((s) => s.isLeftDrawerOpen);
-  const leftDrawerWidth = useLayoutStore((s) => s.leftDrawerWidth);
 
-  // Offset HUD to the right when left drawer is open (docked) to avoid overlap
-  const leftOffset = isLeftDrawerOpen ? leftDrawerWidth + 8 : 8;
+  // Account for ALL left-docked drawers
+  const d1Open = useLayoutStore((s) => s.isDrawer1Open);
+  const d1Mode = useLayoutStore((s) => s.drawer1Mode);
+  const d1Width = useLayoutStore((s) => s.drawer1Width);
+  const d2Open = useLayoutStore((s) => s.isDrawer2Open);
+  const d2Mode = useLayoutStore((s) => s.drawer2Mode);
+  const d2Width = useLayoutStore((s) => s.drawer2Width);
+
+  const d1Docked = d1Open && d1Mode === 'docked';
+  const d2Docked = d2Open && d2Mode === 'docked';
+  const leftOffset = (d1Docked ? d1Width : 0) + (d2Docked ? d2Width : 0) + 8;
 
   return (
     <div

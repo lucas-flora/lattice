@@ -7,6 +7,4 @@
 export { PyodideBridge } from './PyodideBridge';
 export { extractGridBuffers, applyResultBuffers } from './gridTransfer';
 export { GlobalVariableStore } from './GlobalVariableStore';
-export { ExpressionEngine } from './ExpressionEngine';
-export { GlobalScriptRunner } from './GlobalScriptRunner';
 export type { PyodideStatus, PyodideInMessage, PyodideOutMessage, GlobalVariableDef, GlobalScriptDef } from './types';

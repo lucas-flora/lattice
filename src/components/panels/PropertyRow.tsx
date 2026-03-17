@@ -5,14 +5,14 @@
  * When an ExpressionTag writes to this property, shows a `ƒ` badge:
  *   - Green = active tag
  *   - Gray = disabled tag
- * Clicking the badge expands an inline preview of the tag.
+ * Clicking the badge expands an inline editor for the tag.
  *
  * When no tag exists, shows a `+` button on hover to create one inline.
  */
 
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import type { CellPropertyType } from '@/engine/cell/types';
 import type { ExpressionTag } from '@/engine/expression/types';
 import { commandRegistry } from '@/commands/CommandRegistry';
@@ -58,12 +58,40 @@ export function PropertyRow({ name, type, defaultValue, role, isInherent, expres
   const colorClass = TYPE_COLORS[type] ?? 'text-zinc-400 bg-zinc-400/10';
   const [expanded, setExpanded] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
+  const [editCode, setEditCode] = useState('');
+  const [dirty, setDirty] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Sync editCode when expression changes or expand
+  useEffect(() => {
+    if (expression && expanded) {
+      setEditCode(expression.code);
+      setDirty(false);
+    }
+  }, [expression?.code, expression?.id, expanded]);
 
   const handleToggleEnabled = useCallback(() => {
     if (!expression) return;
     const cmd = expression.enabled ? 'tag.disable' : 'tag.enable';
     commandRegistry.execute(cmd, { id: expression.id });
   }, [expression]);
+
+  const handleSave = useCallback(() => {
+    if (!expression || !dirty) return;
+    commandRegistry.execute('tag.edit', { id: expression.id, code: editCode });
+    setDirty(false);
+  }, [expression, editCode, dirty]);
+
+  const handleDelete = useCallback(() => {
+    if (!expression) return;
+    commandRegistry.execute('tag.remove', { id: expression.id });
+    setExpanded(false);
+  }, [expression]);
+
+  const handleCodeChange = useCallback((value: string) => {
+    setEditCode(value);
+    setDirty(true);
+  }, []);
 
   return (
     <div data-testid={`property-row-${name}`}>
@@ -115,7 +143,7 @@ export function PropertyRow({ name, type, defaultValue, role, isInherent, expres
         </span>
       </div>
 
-      {/* Expanded tag preview */}
+      {/* Expanded tag editor */}
       {expanded && expression && (
         <div className="ml-2 mb-1 px-2 py-1.5 bg-zinc-800/80 rounded border border-zinc-700/50">
           <div className="flex items-center justify-between mb-1">
@@ -143,9 +171,33 @@ export function PropertyRow({ name, type, defaultValue, role, isInherent, expres
               </button>
             </div>
           </div>
-          <pre className="text-[10px] font-mono text-zinc-500 whitespace-pre-wrap break-all max-h-16 overflow-hidden">
-            {expression.code}
-          </pre>
+          <textarea
+            ref={textareaRef}
+            value={editCode}
+            onChange={(e) => handleCodeChange(e.target.value)}
+            className="w-full text-[10px] font-mono text-zinc-300 bg-zinc-900/80 border border-zinc-700/50 rounded px-1.5 py-1 resize-y min-h-[40px] max-h-32 focus:outline-none focus:border-green-500/50"
+            spellCheck={false}
+            rows={Math.min(6, editCode.split('\n').length + 1)}
+            data-testid="expression-code-editor"
+          />
+          <div className="flex items-center justify-between mt-1">
+            <button
+              onClick={handleDelete}
+              className="text-[9px] font-mono text-red-400/60 hover:text-red-400 cursor-pointer"
+              data-testid="expression-delete"
+            >
+              Delete
+            </button>
+            {dirty && (
+              <button
+                onClick={handleSave}
+                className="text-[9px] font-mono px-2 py-0.5 rounded bg-green-500/20 text-green-400 hover:bg-green-500/30 cursor-pointer"
+                data-testid="expression-save"
+              >
+                Apply
+              </button>
+            )}
+          </div>
         </div>
       )}
 

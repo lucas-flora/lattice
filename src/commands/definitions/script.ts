@@ -1,8 +1,8 @@
 /**
  * Script commands: add, remove, list, enable, disable, show global scripts.
  *
- * Lazily creates PyodideBridge and GlobalScriptRunner on first use.
- * Each script.add now also creates an ExpressionTag in the unified registry.
+ * All operations go through ExpressionTagRegistry only.
+ * Lazily creates PyodideBridge on first use.
  */
 
 import { z } from 'zod';
@@ -34,15 +34,16 @@ export function registerScriptCommands(
     category: 'script',
     params: NoParams,
     execute: async () => {
-      const runner = controller.getGlobalScriptRunner();
-      if (!runner) {
+      const tagRegistry = controller.getTagRegistry();
+      if (!tagRegistry) {
         return { success: true, data: { scripts: [] } };
       }
-      const scripts = runner.getAllScripts().map((s) => ({
-        name: s.name,
-        enabled: s.enabled,
-        inputs: s.inputs,
-        outputs: s.outputs,
+      const scriptTags = tagRegistry.getAll().filter((t) => t.source === 'script');
+      const scripts = scriptTags.map((t) => ({
+        name: t.name,
+        enabled: t.enabled,
+        inputs: t.inputs,
+        outputs: t.outputs,
       }));
       return { success: true, data: { scripts } };
     },
@@ -56,29 +57,25 @@ export function registerScriptCommands(
     execute: async (params) => {
       const { name, code, inputs, outputs } = params as z.infer<typeof AddParams>;
 
-      // Lazily create scripting engines
-      const engines = controller.ensureScriptingEngines();
-      if (!engines) {
-        return { success: false, error: 'Failed to initialize scripting engines' };
-      }
+      // Ensure Pyodide bridge exists
+      controller.ensurePyodideBridge();
 
-      engines.scriptRunner.addScript({ name, enabled: true, code, inputs, outputs });
-
-      // Also create/update an ExpressionTag in the unified registry
       const tagRegistry = controller.getTagRegistry();
-      if (tagRegistry) {
-        // Remove existing tag for this script (if any)
-        const existing = tagRegistry.getAll().find(
-          (t) => t.source === 'script' && t.name === name,
-        );
-        if (existing) {
-          tagRegistry.remove(existing.id);
-          eventBus.emit('tag:removed', { id: existing.id });
-        }
-
-        const tag = tagRegistry.addFromScript(name, code, inputs ?? [], outputs ?? [], true);
-        eventBus.emit('tag:added', tag);
+      if (!tagRegistry) {
+        return { success: false, error: 'No simulation loaded' };
       }
+
+      // Remove existing tag for this script (if any)
+      const existing = tagRegistry.getAll().find(
+        (t) => t.source === 'script' && t.name === name,
+      );
+      if (existing) {
+        tagRegistry.remove(existing.id);
+        eventBus.emit('tag:removed', { id: existing.id });
+      }
+
+      const tag = tagRegistry.addFromScript(name, code, inputs ?? [], outputs ?? [], true);
+      eventBus.emit('tag:added', tag);
 
       return { success: true, data: { name } };
     },
@@ -91,26 +88,20 @@ export function registerScriptCommands(
     params: NameParams,
     execute: async (params) => {
       const { name } = params as z.infer<typeof NameParams>;
-      const runner = controller.getGlobalScriptRunner();
-      if (!runner) {
+      const tagRegistry = controller.getTagRegistry();
+      if (!tagRegistry) {
         return { success: false, error: 'No scripts loaded' };
       }
-      const existed = runner.removeScript(name);
-      if (!existed) {
+
+      const matchingTag = tagRegistry.getAll().find(
+        (t) => t.source === 'script' && t.name === name,
+      );
+      if (!matchingTag) {
         return { success: false, error: `Script "${name}" not found` };
       }
 
-      // Also remove the corresponding tag
-      const tagRegistry = controller.getTagRegistry();
-      if (tagRegistry) {
-        const matchingTag = tagRegistry.getAll().find(
-          (t) => t.source === 'script' && t.name === name,
-        );
-        if (matchingTag) {
-          tagRegistry.remove(matchingTag.id);
-          eventBus.emit('tag:removed', { id: matchingTag.id });
-        }
-      }
+      tagRegistry.remove(matchingTag.id);
+      eventBus.emit('tag:removed', { id: matchingTag.id });
 
       return { success: true, data: { name } };
     },
@@ -123,27 +114,20 @@ export function registerScriptCommands(
     params: NameParams,
     execute: async (params) => {
       const { name } = params as z.infer<typeof NameParams>;
-      const runner = controller.getGlobalScriptRunner();
-      if (!runner) {
+      const tagRegistry = controller.getTagRegistry();
+      if (!tagRegistry) {
         return { success: false, error: 'No scripts loaded' };
       }
-      const script = runner.getScript(name);
-      if (!script) {
+
+      const matchingTag = tagRegistry.getAll().find(
+        (t) => t.source === 'script' && t.name === name,
+      );
+      if (!matchingTag) {
         return { success: false, error: `Script "${name}" not found` };
       }
-      runner.enableScript(name);
 
-      // Also enable the corresponding tag
-      const tagRegistry = controller.getTagRegistry();
-      if (tagRegistry) {
-        const matchingTag = tagRegistry.getAll().find(
-          (t) => t.source === 'script' && t.name === name,
-        );
-        if (matchingTag) {
-          tagRegistry.enable(matchingTag.id);
-          eventBus.emit('tag:updated', { id: matchingTag.id, enabled: true });
-        }
-      }
+      tagRegistry.enable(matchingTag.id);
+      eventBus.emit('tag:updated', { id: matchingTag.id, enabled: true });
 
       return { success: true, data: { name, enabled: true } };
     },
@@ -156,27 +140,20 @@ export function registerScriptCommands(
     params: NameParams,
     execute: async (params) => {
       const { name } = params as z.infer<typeof NameParams>;
-      const runner = controller.getGlobalScriptRunner();
-      if (!runner) {
+      const tagRegistry = controller.getTagRegistry();
+      if (!tagRegistry) {
         return { success: false, error: 'No scripts loaded' };
       }
-      const script = runner.getScript(name);
-      if (!script) {
+
+      const matchingTag = tagRegistry.getAll().find(
+        (t) => t.source === 'script' && t.name === name,
+      );
+      if (!matchingTag) {
         return { success: false, error: `Script "${name}" not found` };
       }
-      runner.disableScript(name);
 
-      // Also disable the corresponding tag
-      const tagRegistry = controller.getTagRegistry();
-      if (tagRegistry) {
-        const matchingTag = tagRegistry.getAll().find(
-          (t) => t.source === 'script' && t.name === name,
-        );
-        if (matchingTag) {
-          tagRegistry.disable(matchingTag.id);
-          eventBus.emit('tag:updated', { id: matchingTag.id, enabled: false });
-        }
-      }
+      tagRegistry.disable(matchingTag.id);
+      eventBus.emit('tag:updated', { id: matchingTag.id, enabled: false });
 
       return { success: true, data: { name, enabled: false } };
     },
@@ -189,15 +166,19 @@ export function registerScriptCommands(
     params: NameParams,
     execute: async (params) => {
       const { name } = params as z.infer<typeof NameParams>;
-      const runner = controller.getGlobalScriptRunner();
-      if (!runner) {
+      const tagRegistry = controller.getTagRegistry();
+      if (!tagRegistry) {
         return { success: false, error: 'No scripts loaded' };
       }
-      const script = runner.getScript(name);
-      if (!script) {
+
+      const matchingTag = tagRegistry.getAll().find(
+        (t) => t.source === 'script' && t.name === name,
+      );
+      if (!matchingTag) {
         return { success: false, error: `Script "${name}" not found` };
       }
-      return { success: true, data: script };
+
+      return { success: true, data: matchingTag };
     },
   });
 
@@ -207,26 +188,18 @@ export function registerScriptCommands(
     category: 'script',
     params: NoParams,
     execute: async () => {
-      const runner = controller.getGlobalScriptRunner();
-      if (!runner) {
+      const tagRegistry = controller.getTagRegistry();
+      if (!tagRegistry) {
         return { success: true, data: { removed: 0 } };
       }
-      const all = runner.getAllScripts();
-      for (const s of all) {
-        runner.removeScript(s.name);
+
+      const scriptTags = tagRegistry.getAll().filter((t) => t.source === 'script');
+      for (const tag of scriptTags) {
+        tagRegistry.remove(tag.id);
+        eventBus.emit('tag:removed', { id: tag.id });
       }
 
-      // Also clear all script-sourced tags
-      const tagRegistry = controller.getTagRegistry();
-      if (tagRegistry) {
-        const scriptTags = tagRegistry.getAll().filter((t) => t.source === 'script');
-        for (const tag of scriptTags) {
-          tagRegistry.remove(tag.id);
-          eventBus.emit('tag:removed', { id: tag.id });
-        }
-      }
-
-      return { success: true, data: { removed: all.length } };
+      return { success: true, data: { removed: scriptTags.length } };
     },
   });
 }

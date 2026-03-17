@@ -8,8 +8,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { EventBus } from '../../engine/core/EventBus';
 import { wireStores } from '../wireStores';
 import { useScriptStore } from '../../store/scriptStore';
-import { useLinkStore } from '../../store/linkStore';
-import { LinkRegistry, _resetIdCounter } from '../../engine/linking/LinkRegistry';
+import { useExpressionStore } from '../../store/expressionStore';
+import { ExpressionTagRegistry, _resetTagIdCounter } from '../../engine/expression/ExpressionTagRegistry';
 
 describe('ScriptPanel Integration', () => {
   let bus: EventBus;
@@ -20,13 +20,11 @@ describe('ScriptPanel Integration', () => {
     unsubscribe = wireStores(bus);
     useScriptStore.setState({
       globalVariables: {},
-      globalScripts: [],
-      expressions: {},
       pyodideStatus: 'idle',
       pyodideProgress: 0,
     });
-    useLinkStore.setState({ links: [] });
-    _resetIdCounter();
+    useExpressionStore.setState({ tags: [] });
+    _resetTagIdCounter();
   });
 
   afterEach(() => {
@@ -61,112 +59,135 @@ describe('ScriptPanel Integration', () => {
     // Should NOT be { value: 0, ... }
   });
 
-  it('TestIntegration_AddExpression_StoreUpdates', () => {
-    bus.emit('script:expressionSet', { property: 'alpha', expression: 'age / 100' });
-
-    const state = useScriptStore.getState();
-    expect(state.expressions['alpha']).toBe('age / 100');
-  });
-
-  it('TestIntegration_ClearExpression_StoreUpdates', () => {
-    bus.emit('script:expressionSet', { property: 'alpha', expression: 'x' });
-    bus.emit('script:expressionCleared', { property: 'alpha' });
-
-    expect(useScriptStore.getState().expressions['alpha']).toBeUndefined();
-  });
-
-  it('TestIntegration_AddScript_StoreUpdates', () => {
-    bus.emit('script:scriptAdded', {
-      name: 'decay',
+  it('TestIntegration_AddTag_ExpressionStoreUpdates', () => {
+    // Tags (expressions/scripts/links) now live in expressionStore
+    bus.emit('tag:added', {
+      id: 'tag_1',
+      name: 'expr: alpha',
+      source: 'code',
+      phase: 'post-rule',
       enabled: true,
-      code: 'grid["alpha"] *= 0.99',
-      inputs: ['alpha'],
-      outputs: ['alpha'],
+      owner: { type: 'cell-type' },
+      inputs: [],
+      outputs: ['cell.alpha'],
+      code: 'age / 100',
     });
 
-    const scripts = useScriptStore.getState().globalScripts;
-    expect(scripts).toHaveLength(1);
-    expect(scripts[0].name).toBe('decay');
+    const tags = useExpressionStore.getState().tags;
+    expect(tags).toHaveLength(1);
+    expect(tags[0].outputs).toContain('cell.alpha');
+    expect(tags[0].code).toBe('age / 100');
   });
 
-  it('TestIntegration_ToggleScript_StoreUpdates', () => {
-    bus.emit('script:scriptAdded', { name: 'test', enabled: true, code: 'pass' });
-    bus.emit('script:scriptToggled', { name: 'test', enabled: false });
-
-    expect(useScriptStore.getState().globalScripts[0].enabled).toBe(false);
-  });
-
-  it('TestIntegration_RemoveScript_StoreUpdates', () => {
-    bus.emit('script:scriptAdded', { name: 'test', enabled: true, code: 'pass' });
-    bus.emit('script:scriptRemoved', { name: 'test' });
-
-    expect(useScriptStore.getState().globalScripts).toHaveLength(0);
-  });
-
-  it('TestIntegration_AddLink_StoreUpdates', () => {
-    bus.emit('link:added', {
-      id: 'link_1',
-      source: 'cell.age',
-      target: 'cell.alpha',
-      sourceRange: [0, 100] as [number, number],
-      targetRange: [0, 1] as [number, number],
-      easing: 'linear',
+  it('TestIntegration_RemoveTag_ExpressionStoreUpdates', () => {
+    bus.emit('tag:added', {
+      id: 'tag_1',
+      name: 'expr: alpha',
+      source: 'code',
+      phase: 'post-rule',
       enabled: true,
+      owner: { type: 'cell-type' },
+      inputs: [],
+      outputs: ['cell.alpha'],
+      code: 'age / 100',
     });
+    expect(useExpressionStore.getState().tags).toHaveLength(1);
 
-    const links = useLinkStore.getState().links;
-    expect(links).toHaveLength(1);
-    expect(links[0].source).toBe('cell.age');
+    bus.emit('tag:removed', { id: 'tag_1' });
+    expect(useExpressionStore.getState().tags).toHaveLength(0);
   });
 
-  it('TestIntegration_EditLink_StoreReflectsChanges', () => {
-    bus.emit('link:added', {
-      id: 'link_1',
-      source: 'cell.age',
-      target: 'cell.alpha',
-      sourceRange: [0, 100] as [number, number],
-      targetRange: [0, 1] as [number, number],
-      easing: 'linear',
+  it('TestIntegration_AddLinkTag_ExpressionStoreUpdates', () => {
+    bus.emit('tag:added', {
+      id: 'tag_1',
+      name: 'cell.age → cell.alpha',
+      source: 'code',
+      phase: 'pre-rule',
       enabled: true,
+      owner: { type: 'root' },
+      inputs: ['cell.age'],
+      outputs: ['cell.alpha'],
+      code: 'rangeMap(cell_age, 0, 100, 0, 1, "linear")',
+      linkMeta: {
+        sourceAddress: 'cell.age',
+        sourceRange: [0, 100] as [number, number],
+        targetRange: [0, 1] as [number, number],
+        easing: 'linear',
+      },
     });
 
-    bus.emit('link:updated', {
-      id: 'link_1',
-      sourceRange: [0, 200] as [number, number],
-      easing: 'smoothstep',
-    });
-
-    const link = useLinkStore.getState().links[0];
-    expect(link.sourceRange).toEqual([0, 200]);
-    expect(link.easing).toBe('smoothstep');
-    // targetRange should remain unchanged
-    expect(link.targetRange).toEqual([0, 1]);
+    const tags = useExpressionStore.getState().tags;
+    expect(tags).toHaveLength(1);
+    expect(tags[0].inputs).toContain('cell.age');
+    expect(tags[0].outputs).toContain('cell.alpha');
+    expect(tags[0].linkMeta).toBeDefined();
   });
 
-  it('TestIntegration_LinkRegistry_Update', () => {
-    const registry = new LinkRegistry();
-    const link = registry.add({
-      source: 'cell.age',
-      target: 'cell.alpha',
-      sourceRange: [0, 1],
-      targetRange: [0, 1],
-      easing: 'linear',
+  it('TestIntegration_UpdateTag_ExpressionStoreReflectsChanges', () => {
+    bus.emit('tag:added', {
+      id: 'tag_1',
+      name: 'cell.age → cell.alpha',
+      source: 'code',
+      phase: 'pre-rule',
+      enabled: true,
+      owner: { type: 'root' },
+      inputs: ['cell.age'],
+      outputs: ['cell.alpha'],
+      code: 'rangeMap(cell_age, 0, 100, 0, 1, "linear")',
+      linkMeta: {
+        sourceAddress: 'cell.age',
+        sourceRange: [0, 100] as [number, number],
+        targetRange: [0, 1] as [number, number],
+        easing: 'linear',
+      },
     });
 
-    const updated = registry.update(link.id, {
-      sourceRange: [0, 200],
-      easing: 'smoothstep',
+    bus.emit('tag:updated', {
+      id: 'tag_1',
+      enabled: false,
+    });
+
+    const tag = useExpressionStore.getState().tags[0];
+    expect(tag.enabled).toBe(false);
+  });
+
+  it('TestIntegration_ExpressionTagRegistry_Update', () => {
+    const registry = new ExpressionTagRegistry();
+    const tag = registry.add({
+      name: 'cell.age → cell.alpha',
+      owner: { type: 'root' },
+      code: 'rangeMap(age, 0, 100, 0, 1, "linear")',
+      phase: 'pre-rule',
+      enabled: true,
+      source: 'code',
+      inputs: ['cell.age'],
+      outputs: ['cell.alpha'],
+      linkMeta: {
+        sourceAddress: 'cell.age',
+        sourceRange: [0, 1],
+        targetRange: [0, 1],
+        easing: 'linear',
+      },
+    });
+
+    const updated = registry.update(tag.id, {
+      linkMeta: {
+        sourceAddress: 'cell.age',
+        sourceRange: [0, 200],
+        targetRange: [0, 1],
+        easing: 'smoothstep',
+      },
     });
 
     expect(updated).not.toBeNull();
-    expect(updated!.sourceRange).toEqual([0, 200]);
-    expect(updated!.easing).toBe('smoothstep');
-    expect(updated!.targetRange).toEqual([0, 1]); // unchanged
+    expect(updated!.linkMeta!.sourceRange).toEqual([0, 200]);
+    expect(updated!.linkMeta!.easing).toBe('smoothstep');
+    expect(updated!.linkMeta!.targetRange).toEqual([0, 1]); // unchanged
   });
 
-  it('TestIntegration_LinkRegistry_UpdateNonexistent', () => {
-    const registry = new LinkRegistry();
-    const result = registry.update('nonexistent', { easing: 'smoothstep' });
+  it('TestIntegration_ExpressionTagRegistry_UpdateNonexistent', () => {
+    const registry = new ExpressionTagRegistry();
+    const result = registry.update('nonexistent', { enabled: false });
     expect(result).toBeNull();
   });
 });

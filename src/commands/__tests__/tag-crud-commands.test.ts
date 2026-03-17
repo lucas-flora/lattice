@@ -75,10 +75,10 @@ describe('Tag CRUD Commands', () => {
     expect(linkTag!.linkMeta!.targetRange).toEqual([0, 1]);
     expect(linkTag!.linkMeta!.easing).toBe('linear');
 
-    // Verify link exists in legacy link registry
-    const links = controller.getLinkRegistry()!.getAll();
-    const match = links.find((l) => l.source === 'cell.age' && l.target === 'cell.alpha');
-    expect(match).toBeDefined();
+    // Verify link is reflected in the tag registry (no separate link registry)
+    const allTags = controller.getTagRegistry()!.getAll();
+    const linkTagMatch = allTags.find((t) => t.linkMeta?.sourceAddress === 'cell.age' && t.outputs.includes('cell.alpha'));
+    expect(linkTagMatch).toBeDefined();
   });
 
   it('TestTagAdd_ScriptSource_CreatesTagAndScript', async () => {
@@ -144,10 +144,10 @@ describe('Tag CRUD Commands', () => {
     const tagMatch = tags.find((t) => t.id === tagId);
     expect(tagMatch).toBeUndefined();
 
-    // Verify link is gone from legacy link registry
-    const links = controller.getLinkRegistry()!.getAll();
-    const linkMatch = links.find((l) => l.source === 'cell.age' && l.target === 'cell.alpha');
-    expect(linkMatch).toBeUndefined();
+    // Verify link tag is also gone from tag registry
+    const allTags = controller.getTagRegistry()!.getAll();
+    const linkTagMatch = allTags.find((t) => t.linkMeta?.sourceAddress === 'cell.age' && t.outputs.includes('cell.alpha'));
+    expect(linkTagMatch).toBeUndefined();
   });
 
   it('TestTagRemove_ScriptSource_ClearsScript', async () => {

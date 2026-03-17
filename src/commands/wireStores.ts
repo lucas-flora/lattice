@@ -14,7 +14,6 @@ import { viewStoreActions } from '../store/viewStore';
 import { uiStoreActions } from '../store/uiStore';
 import { layoutStoreActions } from '../store/layoutStore';
 import { scriptStoreActions } from '../store/scriptStore';
-import { linkStoreActions } from '../store/linkStore';
 import { expressionStoreActions } from '../store/expressionStore';
 import { sceneStoreActions } from '../store/sceneStore';
 // aiStore wiring deferred to Phase 8
@@ -38,6 +37,9 @@ export function wireStores(eventBus: EventBus): () => void {
   };
 
   const onPresetLoaded = (payload: { name: string; width: number; height: number; cellProperties?: Array<{ name: string; type: string; default: number | number[]; role?: string; isInherent?: boolean }>; cellTypes?: Array<{ id: string; name: string; color: string; properties: Array<{ name: string; type: string; default: number | number[]; role?: string; isInherent?: boolean }> }> }) => {
+    simStoreActions.setActivePreset(payload.name, payload.width, payload.height);
+    // Reset generation/playback state on preset load
+    simStoreActions.resetState();
     simStoreActions.setActivePreset(payload.name, payload.width, payload.height);
     if (payload.cellProperties) {
       simStoreActions.setCellProperties(payload.cellProperties as Array<{ name: string; type: 'bool' | 'int' | 'float' | 'vec2' | 'vec3' | 'vec4'; default: number | number[]; role?: string; isInherent?: boolean }>);
@@ -121,7 +123,7 @@ export function wireStores(eventBus: EventBus): () => void {
   eventBus.on('view:change', onViewChange);
   eventBus.on('ui:change', onUiChange);
 
-  // --- scriptStore wiring ---
+  // --- scriptStore wiring (Pyodide status + variables only) ---
   const onPyodideLoading = (payload: { phase: string; progress: number }) => {
     scriptStoreActions.setPyodideStatus('loading');
     scriptStoreActions.setPyodideProgress(payload.progress);
@@ -148,60 +150,12 @@ export function wireStores(eventBus: EventBus): () => void {
     scriptStoreActions.resetVariables();
   };
 
-  const onScriptAdded = (payload: { name: string; enabled: boolean; code: string; inputs?: string[]; outputs?: string[] }) => {
-    scriptStoreActions.addScript(payload);
-  };
-
-  const onScriptRemoved = (payload: { name: string }) => {
-    scriptStoreActions.removeScript(payload.name);
-  };
-
-  const onScriptToggled = (payload: { name: string; enabled: boolean }) => {
-    scriptStoreActions.toggleScript(payload.name, payload.enabled);
-  };
-
-  const onExpressionSet = (payload: { property: string; expression: string }) => {
-    scriptStoreActions.setExpression(payload.property, payload.expression);
-  };
-
-  const onExpressionCleared = (payload: { property: string }) => {
-    scriptStoreActions.clearExpression(payload.property);
-  };
-
   eventBus.on('pyodide:loading', onPyodideLoading);
   eventBus.on('pyodide:ready', onPyodideReady);
   eventBus.on('pyodide:error', onPyodideError);
   eventBus.on('script:variableChanged', onVariableChanged);
   eventBus.on('script:variableDeleted', onVariableDeleted);
   eventBus.on('script:variablesReset', onVariablesReset);
-  eventBus.on('script:scriptAdded', onScriptAdded);
-  eventBus.on('script:scriptRemoved', onScriptRemoved);
-  eventBus.on('script:scriptToggled', onScriptToggled);
-  eventBus.on('script:expressionSet', onExpressionSet);
-  eventBus.on('script:expressionCleared', onExpressionCleared);
-
-  // --- linkStore wiring ---
-  const onLinkAdded = (payload: { id: string; source: string; target: string; sourceRange: [number, number]; targetRange: [number, number]; easing: string; enabled: boolean }) => {
-    linkStoreActions.addLink(payload as import('../engine/linking/types').ParameterLink);
-  };
-
-  const onLinkRemoved = (payload: { id: string }) => {
-    linkStoreActions.removeLink(payload.id);
-  };
-
-  const onLinkUpdated = (payload: { id: string; enabled?: boolean; sourceRange?: [number, number]; targetRange?: [number, number]; easing?: string }) => {
-    const { id, ...patch } = payload;
-    linkStoreActions.updateLink(id, patch);
-  };
-
-  const onLinkReset = () => {
-    linkStoreActions.resetAll();
-  };
-
-  eventBus.on('link:added', onLinkAdded);
-  eventBus.on('link:removed', onLinkRemoved);
-  eventBus.on('link:updated', onLinkUpdated);
-  eventBus.on('link:reset', onLinkReset);
 
   // --- expressionStore wiring ---
   const onTagAdded = (payload: { id: string; name: string; source: string; phase: string; enabled: boolean; owner: { type: string; id?: string }; inputs: string[]; outputs: string[]; code: string; linkMeta?: { sourceAddress: string; sourceRange: [number, number]; targetRange: [number, number]; easing: string } }) => {
@@ -214,7 +168,6 @@ export function wireStores(eventBus: EventBus): () => void {
 
   const onTagUpdated = (payload: { id: string; name?: string; enabled?: boolean; phase?: string; code?: string; source?: string }) => {
     const { id, ...rest } = payload;
-    // Cast to Partial<ExpressionTag> — EventBus payloads use string for union types
     expressionStoreActions.updateTag(id, rest as Partial<import('../engine/expression/types').ExpressionTag>);
   };
 
@@ -229,8 +182,6 @@ export function wireStores(eventBus: EventBus): () => void {
 
   // --- sceneStore wiring ---
   const onSceneNodeAdded = (payload: { id: string; type: string; name: string; parentId: string | null }) => {
-    // Node addition handled by scene commands directly via sceneStoreActions
-    // This event is for external listeners
     void payload;
   };
 
@@ -240,8 +191,6 @@ export function wireStores(eventBus: EventBus): () => void {
 
   eventBus.on('scene:selectionChanged', onSceneSelectionChanged);
   eventBus.on('scene:nodeAdded', onSceneNodeAdded);
-
-  // aiStore: Phase 8 will wire AI-specific events here
 
   // Return cleanup function
   return () => {
@@ -265,15 +214,6 @@ export function wireStores(eventBus: EventBus): () => void {
     eventBus.off('script:variableChanged', onVariableChanged);
     eventBus.off('script:variableDeleted', onVariableDeleted);
     eventBus.off('script:variablesReset', onVariablesReset);
-    eventBus.off('script:scriptAdded', onScriptAdded);
-    eventBus.off('script:scriptRemoved', onScriptRemoved);
-    eventBus.off('script:scriptToggled', onScriptToggled);
-    eventBus.off('script:expressionSet', onExpressionSet);
-    eventBus.off('script:expressionCleared', onExpressionCleared);
-    eventBus.off('link:added', onLinkAdded);
-    eventBus.off('link:removed', onLinkRemoved);
-    eventBus.off('link:updated', onLinkUpdated);
-    eventBus.off('link:reset', onLinkReset);
     eventBus.off('tag:added', onTagAdded);
     eventBus.off('tag:removed', onTagRemoved);
     eventBus.off('tag:updated', onTagUpdated);

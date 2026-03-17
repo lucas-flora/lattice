@@ -27,16 +27,16 @@ describe('Simulation — scripting integration', () => {
     expect(sim.variableStore.get('testVar')).toBe(3.14);
   });
 
-  it('TestSimulation_ExpressionEngine_NullWithoutBridge', () => {
+  it('TestSimulation_PyodideBridge_NullWithoutBridge', () => {
     const config = loadBuiltinPreset('conways-gol');
     const sim = new Simulation(config);
-    expect(sim.expressionEngine).toBeNull();
+    expect(sim.pyodideBridge).toBeNull();
   });
 
-  it('TestSimulation_GlobalScriptRunner_NullWithoutBridge', () => {
+  it('TestSimulation_TagRegistry_ExistsOnConstruction', () => {
     const config = loadBuiltinPreset('conways-gol');
     const sim = new Simulation(config);
-    expect(sim.globalScriptRunner).toBeNull();
+    expect(sim.tagRegistry).toBeDefined();
   });
 
   it('TestSimulation_SyncTickUnaffectedWithoutScripts', () => {

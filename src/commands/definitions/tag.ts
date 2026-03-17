@@ -2,14 +2,14 @@
  * Tag commands: CRUD + lifecycle for ExpressionTags.
  *
  * tag.add / tag.remove / tag.edit are the primary command interface.
- * Legacy commands (link.add, expr.set, script.add) remain as sugar.
+ * All operations go through ExpressionTagRegistry only — no dual writes.
  */
 
 import { z } from 'zod';
 import type { CommandRegistry } from '../CommandRegistry';
 import type { SimulationController } from '../SimulationController';
 import type { EventBus } from '../../engine/core/EventBus';
-import type { EasingType } from '../../engine/linking/types';
+import type { EasingType } from '../../engine/expression/types';
 
 const VALID_EASINGS = ['linear', 'smoothstep', 'easeIn', 'easeOut', 'easeInOut'] as const;
 
@@ -230,27 +230,9 @@ export function registerTagCommands(
           const code = p.code ?? '';
 
           // If linkMeta is provided, this is a link-wizard-generated code tag.
-          // Use addFromLink for proper fast-path setup (no Pyodide needed).
           if (p.linkMeta) {
             const srcAddr = p.sourceAddress ?? p.linkMeta.sourceAddress;
             const tgtAddr = p.targetAddress ?? `cell.${property}`;
-
-            // Also add to legacy LinkRegistry during migration period
-            const linkRegistry = controller.getLinkRegistry();
-            if (linkRegistry) {
-              try {
-                const link = linkRegistry.add({
-                  source: srcAddr,
-                  target: tgtAddr,
-                  sourceRange: p.linkMeta.sourceRange,
-                  targetRange: p.linkMeta.targetRange,
-                  easing: p.linkMeta.easing,
-                });
-                eventBus.emit('link:added', link);
-              } catch {
-                // Link already exists or cycle — tag registry will catch it too
-              }
-            }
 
             const tag = tagRegistry.addFromLink(
               srcAddr,
@@ -268,14 +250,8 @@ export function registerTagCommands(
           }
 
           // Standard code expression tag (no linkMeta)
-          // Lazily create scripting engines
-          const engines = controller.ensureScriptingEngines();
-          if (!engines) {
-            return { success: false, error: 'Failed to initialize scripting engines' };
-          }
-
-          engines.expressionEngine.setExpression(property, code);
-          eventBus.emit('script:expressionSet', { property, expression: code });
+          // Ensure Pyodide bridge exists for expression evaluation
+          controller.ensurePyodideBridge();
 
           // Remove existing tag for this property
           const existing = tagRegistry.getAll().find(
@@ -304,19 +280,6 @@ export function registerTagCommands(
           const targetRange = p.targetRange ?? [0, 1] as [number, number];
           const easing = p.easing ?? 'linear';
 
-          // Also add to legacy LinkRegistry
-          const linkRegistry = controller.getLinkRegistry();
-          if (linkRegistry) {
-            const link = linkRegistry.add({
-              source: sourceAddress,
-              target: targetAddress,
-              sourceRange,
-              targetRange,
-              easing,
-            });
-            eventBus.emit('link:added', link);
-          }
-
           const tag = tagRegistry.addFromLink(sourceAddress, targetAddress, sourceRange, targetRange, easing as EasingType, true);
           if (p.phase) tagRegistry.update(tag.id, { phase: p.phase });
           if (p.owner) tagRegistry.update(tag.id, { owner: p.owner });
@@ -328,20 +291,8 @@ export function registerTagCommands(
           const name = p.name ?? 'untitled';
           const code = p.code ?? '';
 
-          // Lazily create scripting engines
-          const engines = controller.ensureScriptingEngines();
-          if (!engines) {
-            return { success: false, error: 'Failed to initialize scripting engines' };
-          }
-
-          engines.scriptRunner.addScript({
-            name,
-            enabled: true,
-            code,
-            inputs: p.inputs,
-            outputs: p.outputs,
-          });
-          eventBus.emit('script:scriptAdded', { name, enabled: true, code });
+          // Ensure Pyodide bridge exists for script evaluation
+          controller.ensurePyodideBridge();
 
           // Remove existing tag for this script
           const existing = tagRegistry.getAll().find(
@@ -370,7 +321,7 @@ export function registerTagCommands(
 
   registry.register({
     name: 'tag.remove',
-    description: 'Remove a tag and its underlying legacy data',
+    description: 'Remove a tag',
     category: 'tag',
     params: IdParams,
     execute: async (params) => {
@@ -382,39 +333,6 @@ export function registerTagCommands(
       const tag = tagRegistry.get(id);
       if (!tag) {
         return { success: false, error: `Tag "${id}" not found` };
-      }
-
-      // Clean up the legacy system based on source
-      if (tag.linkMeta) {
-        // Link-created tags (source: 'code' with linkMeta) — clean up legacy link registry
-        const linkRegistry = controller.getLinkRegistry();
-        if (linkRegistry) {
-          const links = linkRegistry.getAll();
-          const match = links.find(
-            (l) => l.source === tag.linkMeta!.sourceAddress && tag.outputs.includes(l.target),
-          );
-          if (match) {
-            linkRegistry.remove(match.id);
-            eventBus.emit('link:removed', { id: match.id });
-          }
-        }
-      } else if (tag.source === 'code') {
-        const engine = controller.getExpressionEngine();
-        if (engine) {
-          for (const output of tag.outputs) {
-            const parts = output.split('.');
-            if (parts.length === 2 && parts[0] === 'cell') {
-              engine.clearExpression(parts[1]);
-              eventBus.emit('script:expressionCleared', { property: parts[1] });
-            }
-          }
-        }
-      } else if (tag.source === 'script') {
-        const runner = controller.getGlobalScriptRunner();
-        if (runner) {
-          runner.removeScript(tag.name);
-          eventBus.emit('script:scriptRemoved', { name: tag.name });
-        }
       }
 
       tagRegistry.remove(id);
@@ -448,63 +366,14 @@ export function registerTagCommands(
       if (p.inputs !== undefined) patch.inputs = p.inputs;
       if (p.outputs !== undefined) patch.outputs = p.outputs;
 
-      // Mirror to legacy system based on source
-      if (tag.linkMeta) {
-        // Link-created tags (source: 'code' with linkMeta) — mirror to legacy link registry
-        const linkRegistry = controller.getLinkRegistry();
-        if (linkRegistry) {
-          const links = linkRegistry.getAll();
-          const match = links.find(
-            (l) => l.source === tag.linkMeta!.sourceAddress && tag.outputs.includes(l.target),
-          );
-          if (match) {
-            const linkPatch: Record<string, unknown> = {};
-            if (p.sourceRange) linkPatch.sourceRange = p.sourceRange;
-            if (p.targetRange) linkPatch.targetRange = p.targetRange;
-            if (p.easing) linkPatch.easing = p.easing;
-            if (Object.keys(linkPatch).length > 0) {
-              linkRegistry.update(match.id, linkPatch as { sourceRange?: [number, number]; targetRange?: [number, number]; easing?: EasingType });
-            }
-            eventBus.emit('link:updated', { id: match.id });
-          }
-        }
-        // Update linkMeta on tag
-        if (p.sourceRange || p.targetRange || p.easing) {
-          patch.linkMeta = {
-            ...tag.linkMeta!,
-            ...(p.sourceRange ? { sourceRange: p.sourceRange } : {}),
-            ...(p.targetRange ? { targetRange: p.targetRange } : {}),
-            ...(p.easing ? { easing: p.easing as EasingType } : {}),
-          };
-        }
-      } else if (tag.source === 'code') {
-        if (p.code !== undefined) {
-          const engine = controller.getExpressionEngine();
-          if (engine) {
-            for (const output of tag.outputs) {
-              const parts = output.split('.');
-              if (parts.length === 2 && parts[0] === 'cell') {
-                engine.setExpression(parts[1], p.code);
-              }
-            }
-          }
-          eventBus.emit('script:expressionSet', { property: tag.outputs[0], expression: p.code });
-        }
-      } else if (tag.source === 'script') {
-        if (p.code !== undefined || p.inputs !== undefined || p.outputs !== undefined) {
-          const engines = controller.ensureScriptingEngines();
-          if (engines) {
-            engines.scriptRunner.removeScript(tag.name);
-            engines.scriptRunner.addScript({
-              name: p.name ?? tag.name,
-              enabled: tag.enabled,
-              code: p.code ?? tag.code,
-              inputs: p.inputs ?? tag.inputs,
-              outputs: p.outputs ?? tag.outputs,
-            });
-          }
-          eventBus.emit('script:scriptAdded', { name: p.name ?? tag.name, enabled: tag.enabled, code: p.code ?? tag.code });
-        }
+      // Update linkMeta if link-related fields are changed
+      if (tag.linkMeta && (p.sourceRange || p.targetRange || p.easing)) {
+        patch.linkMeta = {
+          ...tag.linkMeta,
+          ...(p.sourceRange ? { sourceRange: p.sourceRange } : {}),
+          ...(p.targetRange ? { targetRange: p.targetRange } : {}),
+          ...(p.easing ? { easing: p.easing as EasingType } : {}),
+        };
       }
 
       const updated = tagRegistry.update(p.id, patch as Parameters<typeof tagRegistry.update>[1]);

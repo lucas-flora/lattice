@@ -294,12 +294,12 @@ export class ExpressionTagRegistry {
   /**
    * Evaluate all enabled post-rule tags.
    * Returns a record of property → expression for the Python harness.
-   * The actual Python execution is delegated to ExpressionEngine by the caller.
+   * The actual Python execution is delegated to Simulation.tickAsync() via PyodideBridge.
    */
   getPostRuleExpressions(): Record<string, string> {
     const expressions: Record<string, string> = {};
     for (const tag of this.tags.values()) {
-      if (!tag.enabled || tag.phase !== 'post-rule' || tag.source === 'link') continue;
+      if (!tag.enabled || tag.phase !== 'post-rule' || tag.source !== 'code') continue;
       // For code/script tags, map each output property to the code
       for (const output of tag.outputs) {
         const addr = parseAddress(output);

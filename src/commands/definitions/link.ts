@@ -1,15 +1,15 @@
 /**
  * Link commands: add, remove, list, clear, enable, disable parameter links.
  *
- * Each link.add now also creates an ExpressionTag in the unified registry.
- * The old LinkRegistry is kept for backward compatibility during migration.
+ * All link operations go through ExpressionTagRegistry. Links are a creation
+ * wizard that produces code tags with linkMeta for JS fast-path resolution.
  */
 
 import { z } from 'zod';
 import type { CommandRegistry } from '../CommandRegistry';
 import type { SimulationController } from '../SimulationController';
 import type { EventBus } from '../../engine/core/EventBus';
-import type { EasingType } from '../../engine/linking/types';
+import type { EasingType } from '../../engine/expression/types';
 
 const VALID_EASINGS = ['linear', 'smoothstep', 'easeIn', 'easeOut', 'easeInOut'] as const;
 
@@ -55,53 +55,34 @@ export function registerLinkCommands(
     params: AddParams,
     execute: async (params) => {
       const parsed = params as z.infer<typeof AddParams>;
-      const linkRegistry = controller.getLinkRegistry();
-      if (!linkRegistry) {
+      const tagRegistry = controller.getTagRegistry();
+      if (!tagRegistry) {
         return { success: false, error: 'No simulation loaded' };
       }
 
-      // Resolve easing: could come as named param or positional string
-      let easing = parsed.easing;
-      if (!easing && typeof parsed.easing === 'string' && VALID_EASINGS.includes(parsed.easing as typeof VALID_EASINGS[number])) {
-        easing = parsed.easing as typeof VALID_EASINGS[number];
-      }
+      const easing = parsed.easing ?? 'linear';
 
-      // Resolve ranges: prefer explicit tuples, fall back to positional args
       const sourceRange = parsed.sourceRange ??
         (parsed.srcMin !== undefined && parsed.srcMax !== undefined
           ? [parsed.srcMin, parsed.srcMax] as [number, number]
-          : undefined);
+          : [0, 1] as [number, number]);
       const targetRange = parsed.targetRange ??
         (parsed.dstMin !== undefined && parsed.dstMax !== undefined
           ? [parsed.dstMin, parsed.dstMax] as [number, number]
-          : undefined);
+          : [0, 1] as [number, number]);
 
       try {
-        const link = linkRegistry.add({
-          source: parsed.source,
-          target: parsed.target,
+        const tag = tagRegistry.addFromLink(
+          parsed.source,
+          parsed.target,
           sourceRange,
           targetRange,
-          easing,
-        });
-        eventBus.emit('link:added', link);
-
-        // Also create an ExpressionTag in the unified registry
-        const tagRegistry = controller.getTagRegistry();
-        if (tagRegistry) {
-          const tag = tagRegistry.addFromLink(
-            parsed.source,
-            parsed.target,
-            link.sourceRange,
-            link.targetRange,
-            link.easing as EasingType,
-            link.enabled,
-          );
-          eventBus.emit('tag:added', tag);
-        }
-
+          easing as EasingType,
+          true,
+        );
+        eventBus.emit('tag:added', tag);
         controller.onLinkChanged();
-        return { success: true, data: link };
+        return { success: true, data: tag };
       } catch (e) {
         return { success: false, error: (e as Error).message };
       }
@@ -115,32 +96,19 @@ export function registerLinkCommands(
     params: IdParams,
     execute: async (params) => {
       const { id } = params as z.infer<typeof IdParams>;
-      const linkRegistry = controller.getLinkRegistry();
-      if (!linkRegistry) {
+      const tagRegistry = controller.getTagRegistry();
+      if (!tagRegistry) {
         return { success: false, error: 'No simulation loaded' };
       }
 
-      // Find the corresponding tag before removing the link
-      const tagRegistry = controller.getTagRegistry();
-      const link = linkRegistry.get(id);
-
-      const removed = linkRegistry.remove(id);
-      if (!removed) {
-        return { success: false, error: `Link "${id}" not found` };
-      }
-      eventBus.emit('link:removed', { id });
-
-      // Also remove the corresponding tag
-      if (tagRegistry && link) {
-        const matchingTags = tagRegistry.getAll().filter(
-          (t) => t.linkMeta?.sourceAddress === link.source && t.outputs.includes(link.target),
-        );
-        for (const tag of matchingTags) {
-          tagRegistry.remove(tag.id);
-          eventBus.emit('tag:removed', { id: tag.id });
-        }
+      // Find tag — could be by tag ID or by matching linkMeta
+      const tag = tagRegistry.get(id);
+      if (!tag) {
+        return { success: false, error: `Link/tag "${id}" not found` };
       }
 
+      tagRegistry.remove(id);
+      eventBus.emit('tag:removed', { id });
       controller.onLinkChanged();
       return { success: true, data: { id } };
     },
@@ -152,11 +120,12 @@ export function registerLinkCommands(
     category: 'link',
     params: NoParams,
     execute: async () => {
-      const linkRegistry = controller.getLinkRegistry();
-      if (!linkRegistry) {
+      const tagRegistry = controller.getTagRegistry();
+      if (!tagRegistry) {
         return { success: true, data: { links: [] } };
       }
-      return { success: true, data: { links: linkRegistry.getAll() } };
+      const linkTags = tagRegistry.getAll().filter(t => t.linkMeta !== undefined);
+      return { success: true, data: { links: linkTags } };
     },
   });
 
@@ -166,20 +135,16 @@ export function registerLinkCommands(
     category: 'link',
     params: NoParams,
     execute: async () => {
-      const linkRegistry = controller.getLinkRegistry();
-      if (!linkRegistry) {
+      const tagRegistry = controller.getTagRegistry();
+      if (!tagRegistry) {
         return { success: true, data: { cleared: true } };
       }
-      linkRegistry.clear();
-      eventBus.emit('link:reset', {});
 
-      // Also clear link-sourced tags
-      const tagRegistry = controller.getTagRegistry();
-      if (tagRegistry) {
-        const linkTags = tagRegistry.getAll().filter((t) => t.linkMeta !== undefined);
-        for (const tag of linkTags) {
-          tagRegistry.remove(tag.id);
-        }
+      const linkTags = tagRegistry.getAll().filter((t) => t.linkMeta !== undefined);
+      for (const tag of linkTags) {
+        tagRegistry.remove(tag.id);
+      }
+      if (linkTags.length > 0) {
         eventBus.emit('tag:reset', {});
       }
 
@@ -195,29 +160,16 @@ export function registerLinkCommands(
     params: IdParams,
     execute: async (params) => {
       const { id } = params as z.infer<typeof IdParams>;
-      const linkRegistry = controller.getLinkRegistry();
-      if (!linkRegistry) {
+      const tagRegistry = controller.getTagRegistry();
+      if (!tagRegistry) {
         return { success: false, error: 'No simulation loaded' };
       }
-      const link = linkRegistry.get(id);
-      if (!link) {
-        return { success: false, error: `Link "${id}" not found` };
+      const tag = tagRegistry.get(id);
+      if (!tag) {
+        return { success: false, error: `Link/tag "${id}" not found` };
       }
-      linkRegistry.enable(id);
-      eventBus.emit('link:updated', { id, enabled: true });
-
-      // Also enable the corresponding tag
-      const tagRegistry = controller.getTagRegistry();
-      if (tagRegistry) {
-        const matchingTags = tagRegistry.getAll().filter(
-          (t) => t.linkMeta?.sourceAddress === link.source && t.outputs.includes(link.target),
-        );
-        for (const tag of matchingTags) {
-          tagRegistry.enable(tag.id);
-          eventBus.emit('tag:updated', { id: tag.id, enabled: true });
-        }
-      }
-
+      tagRegistry.enable(id);
+      eventBus.emit('tag:updated', { id, enabled: true });
       controller.onLinkChanged();
       return { success: true, data: { id, enabled: true } };
     },
@@ -230,29 +182,16 @@ export function registerLinkCommands(
     params: IdParams,
     execute: async (params) => {
       const { id } = params as z.infer<typeof IdParams>;
-      const linkRegistry = controller.getLinkRegistry();
-      if (!linkRegistry) {
+      const tagRegistry = controller.getTagRegistry();
+      if (!tagRegistry) {
         return { success: false, error: 'No simulation loaded' };
       }
-      const link = linkRegistry.get(id);
-      if (!link) {
-        return { success: false, error: `Link "${id}" not found` };
+      const tag = tagRegistry.get(id);
+      if (!tag) {
+        return { success: false, error: `Link/tag "${id}" not found` };
       }
-      linkRegistry.disable(id);
-      eventBus.emit('link:updated', { id, enabled: false });
-
-      // Also disable the corresponding tag
-      const tagRegistry = controller.getTagRegistry();
-      if (tagRegistry) {
-        const matchingTags = tagRegistry.getAll().filter(
-          (t) => t.linkMeta?.sourceAddress === link.source && t.outputs.includes(link.target),
-        );
-        for (const tag of matchingTags) {
-          tagRegistry.disable(tag.id);
-          eventBus.emit('tag:updated', { id: tag.id, enabled: false });
-        }
-      }
-
+      tagRegistry.disable(id);
+      eventBus.emit('tag:updated', { id, enabled: false });
       controller.onLinkChanged();
       return { success: true, data: { id, enabled: false } };
     },
@@ -265,9 +204,14 @@ export function registerLinkCommands(
     params: EditParams,
     execute: async (params) => {
       const parsed = params as z.infer<typeof EditParams>;
-      const linkRegistry = controller.getLinkRegistry();
-      if (!linkRegistry) {
+      const tagRegistry = controller.getTagRegistry();
+      if (!tagRegistry) {
         return { success: false, error: 'No simulation loaded' };
+      }
+
+      const tag = tagRegistry.get(parsed.id);
+      if (!tag || !tag.linkMeta) {
+        return { success: false, error: `Link/tag "${parsed.id}" not found` };
       }
 
       const sourceRange = parsed.sourceRange ??
@@ -279,36 +223,19 @@ export function registerLinkCommands(
           ? [parsed.dstMin, parsed.dstMax] as [number, number]
           : undefined);
 
-      const patch: { sourceRange?: [number, number]; targetRange?: [number, number]; easing?: typeof VALID_EASINGS[number] } = {};
-      if (sourceRange) patch.sourceRange = sourceRange;
-      if (targetRange) patch.targetRange = targetRange;
-      if (parsed.easing) patch.easing = parsed.easing;
+      const updatedMeta = {
+        ...tag.linkMeta,
+        ...(sourceRange ? { sourceRange } : {}),
+        ...(targetRange ? { targetRange } : {}),
+        ...(parsed.easing ? { easing: parsed.easing as EasingType } : {}),
+      };
 
-      const link = linkRegistry.get(parsed.id);
-      const updated = linkRegistry.update(parsed.id, patch);
+      const updated = tagRegistry.update(parsed.id, { linkMeta: updatedMeta });
       if (!updated) {
-        return { success: false, error: `Link "${parsed.id}" not found` };
-      }
-      eventBus.emit('link:updated', { id: parsed.id, ...patch });
-
-      // Also update the corresponding tag's linkMeta
-      const tagRegistry = controller.getTagRegistry();
-      if (tagRegistry && link) {
-        const matchingTags = tagRegistry.getAll().filter(
-          (t) => t.linkMeta?.sourceAddress === link.source && t.outputs.includes(link.target),
-        );
-        for (const tag of matchingTags) {
-          const updatedMeta = {
-            ...tag.linkMeta!,
-            ...(sourceRange ? { sourceRange } : {}),
-            ...(targetRange ? { targetRange } : {}),
-            ...(parsed.easing ? { easing: parsed.easing as EasingType } : {}),
-          };
-          tagRegistry.update(tag.id, { linkMeta: updatedMeta });
-          eventBus.emit('tag:updated', { id: tag.id });
-        }
+        return { success: false, error: `Failed to update tag "${parsed.id}"` };
       }
 
+      eventBus.emit('tag:updated', { id: parsed.id });
       controller.onLinkChanged();
       return { success: true, data: updated };
     },

@@ -1,14 +1,16 @@
 /**
- * Unit tests for Phase 5 scripting: GlobalVariableStore, ExpressionEngine,
- * GlobalScriptRunner, expression/script harnesses.
+ * Unit tests for Phase 5 scripting: GlobalVariableStore,
+ * expression/script harnesses.
  *
  * No Pyodide runtime needed — tests pure TypeScript logic only.
+ *
+ * NOTE: ExpressionEngine and GlobalScriptRunner have been removed.
+ * Their functionality is now managed by ExpressionTagRegistry.
+ * See src/engine/expression/__tests__/ for tag registry tests.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { GlobalVariableStore } from '../GlobalVariableStore';
-import { ExpressionEngine } from '../ExpressionEngine';
-import { GlobalScriptRunner } from '../GlobalScriptRunner';
 import { buildExpressionHarness } from '../expressionHarness';
 import { buildScriptHarness } from '../scriptHarness';
 import { EventBus, eventBus } from '../../core/EventBus';
@@ -98,71 +100,6 @@ describe('GlobalVariableStore', () => {
   });
 });
 
-// --- ExpressionEngine ---
-
-describe('ExpressionEngine', () => {
-  let engine: ExpressionEngine;
-
-  beforeEach(() => {
-    // Mock bridge — we don't test actual execution here
-    const mockBridge = {} as any;
-    engine = new ExpressionEngine(mockBridge);
-    eventBus.clear();
-  });
-
-  it('TestExpressionEngine_SetClearExpression', () => {
-    engine.setExpression('alpha', 'clamp(cell["age"] / 100.0)');
-    expect(engine.getExpression('alpha')).toBe('clamp(cell["age"] / 100.0)');
-
-    engine.clearExpression('alpha');
-    expect(engine.getExpression('alpha')).toBeUndefined();
-  });
-
-  it('TestExpressionEngine_HasExpressions', () => {
-    expect(engine.hasExpressions()).toBe(false);
-    engine.setExpression('alpha', '0.5');
-    expect(engine.hasExpressions()).toBe(true);
-    engine.clearExpression('alpha');
-    expect(engine.hasExpressions()).toBe(false);
-  });
-
-  it('TestExpressionEngine_GetAllExpressions', () => {
-    engine.setExpression('alpha', '0.5');
-    engine.setExpression('age', 'cell["age"] + 1');
-    const all = engine.getAllExpressions();
-    expect(all).toEqual({
-      alpha: '0.5',
-      age: 'cell["age"] + 1',
-    });
-  });
-
-  it('TestExpressionEngine_LoadFromProperties', () => {
-    engine.loadFromProperties([
-      { name: 'alive', expression: undefined },
-      { name: 'alpha', expression: 'clamp(cell["age"] / 50.0)' },
-      { name: 'age' },
-    ]);
-    expect(engine.hasExpressions()).toBe(true);
-    expect(engine.getExpression('alpha')).toBe('clamp(cell["age"] / 50.0)');
-    expect(engine.getExpression('alive')).toBeUndefined();
-  });
-
-  it('TestExpressionEngine_EmitsEventOnSet', () => {
-    const handler = vi.fn();
-    eventBus.on('script:expressionSet', handler);
-    engine.setExpression('alpha', '0.5');
-    expect(handler).toHaveBeenCalledWith({ property: 'alpha', expression: '0.5' });
-  });
-
-  it('TestExpressionEngine_EmitsEventOnClear', () => {
-    engine.setExpression('alpha', '0.5');
-    const handler = vi.fn();
-    eventBus.on('script:expressionCleared', handler);
-    engine.clearExpression('alpha');
-    expect(handler).toHaveBeenCalledWith({ property: 'alpha' });
-  });
-});
-
 // --- ExpressionHarness ---
 
 describe('ExpressionHarness', () => {
@@ -214,107 +151,48 @@ describe('ExpressionHarness', () => {
     expect(code).toContain('glob = dict(_input_globals)');
     expect(code).toContain('_output_buffers');
   });
-});
 
-// --- GlobalScriptRunner ---
-
-describe('GlobalScriptRunner', () => {
-  let runner: GlobalScriptRunner;
-
-  beforeEach(() => {
-    const mockBridge = {} as any;
-    runner = new GlobalScriptRunner(mockBridge);
-    eventBus.clear();
+  it('TestExpressionHarness_ContainsMaxMinOverrides', () => {
+    const code = buildExpressionHarness({ alpha: 'max(0.1, age)' }, ['alpha', 'age'], 8, 8, 1);
+    expect(code).toContain('_builtin_max = max');
+    expect(code).toContain('_builtin_min = min');
+    expect(code).toContain('np.maximum');
+    expect(code).toContain('np.minimum');
   });
 
-  it('TestGlobalScriptRunner_AddRemoveScript', () => {
-    runner.addScript({ name: 'entropy', enabled: true, code: 'pass' });
-    expect(runner.getScript('entropy')).toBeDefined();
-    expect(runner.getScript('entropy')!.name).toBe('entropy');
-
-    const removed = runner.removeScript('entropy');
-    expect(removed).toBe(true);
-    expect(runner.getScript('entropy')).toBeUndefined();
+  it('TestExpressionHarness_ContainsSelfProxy', () => {
+    const code = buildExpressionHarness({ alpha: 'self.alpha = 0.5' }, ['alpha'], 8, 8, 1);
+    expect(code).toContain('class _SelfProxy');
+    expect(code).toContain('_self_writes');
+    expect(code).toContain('def __getattr__');
+    expect(code).toContain('def __setattr__');
   });
 
-  it('TestGlobalScriptRunner_RemoveNonexistent', () => {
-    const removed = runner.removeScript('nope');
-    expect(removed).toBe(false);
+  it('TestExpressionHarness_ContainsCoordinateArrays', () => {
+    const code = buildExpressionHarness({ colorR: 'x / width' }, ['colorR'], 16, 16, 1);
+    expect(code).toContain('np.mgrid');
+    expect(code).toContain('x = _x_grid');
+    expect(code).toContain('y = _y_grid');
   });
 
-  it('TestGlobalScriptRunner_EnableDisable', () => {
-    runner.addScript({ name: 's1', enabled: true, code: 'pass' });
-    expect(runner.getScript('s1')!.enabled).toBe(true);
-
-    runner.disableScript('s1');
-    expect(runner.getScript('s1')!.enabled).toBe(false);
-
-    runner.enableScript('s1');
-    expect(runner.getScript('s1')!.enabled).toBe(true);
+  it('TestExpressionHarness_StatementModeClearsSelfWrites', () => {
+    const code = buildExpressionHarness(
+      { colorR: 'self.colorR = x / width\nself.colorG = 0.5' },
+      ['colorR', 'colorG'],
+      8, 8, 1,
+    );
+    expect(code).toContain('_self_writes.clear()');
+    expect(code).toContain("(statement mode)");
   });
 
-  it('TestGlobalScriptRunner_GetEnabledScripts', () => {
-    runner.addScript({ name: 's1', enabled: true, code: 'pass' });
-    runner.addScript({ name: 's2', enabled: false, code: 'pass' });
-    runner.addScript({ name: 's3', enabled: true, code: 'pass' });
-
-    const enabled = runner.getEnabledScripts();
-    expect(enabled.length).toBe(2);
-    expect(enabled.map((s) => s.name)).toEqual(['s1', 's3']);
+  it('TestExpressionHarness_ContainsEnvShortcuts', () => {
+    const code = buildExpressionHarness({ alpha: '0.5' }, ['alpha'], 8, 8, 1);
+    expect(code).toContain("globals()['env_' + _k]");
   });
 
-  it('TestGlobalScriptRunner_HasEnabledScripts', () => {
-    expect(runner.hasEnabledScripts()).toBe(false);
-    runner.addScript({ name: 's1', enabled: false, code: 'pass' });
-    expect(runner.hasEnabledScripts()).toBe(false);
-    runner.enableScript('s1');
-    expect(runner.hasEnabledScripts()).toBe(true);
-  });
-
-  it('TestGlobalScriptRunner_GetAllScripts', () => {
-    runner.addScript({ name: 's1', enabled: true, code: 'a' });
-    runner.addScript({ name: 's2', enabled: false, code: 'b' });
-    const all = runner.getAllScripts();
-    expect(all.length).toBe(2);
-  });
-
-  it('TestGlobalScriptRunner_LoadFromConfig', () => {
-    runner.loadFromConfig([
-      { name: 'entropy', enabled: true, code: 'pass' },
-      { name: 'logger', enabled: false, code: 'pass' },
-    ]);
-    expect(runner.getAllScripts().length).toBe(2);
-    expect(runner.getScript('entropy')!.enabled).toBe(true);
-    expect(runner.getScript('logger')!.enabled).toBe(false);
-  });
-
-  it('TestGlobalScriptRunner_EmitsEventOnAdd', () => {
-    const handler = vi.fn();
-    eventBus.on('script:scriptAdded', handler);
-    runner.addScript({ name: 's1', enabled: true, code: 'pass' });
-    expect(handler).toHaveBeenCalledWith({
-      name: 's1',
-      enabled: true,
-      code: 'pass',
-      inputs: undefined,
-      outputs: undefined,
-    });
-  });
-
-  it('TestGlobalScriptRunner_EmitsEventOnRemove', () => {
-    runner.addScript({ name: 's1', enabled: true, code: 'pass' });
-    const handler = vi.fn();
-    eventBus.on('script:scriptRemoved', handler);
-    runner.removeScript('s1');
-    expect(handler).toHaveBeenCalledWith({ name: 's1' });
-  });
-
-  it('TestGlobalScriptRunner_EmitsEventOnToggle', () => {
-    runner.addScript({ name: 's1', enabled: true, code: 'pass' });
-    const handler = vi.fn();
-    eventBus.on('script:scriptToggled', handler);
-    runner.disableScript('s1');
-    expect(handler).toHaveBeenCalledWith({ name: 's1', enabled: false });
+  it('TestExpressionHarness_ContainsRangeMapHelper', () => {
+    const code = buildExpressionHarness({ alpha: '0.5' }, ['alpha'], 8, 8, 1);
+    expect(code).toContain('def rangeMap');
   });
 });
 

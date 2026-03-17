@@ -1,8 +1,8 @@
 /**
  * Expression commands: set, clear, list per-property Python expressions.
  *
- * Each expr.set now also creates an ExpressionTag in the unified registry.
- * Lazily creates PyodideBridge and ExpressionEngine on first use.
+ * All operations go through ExpressionTagRegistry only.
+ * Lazily creates PyodideBridge on first use.
  */
 
 import { z } from 'zod';
@@ -44,19 +44,12 @@ export function registerExpressionCommands(
         return { success: false, error: `Unknown property: "${property}". Available: ${props.map((p) => p.name).join(', ')}` };
       }
 
-      // Lazily create scripting engines
-      const engines = controller.ensureScriptingEngines();
-      if (!engines) {
-        return { success: false, error: 'Failed to initialize scripting engines' };
-      }
+      // Ensure Pyodide bridge exists
+      controller.ensurePyodideBridge();
 
-      engines.expressionEngine.setExpression(property, expression);
-
-      // Also create/update an ExpressionTag in the unified registry
       const tagRegistry = controller.getTagRegistry();
       if (tagRegistry && eventBus) {
         // Remove existing expression tag for this property (if any)
-        // Exclude link-created tags (they have linkMeta) — only replace pure expression tags
         const existing = tagRegistry.getAll().find(
           (t) => t.source === 'code' && !t.linkMeta && t.outputs.includes(`cell.${property}`),
         );
@@ -80,13 +73,7 @@ export function registerExpressionCommands(
     params: ClearParams,
     execute: async (params) => {
       const { property } = params as z.infer<typeof ClearParams>;
-      const engine = controller.getExpressionEngine();
-      if (!engine) {
-        return { success: true, data: { property } }; // No engine = nothing to clear
-      }
-      engine.clearExpression(property);
 
-      // Also remove the corresponding expression tag (not link-created tags)
       const tagRegistry = controller.getTagRegistry();
       if (tagRegistry && eventBus) {
         const existing = tagRegistry.getAll().find(
@@ -108,11 +95,12 @@ export function registerExpressionCommands(
     category: 'expr',
     params: NoParams,
     execute: async () => {
-      const engine = controller.getExpressionEngine();
-      if (!engine) {
+      const tagRegistry = controller.getTagRegistry();
+      if (!tagRegistry) {
         return { success: true, data: { expressions: {} } };
       }
-      return { success: true, data: { expressions: engine.getAllExpressions() } };
+      const postRuleExprs = tagRegistry.getPostRuleExpressions();
+      return { success: true, data: { expressions: postRuleExprs } };
     },
   });
 
@@ -122,26 +110,21 @@ export function registerExpressionCommands(
     category: 'expr',
     params: NoParams,
     execute: async () => {
-      const engine = controller.getExpressionEngine();
-      if (!engine) {
+      const tagRegistry = controller.getTagRegistry();
+      if (!tagRegistry || !eventBus) {
         return { success: true, data: { cleared: 0 } };
       }
-      const all = engine.getAllExpressions();
-      for (const prop of Object.keys(all)) {
-        engine.clearExpression(prop);
+
+      // Remove all code-sourced post-rule tags (excluding link-created ones)
+      const codeTags = tagRegistry.getAll().filter(
+        (t) => t.source === 'code' && !t.linkMeta && t.phase === 'post-rule',
+      );
+      for (const tag of codeTags) {
+        tagRegistry.remove(tag.id);
+        eventBus.emit('tag:removed', { id: tag.id });
       }
 
-      // Also clear all code-sourced tags
-      const tagRegistry = controller.getTagRegistry();
-      if (tagRegistry && eventBus) {
-        const codeTags = tagRegistry.getAll().filter((t) => t.source === 'code');
-        for (const tag of codeTags) {
-          tagRegistry.remove(tag.id);
-          eventBus.emit('tag:removed', { id: tag.id });
-        }
-      }
-
-      return { success: true, data: { cleared: Object.keys(all).length } };
+      return { success: true, data: { cleared: codeTags.length } };
     },
   });
 }

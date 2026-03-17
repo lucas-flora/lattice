@@ -415,6 +415,33 @@ Tags within each phase are evaluated in dependency order (topological sort).
 Pre-rule link tags use JS rangeMap for speed. Post-rule code tags go through
 the Pyodide Python harness.
 
+### Compute-Ahead Pipeline
+
+Frames are pre-computed into a cache so the timeline can be scrubbed instantly.
+Playback is decoupled from computation — the sim computes as fast as possible
+while playback runs at display FPS.
+
+**Sync path** (TS/WASM rules, no expressions): `computeFrames()` runs entire
+chunks synchronously. The renderer never fires mid-chunk.
+
+**Async path** (Python rules or post-rule expressions): `computeFramesAsync()`
+uses `await tickAsync()` per frame, which yields to the event loop (worker
+postMessage is a macrotask). To prevent the renderer from showing intermediate
+compute states, the grid's **display lock** (`Grid.lockDisplay()`) freezes a
+snapshot that `getDisplayBuffer()` returns while the live buffers advance freely.
+
+**Epoch-based cancellation**: `computeEpoch` increments on preset/resize changes.
+In-flight async loops check the epoch after each `await` and bail if stale.
+
+### Debug Logging
+
+Two-level debug logging controlled by `NEXT_PUBLIC_LATTICE_LOG` env var:
+- `=1` — minimal: preset loads, play/pause, compute-ahead lifecycle, Pyodide status
+- `=2` — verbose: every tick, cache ops, snapshot restores, frame-by-frame detail
+
+Color-coded categories: `ctrl` (green), `compute` (yellow), `play` (blue),
+`pyodide` (pink), `sim` (purple). See `src/lib/debugLog.ts`.
+
 ---
 
 ## Three Surface Doctrine (extended)

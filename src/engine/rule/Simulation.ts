@@ -7,6 +7,9 @@
  *   2. Applying initial cell state from the preset
  *   3. Creating the RuleRunner with the compiled rule
  *   4. Running tick cycles
+ *
+ * ExpressionTagRegistry is the sole authority for all computation:
+ * links (JS fast-path), post-rule expressions (Pyodide), and scripts (Pyodide).
  */
 
 import { Grid } from '../grid/Grid';
@@ -19,11 +22,12 @@ import { PythonRuleRunner } from './PythonRuleRunner';
 import { compileRule } from './RuleCompiler';
 import type { PyodideBridge } from '../scripting/PyodideBridge';
 import { GlobalVariableStore } from '../scripting/GlobalVariableStore';
-import { ExpressionEngine } from '../scripting/ExpressionEngine';
-import { GlobalScriptRunner } from '../scripting/GlobalScriptRunner';
-import { LinkRegistry } from '../linking/LinkRegistry';
 import { ExpressionTagRegistry } from '../expression/ExpressionTagRegistry';
+import { buildExpressionHarness } from '../scripting/expressionHarness';
+import { buildScriptHarness } from '../scripting/scriptHarness';
+import { extractGridBuffers, applyResultBuffers } from '../scripting/gridTransfer';
 import type { TickResult } from './types';
+import { logMin, logDbg } from '../../lib/debugLog';
 
 export class Simulation {
   readonly grid: Grid;
@@ -32,10 +36,10 @@ export class Simulation {
   readonly params: Map<string, number> = new Map();
   readonly typeRegistry: CellTypeRegistry;
   readonly variableStore: GlobalVariableStore = new GlobalVariableStore();
-  readonly linkRegistry: LinkRegistry = new LinkRegistry();
   readonly tagRegistry: ExpressionTagRegistry = new ExpressionTagRegistry();
-  expressionEngine: ExpressionEngine | null = null;
-  globalScriptRunner: GlobalScriptRunner | null = null;
+
+  /** Optional PyodideBridge for evaluating post-rule expressions and scripts */
+  pyodideBridge: PyodideBridge | null = null;
 
   constructor(preset: PresetConfig) {
     this.preset = preset;
@@ -77,10 +81,33 @@ export class Simulation {
       this.variableStore.loadFromConfig(preset.global_variables);
     }
 
-    // Load parameter links from preset (into both old and new registries)
+    // Load parameter links from preset into tag registry
     if (preset.parameter_links) {
-      this.linkRegistry.loadFromConfig(preset.parameter_links);
       this.tagRegistry.loadLinksFromConfig(preset.parameter_links);
+    }
+
+    // Load expression tags from preset
+    if (preset.expression_tags) {
+      for (const tagDef of preset.expression_tags) {
+        const outputs = tagDef.outputs ?? [];
+        if (outputs.length <= 1) {
+          // Single-output tag: create one expression
+          const propName = outputs[0]?.replace('cell.', '') ?? tagDef.name ?? 'unnamed';
+          this.tagRegistry.addFromExpression(propName, tagDef.code);
+        } else {
+          // Multi-output tag: single tag with all outputs
+          this.tagRegistry.add({
+            name: tagDef.name ?? 'unnamed',
+            owner: tagDef.owner ?? { type: 'root' },
+            code: tagDef.code,
+            phase: (tagDef.phase as 'pre-rule' | 'post-rule' | 'rule') ?? 'post-rule',
+            enabled: tagDef.enabled ?? true,
+            source: (tagDef.source as 'code' | 'script') ?? 'code',
+            inputs: (tagDef.inputs ?? []) as string[],
+            outputs,
+          });
+        }
+      }
     }
 
     // Create a rule tag from the preset's compute body (SG-6: rule-as-tag)
@@ -107,18 +134,29 @@ export class Simulation {
       (sim as { runner: RuleRunner | PythonRuleRunner }).runner = wasmRunner;
     }
 
-    // Set up scripting engines if a bridge is available
+    // Store bridge for post-rule expression/script evaluation
     if (pyodideBridge) {
-      sim.expressionEngine = new ExpressionEngine(pyodideBridge);
-      sim.globalScriptRunner = new GlobalScriptRunner(pyodideBridge);
+      sim.pyodideBridge = pyodideBridge;
 
-      // Load expressions from preset cell properties
+      // Load expressions from preset cell properties into tag registry
       const allProps = sim.typeRegistry.getPropertyUnion();
-      sim.expressionEngine.loadFromProperties(allProps);
+      for (const prop of allProps) {
+        if (prop.expression) {
+          sim.tagRegistry.addFromExpression(prop.name, prop.expression);
+        }
+      }
 
-      // Load global scripts from preset
+      // Load global scripts from preset into tag registry
       if (preset.global_scripts) {
-        sim.globalScriptRunner.loadFromConfig(preset.global_scripts);
+        for (const scriptDef of preset.global_scripts) {
+          sim.tagRegistry.addFromScript(
+            scriptDef.name,
+            scriptDef.code,
+            scriptDef.inputs ?? [],
+            scriptDef.outputs ?? [],
+            scriptDef.enabled ?? true,
+          );
+        }
       }
     }
 
@@ -127,17 +165,9 @@ export class Simulation {
 
   /**
    * Resolve all parameter links. Called before the rule in both sync and async paths.
-   *
-   * During the migration period, both LinkRegistry (deprecated) and ExpressionTagRegistry
-   * are called. Once LinkRegistry is removed (SG-5 completion), only
-   * ExpressionTagRegistry.resolvePreRule() will remain.
+   * Uses ExpressionTagRegistry.resolvePreRule() for JS fast-path resolution.
    */
   private resolveLinks(): void {
-    // TODO(SG-5): Remove linkRegistry.resolveAll() once LinkRegistry is fully phased out.
-    // ExpressionTagRegistry.resolvePreRule() handles the same resolution via JS fast-path.
-    if (this.linkRegistry.hasLinks()) {
-      this.linkRegistry.resolveAll(this.grid, this.params, this.variableStore);
-    }
     if (this.tagRegistry.hasPreRuleTags()) {
       this.tagRegistry.resolvePreRule(this.grid, this.params, this.variableStore);
     }
@@ -149,9 +179,6 @@ export class Simulation {
    */
   private isRuleEnabled(): boolean {
     const ruleTag = this.tagRegistry.getRuleTag();
-    // getRuleTag() returns enabled tags only. If no rule-phase tag exists at all,
-    // fall back to legacy behavior (always run). If one exists but is disabled,
-    // getRuleTag() returns undefined while the tag is still present.
     const allRuleTags = this.tagRegistry.getAll().filter(t => t.phase === 'rule');
     if (allRuleTags.length === 0) return true; // no rule tag → legacy
     return ruleTag !== undefined; // tag exists → only run if enabled
@@ -177,18 +204,14 @@ export class Simulation {
    * Run one tick asynchronously. Required for Python rules, expressions, or scripts.
    * Falls back to sync tick() for TS/WASM runners without scripting.
    *
-   * Pipeline: rule → expressions (post-rule) → global scripts
-   *
-   * Expressions run AFTER the rule so they can derive values from the rule's
-   * output (e.g. alpha = age / 50.0). They read from the current buffer
-   * (which contains the rule's newly-swapped output) and write back to current.
-   * This can be made configurable (pre/post) when the dependency graph lands.
+   * Pipeline: pre-rule links → rule → post-rule expressions → scripts
    */
   async tickAsync(): Promise<TickResult> {
     const generation = this.getGeneration();
     const dt = 1.0;
     const envParams = this.getParamsObject();
     const globalVars = this.variableStore.getNumericAll();
+    logDbg('sim', `tickAsync() START — gen=${generation}, bridge=${this.pyodideBridge?.getStatus()}`);
 
     // Step 0: Resolve parameter links (before rule)
     this.resolveLinks();
@@ -196,44 +219,94 @@ export class Simulation {
     // Step 1: Execute rule (skip if rule tag is disabled)
     let result: TickResult;
     if (!this.isRuleEnabled()) {
+      logDbg('sim', `tickAsync step1: rule DISABLED — no-op tick`);
       this.grid.swap();
       const gen = this.runner.getGeneration() + 1;
       this.runner.setGeneration(gen);
       result = { generation: gen };
     } else if (this.runner instanceof PythonRuleRunner) {
+      logDbg('sim', `tickAsync step1: Python rule`);
       result = await this.runner.tickAsync();
     } else {
+      logDbg('sim', `tickAsync step1: TS/WASM rule`);
       result = this.runner.tick();
     }
+    logDbg('sim', `tickAsync step1 done — resultGen=${result.generation}`);
 
-    // Step 2: Evaluate expressions (post-rule, reads rule output from current buffer)
-    if (this.expressionEngine?.hasExpressions()) {
-      await this.expressionEngine.evaluate(this.grid, result.generation, dt, envParams, globalVars);
+    // Step 2: Evaluate post-rule expressions via Pyodide
+    if (this.pyodideBridge) {
+      const postRuleExprs = this.tagRegistry.getPostRuleExpressions();
+      const exprCount = Object.keys(postRuleExprs).length;
+      if (exprCount > 0) {
+        logDbg('sim', `tickAsync step2: ${exprCount} post-rule expressions`);
+        const { width, height, depth } = this.grid.config;
+        const propertyNames = this.grid.getPropertyNames();
+        const harness = buildExpressionHarness(postRuleExprs, propertyNames, width, height, depth);
+        const inputBuffers = extractGridBuffers(this.grid);
+        const params = { ...envParams, _generation: result.generation, _dt: dt };
+
+        const resultBuffers = await this.pyodideBridge.execExpressions(
+          harness,
+          inputBuffers,
+          width,
+          height,
+          depth,
+          params,
+          globalVars,
+        );
+
+        applyResultBuffers(this.grid, resultBuffers, 'current');
+        logDbg('sim', `tickAsync step2 done — applied ${Object.keys(resultBuffers).length} buffers`);
+      }
     }
 
-    // Step 3: Run global scripts (after rule + expressions)
-    if (this.globalScriptRunner?.hasEnabledScripts()) {
-      const { width, height, depth } = this.grid.config;
-      const scriptResult = await this.globalScriptRunner.runAll(
-        envParams,
-        this.variableStore.getNumericAll(),
-        result.generation,
-        dt,
-        width,
-        height,
-        depth,
+    // Step 3: Run script tags via Pyodide
+    if (this.pyodideBridge) {
+      const scriptTags = this.tagRegistry.getAll().filter(
+        t => t.enabled && t.source === 'script' && t.phase === 'post-rule',
       );
+      if (scriptTags.length > 0) {
+        logDbg('sim', `tickAsync step3: ${scriptTags.length} script tags`);
+        const { width, height, depth } = this.grid.config;
+        const params = { ...envParams, _generation: result.generation, _dt: dt };
+        let currentVars = { ...globalVars };
 
-      // Apply env changes
-      for (const [k, v] of Object.entries(scriptResult.envChanges)) {
-        this.params.set(k, v);
-      }
-      // Apply var changes
-      for (const [k, v] of Object.entries(scriptResult.varChanges)) {
-        this.variableStore.set(k, v);
+        for (const tag of scriptTags) {
+          const harness = buildScriptHarness(
+            tag.code,
+            tag.inputs,
+            tag.outputs,
+            width,
+            height,
+            depth,
+          );
+
+          const scriptResult = await this.pyodideBridge.execScript(
+            harness,
+            params,
+            currentVars,
+            width,
+            height,
+            depth,
+          );
+
+          // Apply env changes
+          for (const [k, v] of Object.entries(scriptResult.envChanges)) {
+            this.params.set(k, v);
+          }
+          // Apply var changes
+          for (const [k, v] of Object.entries(scriptResult.varChanges)) {
+            this.variableStore.set(k, v);
+            if (typeof v === 'number') {
+              currentVars[k] = v;
+            }
+          }
+        }
+        logDbg('sim', `tickAsync step3 done`);
       }
     }
 
+    logDbg('sim', `tickAsync() END — gen=${result.generation}`);
     return result;
   }
 
@@ -246,13 +319,16 @@ export class Simulation {
 
   /**
    * Check whether the tick pipeline requires async execution.
-   * True if any scripting feature is active (expressions, scripts, or Python rule).
+   * True if Python rule, or any post-rule expressions/scripts exist.
    */
   needsAsyncTick(): boolean {
     if (this.runner instanceof PythonRuleRunner) return true;
-    if (this.expressionEngine?.hasExpressions()) return true;
-    if (this.globalScriptRunner?.hasEnabledScripts()) return true;
-    return false;
+    if (!this.pyodideBridge) return false;
+    if (this.tagRegistry.hasPostRuleTags()) return true;
+    const hasScriptTags = this.tagRegistry.getAll().some(
+      t => t.enabled && t.source === 'script',
+    );
+    return hasScriptTags;
   }
 
   /**

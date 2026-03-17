@@ -13,6 +13,13 @@ export class Grid {
   readonly cellCount: number;
   private properties: Map<string, PropertyBuffers> = new Map();
 
+  /**
+   * Display lock: frozen snapshots for the renderer to read while
+   * async compute-ahead modifies the live buffers.
+   * When non-null, getDisplayBuffer() returns these instead of live buffers.
+   */
+  private _displayLock: Map<string, Float32Array> | null = null;
+
   constructor(config: GridConfig) {
     this.config = Object.freeze({ ...config });
     this.cellCount = config.width * config.height * config.depth;
@@ -99,6 +106,43 @@ export class Grid {
   getCurrentBuffer(propertyName: string): Float32Array {
     const prop = this.getPropertyOrThrow(propertyName);
     return prop.aIsCurrent ? prop.bufferA : prop.bufferB;
+  }
+
+  /**
+   * Get the buffer for display (renderer). Returns locked snapshot if display is locked,
+   * otherwise returns the live current buffer.
+   * The renderer should always use this instead of getCurrentBuffer().
+   */
+  getDisplayBuffer(propertyName: string): Float32Array {
+    if (this._displayLock) {
+      const locked = this._displayLock.get(propertyName);
+      if (locked) return locked;
+    }
+    return this.getCurrentBuffer(propertyName);
+  }
+
+  /**
+   * Freeze the current display state. While locked, getDisplayBuffer() returns
+   * these frozen copies so the renderer is decoupled from live compute.
+   */
+  lockDisplay(): void {
+    this._displayLock = new Map();
+    for (const [name, prop] of this.properties) {
+      const buf = prop.aIsCurrent ? prop.bufferA : prop.bufferB;
+      this._displayLock.set(name, new Float32Array(buf));
+    }
+  }
+
+  /**
+   * Release the display lock. getDisplayBuffer() returns live buffers again.
+   */
+  unlockDisplay(): void {
+    this._displayLock = null;
+  }
+
+  /** Whether the display is currently locked. */
+  isDisplayLocked(): boolean {
+    return this._displayLock !== null;
   }
 
   /**

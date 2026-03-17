@@ -2,13 +2,13 @@
  * Unit tests for Phase 6: Parameter Linking.
  *
  * Tests PropertyAddress parsing, easing functions, range mapping,
- * LinkRegistry operations, cycle detection, and preset schema.
+ * ExpressionTagRegistry link operations, cycle detection, and preset schema.
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { parseAddress } from '../PropertyAddress';
 import { applyEasing, rangeMap, rangeMapArray } from '../easing';
-import { LinkRegistry, _resetIdCounter } from '../LinkRegistry';
+import { ExpressionTagRegistry, _resetTagIdCounter } from '../../expression/ExpressionTagRegistry';
 import { Grid } from '../../grid/Grid';
 import { GlobalVariableStore } from '../../scripting/GlobalVariableStore';
 import { PresetSchema } from '../../preset/schema';
@@ -140,132 +140,127 @@ describe('RangeMapArray', () => {
   });
 });
 
-// --- LinkRegistry Tests ---
+// --- ExpressionTagRegistry Link Tests ---
+// These replace the old LinkRegistry tests since links are now ExpressionTags.
 
-describe('LinkRegistry', () => {
-  let registry: LinkRegistry;
+describe('ExpressionTagRegistry — link operations', () => {
+  let registry: ExpressionTagRegistry;
 
   beforeEach(() => {
-    _resetIdCounter();
-    registry = new LinkRegistry();
+    _resetTagIdCounter();
+    registry = new ExpressionTagRegistry();
   });
 
-  it('TestLinkRegistry_AddAndGet', () => {
-    const link = registry.add({
-      source: 'cell.age',
-      target: 'cell.alpha',
-      sourceRange: [0, 100],
-      targetRange: [1, 0],
-      easing: 'smoothstep',
-      enabled: true,
-    });
+  it('TestExpressionTagRegistry_AddLinkAndGet', () => {
+    const tag = registry.addFromLink('cell.age', 'cell.alpha', [0, 100], [1, 0], 'smoothstep', true);
 
-    expect(link.id).toBeDefined();
-    expect(registry.get(link.id)).toEqual(link);
-    expect(registry.getAll()).toHaveLength(1);
+    expect(tag.id).toBeDefined();
+    expect(registry.get(tag.id)).toEqual(tag);
+    expect(registry.getAll().filter(t => t.linkMeta !== undefined)).toHaveLength(1);
   });
 
-  it('TestLinkRegistry_Remove', () => {
-    const link = registry.add({ source: 'cell.age', target: 'cell.alpha' });
-    expect(registry.remove(link.id)).toBe(true);
-    expect(registry.getAll()).toHaveLength(0);
+  it('TestExpressionTagRegistry_RemoveLink', () => {
+    const tag = registry.addFromLink('cell.age', 'cell.alpha', [0, 100], [1, 0], 'linear', true);
+    expect(registry.remove(tag.id)).toBe(true);
+    expect(registry.getAll().filter(t => t.linkMeta !== undefined)).toHaveLength(0);
     expect(registry.remove('nonexistent')).toBe(false);
   });
 
-  it('TestLinkRegistry_Enable', () => {
-    const link = registry.add({ source: 'cell.age', target: 'cell.alpha', enabled: false });
-    expect(link.enabled).toBe(false);
-    registry.enable(link.id);
-    expect(registry.get(link.id)!.enabled).toBe(true);
+  it('TestExpressionTagRegistry_EnableLink', () => {
+    const tag = registry.addFromLink('cell.age', 'cell.alpha', [0, 100], [1, 0], 'linear', false);
+    expect(tag.enabled).toBe(false);
+    registry.enable(tag.id);
+    expect(registry.get(tag.id)!.enabled).toBe(true);
   });
 
-  it('TestLinkRegistry_Disable', () => {
-    const link = registry.add({ source: 'cell.age', target: 'cell.alpha' });
-    expect(link.enabled).toBe(true);
-    registry.disable(link.id);
-    expect(registry.get(link.id)!.enabled).toBe(false);
+  it('TestExpressionTagRegistry_DisableLink', () => {
+    const tag = registry.addFromLink('cell.age', 'cell.alpha', [0, 100], [1, 0], 'linear', true);
+    expect(tag.enabled).toBe(true);
+    registry.disable(tag.id);
+    expect(registry.get(tag.id)!.enabled).toBe(false);
   });
 
-  it('TestLinkRegistry_Clear', () => {
-    registry.add({ source: 'cell.age', target: 'cell.alpha' });
-    registry.add({ source: 'env.feedRate', target: 'env.killRate' });
-    expect(registry.getAll()).toHaveLength(2);
+  it('TestExpressionTagRegistry_ClearLinks', () => {
+    registry.addFromLink('cell.age', 'cell.alpha', [0, 100], [1, 0], 'linear', true);
+    registry.addFromLink('env.feedRate', 'env.killRate', [0, 1], [0, 1], 'linear', true);
+    expect(registry.getAll().filter(t => t.linkMeta !== undefined)).toHaveLength(2);
     registry.clear();
     expect(registry.getAll()).toHaveLength(0);
   });
 
-  it('TestLinkRegistry_LoadFromConfig', () => {
-    registry.loadFromConfig([
+  it('TestExpressionTagRegistry_LoadLinksFromConfig', () => {
+    registry.loadLinksFromConfig([
       { source: 'cell.age', target: 'cell.alpha', sourceRange: [0, 100], targetRange: [1, 0] },
       { source: 'env.feedRate', target: 'env.killRate' },
     ]);
-    expect(registry.getAll()).toHaveLength(2);
-    const links = registry.getAll();
-    expect(links[0].sourceRange).toEqual([0, 100]);
+    const linkTags = registry.getAll().filter(t => t.linkMeta !== undefined);
+    expect(linkTags).toHaveLength(2);
+    expect(linkTags[0].linkMeta!.sourceRange).toEqual([0, 100]);
     // Defaults applied
-    expect(links[1].sourceRange).toEqual([0, 1]);
-    expect(links[1].easing).toBe('linear');
+    expect(linkTags[1].linkMeta!.sourceRange).toEqual([0, 1]);
+    expect(linkTags[1].linkMeta!.easing).toBe('linear');
   });
 
-  it('TestLinkRegistry_GetEnabled', () => {
-    registry.add({ source: 'cell.age', target: 'cell.alpha', enabled: true });
-    registry.add({ source: 'env.feedRate', target: 'env.killRate', enabled: false });
-    expect(registry.getEnabled()).toHaveLength(1);
+  it('TestExpressionTagRegistry_GetEnabledLinks', () => {
+    registry.addFromLink('cell.age', 'cell.alpha', [0, 100], [1, 0], 'linear', true);
+    registry.addFromLink('env.feedRate', 'env.killRate', [0, 1], [0, 1], 'linear', false);
+    const enabledLinkTags = registry.getEnabled().filter(t => t.linkMeta !== undefined);
+    expect(enabledLinkTags).toHaveLength(1);
   });
 });
 
 // --- Cycle Detection Tests ---
 
-describe('LinkRegistry — Cycle Detection', () => {
-  let registry: LinkRegistry;
+describe('ExpressionTagRegistry — Cycle Detection', () => {
+  let registry: ExpressionTagRegistry;
 
   beforeEach(() => {
-    _resetIdCounter();
-    registry = new LinkRegistry();
+    _resetTagIdCounter();
+    registry = new ExpressionTagRegistry();
   });
 
-  it('TestLinkRegistry_CycleDetection_RejectsDirectCycle', () => {
-    registry.add({ source: 'cell.age', target: 'cell.alpha' });
+  it('TestExpressionTagRegistry_CycleDetection_RejectsDirectCycle', () => {
+    registry.addFromLink('cell.age', 'cell.alpha', [0, 1], [0, 1], 'linear', true);
     expect(() => {
-      registry.add({ source: 'cell.alpha', target: 'cell.age' });
+      registry.addFromLink('cell.alpha', 'cell.age', [0, 1], [0, 1], 'linear', true);
     }).toThrow('cycle');
   });
 
-  it('TestLinkRegistry_CycleDetection_RejectsIndirectCycle', () => {
-    registry.add({ source: 'cell.age', target: 'cell.alpha' });
-    registry.add({ source: 'cell.alpha', target: 'env.feedRate' });
+  it('TestExpressionTagRegistry_CycleDetection_RejectsIndirectCycle', () => {
+    registry.addFromLink('cell.age', 'cell.alpha', [0, 1], [0, 1], 'linear', true);
+    registry.addFromLink('cell.alpha', 'env.feedRate', [0, 1], [0, 1], 'linear', true);
     expect(() => {
-      registry.add({ source: 'env.feedRate', target: 'cell.age' });
+      registry.addFromLink('env.feedRate', 'cell.age', [0, 1], [0, 1], 'linear', true);
     }).toThrow('cycle');
   });
 
-  it('TestLinkRegistry_CycleDetection_RejectsSelfLoop', () => {
+  it('TestExpressionTagRegistry_CycleDetection_RejectsSelfLoop', () => {
     expect(() => {
-      registry.add({ source: 'cell.age', target: 'cell.age' });
+      registry.addFromLink('cell.age', 'cell.age', [0, 1], [0, 1], 'linear', true);
     }).toThrow('cycle');
   });
 
-  it('TestLinkRegistry_CycleDetection_AllowsDAG', () => {
+  it('TestExpressionTagRegistry_CycleDetection_AllowsDAG', () => {
     // A → B, A → C, B → D, C → D — valid DAG
-    registry.add({ source: 'cell.age', target: 'cell.alpha' });
-    registry.add({ source: 'cell.age', target: 'env.feedRate' });
-    registry.add({ source: 'cell.alpha', target: 'global.entropy' });
+    registry.addFromLink('cell.age', 'cell.alpha', [0, 1], [0, 1], 'linear', true);
+    registry.addFromLink('cell.age', 'env.feedRate', [0, 1], [0, 1], 'linear', true);
+    registry.addFromLink('cell.alpha', 'global.entropy', [0, 1], [0, 1], 'linear', true);
     expect(() => {
-      registry.add({ source: 'env.feedRate', target: 'global.entropy' });
+      registry.addFromLink('env.feedRate', 'global.entropy', [0, 1], [0, 1], 'linear', true);
     }).not.toThrow();
-    expect(registry.getAll()).toHaveLength(4);
+    expect(registry.getAll().filter(t => t.linkMeta !== undefined)).toHaveLength(4);
   });
 });
 
 // --- Resolution Tests ---
 
-describe('LinkRegistry — resolveAll', () => {
+describe('ExpressionTagRegistry — resolvePreRule', () => {
   let grid: Grid;
   let params: Map<string, number>;
   let variableStore: GlobalVariableStore;
 
   beforeEach(() => {
-    _resetIdCounter();
+    _resetTagIdCounter();
     grid = new Grid({
       dimensionality: '2d',
       width: 4,
@@ -281,15 +276,9 @@ describe('LinkRegistry — resolveAll', () => {
     variableStore.set('density', 0);
   });
 
-  it('TestLinkRegistry_ResolveAll_CellToCell', () => {
-    const registry = new LinkRegistry();
-    registry.add({
-      source: 'cell.age',
-      target: 'cell.alpha',
-      sourceRange: [0, 100],
-      targetRange: [1, 0],
-      easing: 'linear',
-    });
+  it('TestExpressionTagRegistry_ResolvePreRule_CellToCell', () => {
+    const registry = new ExpressionTagRegistry();
+    registry.addFromLink('cell.age', 'cell.alpha', [0, 100], [1, 0], 'linear', true);
 
     // Set some ages
     const ageBuf = grid.getCurrentBuffer('age');
@@ -297,7 +286,7 @@ describe('LinkRegistry — resolveAll', () => {
     ageBuf[1] = 50;
     ageBuf[2] = 100;
 
-    registry.resolveAll(grid, params, variableStore);
+    registry.resolvePreRule(grid, params, variableStore);
 
     const alphaBuf = grid.getCurrentBuffer('alpha');
     expect(alphaBuf[0]).toBeCloseTo(1);   // age 0 → alpha 1
@@ -305,33 +294,21 @@ describe('LinkRegistry — resolveAll', () => {
     expect(alphaBuf[2]).toBeCloseTo(0);   // age 100 → alpha 0
   });
 
-  it('TestLinkRegistry_ResolveAll_ScalarToScalar', () => {
-    const registry = new LinkRegistry();
-    registry.add({
-      source: 'env.feedRate',
-      target: 'env.killRate',
-      sourceRange: [0, 0.1],
-      targetRange: [0, 0.1],
-      easing: 'linear',
-    });
+  it('TestExpressionTagRegistry_ResolvePreRule_ScalarToScalar', () => {
+    const registry = new ExpressionTagRegistry();
+    registry.addFromLink('env.feedRate', 'env.killRate', [0, 0.1], [0, 0.1], 'linear', true);
 
-    registry.resolveAll(grid, params, variableStore);
+    registry.resolvePreRule(grid, params, variableStore);
 
     // feedRate 0.055 mapped from [0,0.1] to [0,0.1] = 0.055
     expect(params.get('killRate')).toBeCloseTo(0.055);
   });
 
-  it('TestLinkRegistry_ResolveAll_ScalarToCell', () => {
-    const registry = new LinkRegistry();
-    registry.add({
-      source: 'env.feedRate',
-      target: 'cell.alpha',
-      sourceRange: [0, 1],
-      targetRange: [0, 1],
-      easing: 'linear',
-    });
+  it('TestExpressionTagRegistry_ResolvePreRule_ScalarToCell', () => {
+    const registry = new ExpressionTagRegistry();
+    registry.addFromLink('env.feedRate', 'cell.alpha', [0, 1], [0, 1], 'linear', true);
 
-    registry.resolveAll(grid, params, variableStore);
+    registry.resolvePreRule(grid, params, variableStore);
 
     const alphaBuf = grid.getCurrentBuffer('alpha');
     for (let i = 0; i < alphaBuf.length; i++) {
@@ -339,45 +316,32 @@ describe('LinkRegistry — resolveAll', () => {
     }
   });
 
-  it('TestLinkRegistry_ResolveAll_CellToScalar', () => {
-    const registry = new LinkRegistry();
-    registry.add({
-      source: 'cell.age',
-      target: 'global.density',
-      sourceRange: [0, 100],
-      targetRange: [0, 1],
-      easing: 'linear',
-    });
+  it('TestExpressionTagRegistry_ResolvePreRule_CellToScalar', () => {
+    const registry = new ExpressionTagRegistry();
+    registry.addFromLink('cell.age', 'global.density', [0, 100], [0, 1], 'linear', true);
 
     // Set ages: mean should be 25
     const ageBuf = grid.getCurrentBuffer('age');
     ageBuf.fill(0);
     ageBuf[0] = 100; // only one cell has age 100, rest are 0
 
-    registry.resolveAll(grid, params, variableStore);
+    registry.resolvePreRule(grid, params, variableStore);
 
     // Mean = 100/16 = 6.25, mapped from [0,100] to [0,1] = 0.0625
     expect(variableStore.get('density')).toBeCloseTo(0.0625);
   });
 
-  it('TestLinkRegistry_ResolveAll_DisabledLinkSkipped', () => {
-    const registry = new LinkRegistry();
-    const link = registry.add({
-      source: 'env.feedRate',
-      target: 'env.killRate',
-      sourceRange: [0, 1],
-      targetRange: [0, 1],
-      easing: 'linear',
-      enabled: false,
-    });
+  it('TestExpressionTagRegistry_ResolvePreRule_DisabledLinkSkipped', () => {
+    const registry = new ExpressionTagRegistry();
+    const tag = registry.addFromLink('env.feedRate', 'env.killRate', [0, 1], [0, 1], 'linear', false);
 
     const originalKillRate = params.get('killRate')!;
-    registry.resolveAll(grid, params, variableStore);
+    registry.resolvePreRule(grid, params, variableStore);
     expect(params.get('killRate')).toBe(originalKillRate); // Unchanged
 
     // Re-enable and resolve
-    registry.enable(link.id);
-    registry.resolveAll(grid, params, variableStore);
+    registry.enable(tag.id);
+    registry.resolvePreRule(grid, params, variableStore);
     expect(params.get('killRate')).toBeCloseTo(0.055);
   });
 });

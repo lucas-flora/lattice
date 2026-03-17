@@ -17,6 +17,7 @@ import type { PresetConfig } from './types';
 /** Names of all built-in presets */
 export const BUILTIN_PRESET_NAMES = [
   'conways-gol',
+  'conways-advanced',
   'rule-110',
   'langtons-ant',
   'brians-brain',

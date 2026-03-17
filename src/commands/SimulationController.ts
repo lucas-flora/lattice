@@ -15,14 +15,10 @@ import { loadBuiltinPresetClient, type BuiltinPresetNameClient } from '../engine
 import type { EventBus } from '../engine/core/EventBus';
 import type { PresetConfig } from '../engine/preset/types';
 import { PyodideBridge } from '../engine/scripting/PyodideBridge';
-import { ExpressionEngine } from '../engine/scripting/ExpressionEngine';
-import { GlobalScriptRunner } from '../engine/scripting/GlobalScriptRunner';
-import { scriptStoreActions } from '../store/scriptStore';
-import { linkStoreActions } from '../store/linkStore';
 import { expressionStoreActions } from '../store/expressionStore';
-import type { LinkRegistry } from '../engine/linking/LinkRegistry';
 import type { ExpressionTagRegistry } from '../engine/expression/ExpressionTagRegistry';
 import type { SceneGraph } from '../engine/scene/SceneGraph';
+import { logMin, logDbg } from '../lib/debugLog';
 
 export interface ParamDef {
   name: string;
@@ -102,8 +98,20 @@ export class SimulationController {
   protected computeAheadTimer: ReturnType<typeof setTimeout> | null = null;
   protected computeAheadTarget: number = 0;
 
+  /** Deferred compute-ahead listener (waiting for pyodide:ready) */
+  protected deferredComputeAheadListener: (() => void) | null = null;
+
   /** Debounce timer for restarting compute-ahead after grid edits */
   protected editDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /** Guard: prevents concurrent async computation from piling up */
+  protected asyncComputeInFlight: boolean = false;
+
+  /** Guard: prevents concurrent async playback ticks */
+  protected asyncPlaybackInFlight: boolean = false;
+
+  /** Epoch counter: incremented on preset/resize changes to cancel in-flight async work */
+  protected computeEpoch: number = 0;
 
   /** Optional PyodideBridge for Python rule support */
   protected pyodideBridge: PyodideBridge | null = null;
@@ -123,34 +131,14 @@ export class SimulationController {
   }
 
   /**
-   * Clear all scripting state (variables, expressions, scripts) and reset the store.
+   * Clear all scripting state (variables, tags) and reset stores.
    * Called on preset load so stale scripts don't carry over between presets.
    */
   private clearScriptingState(): void {
-    // Clear engine-side state if it exists
     if (this.simulation) {
       this.simulation.variableStore.clear();
-      if (this.simulation.expressionEngine) {
-        const exprs = this.simulation.expressionEngine.getAllExpressions();
-        for (const prop of Object.keys(exprs)) {
-          this.simulation.expressionEngine.clearExpression(prop);
-        }
-      }
-      if (this.simulation.globalScriptRunner) {
-        const scripts = this.simulation.globalScriptRunner.getAllScripts();
-        for (const s of scripts) {
-          this.simulation.globalScriptRunner.removeScript(s.name);
-        }
-      }
-    }
-    // Clear links and tags
-    if (this.simulation) {
-      this.simulation.linkRegistry.clear();
       this.simulation.tagRegistry.clear();
     }
-    // Reset the Zustand stores directly (covers cases where engine objects are about to be replaced)
-    scriptStoreActions.resetAll();
-    linkStoreActions.resetAll();
     expressionStoreActions.resetAll();
   }
 
@@ -159,7 +147,12 @@ export class SimulationController {
    * Stops any running simulation first.
    */
   loadPreset(name: string): void {
+    logMin('ctrl', `loadPreset("${name}") — playing=${this.playing}, computedGen=${this.computedGeneration}, playbackGen=${this.playbackGeneration}`);
+    this.computeEpoch++;  // Cancel any in-flight async work
     this.pause();
+    this.stopComputeAhead();
+    this.asyncComputeInFlight = false;
+    this.asyncPlaybackInFlight = false;
     this.clearScriptingState();
 
     const config: PresetConfig = loadBuiltinPresetClient(name as BuiltinPresetNameClient);
@@ -170,9 +163,15 @@ export class SimulationController {
     this.computedGeneration = 0;
     this.playbackGeneration = 0;
 
+    // Create Pyodide bridge BEFORE emitting presetLoaded, so that
+    // onPresetLoaded → captureInitialState sees needsAsyncTick()=true
+    // and defers compute-ahead until Pyodide is ready (with tickAsync).
+    this.autoLoadPyodideIfNeeded();
+    logMin('ctrl', `loadPreset: bridge=${!!this.pyodideBridge}, bridgeStatus=${this.pyodideBridge?.getStatus()}, needsAsync=${this.needsAsyncTick()}, postRuleTags=${this.simulation.tagRegistry.hasPostRuleTags()}`);
     this.emitPresetLoaded(config);
     this.emitParamDefs();
-    this.syncLinkStore();
+    this.syncTagStore();
+    logMin('ctrl', `loadPreset done — computedGen=${this.computedGeneration}, cacheSize=${this.frameCache.size}, computeAheadTarget=${this.computeAheadTarget}`);
   }
 
   /**
@@ -180,7 +179,12 @@ export class SimulationController {
    * For Python presets, use loadPresetConfigAsync() instead.
    */
   loadPresetConfig(config: PresetConfig): void {
+    logMin('ctrl', `loadPresetConfig("${config.meta.name}") — playing=${this.playing}, computedGen=${this.computedGeneration}`);
+    this.computeEpoch++;  // Cancel any in-flight async work
     this.pause();
+    this.stopComputeAhead();
+    this.asyncComputeInFlight = false;
+    this.asyncPlaybackInFlight = false;
     this.clearScriptingState();
 
     this.simulation = new Simulation(config);
@@ -190,9 +194,12 @@ export class SimulationController {
     this.computedGeneration = 0;
     this.playbackGeneration = 0;
 
+    this.autoLoadPyodideIfNeeded();
+    logMin('ctrl', `loadPresetConfig: bridge=${!!this.pyodideBridge}, needsAsync=${this.needsAsyncTick()}`);
     this.emitPresetLoaded(config);
     this.emitParamDefs();
-    this.syncLinkStore();
+    this.syncTagStore();
+    logMin('ctrl', `loadPresetConfig done — computedGen=${this.computedGeneration}, cacheSize=${this.frameCache.size}`);
   }
 
   /**
@@ -213,7 +220,7 @@ export class SimulationController {
 
     this.emitPresetLoaded(config);
     this.emitParamDefs();
-    this.syncLinkStore();
+    this.syncTagStore();
   }
 
   /**
@@ -227,7 +234,9 @@ export class SimulationController {
    * Check whether the tick pipeline requires async execution.
    */
   needsAsyncTick(): boolean {
-    return this.simulation?.needsAsyncTick() ?? false;
+    const result = this.simulation?.needsAsyncTick() ?? false;
+    logDbg('sim', `needsAsyncTick() → ${result} (bridge=${!!this.simulation?.pyodideBridge}, postRule=${this.simulation?.tagRegistry.hasPostRuleTags()}, scripts=${this.simulation?.tagRegistry.getAll().some(t => t.enabled && t.source === 'script')})`);
+    return result;
   }
 
   /**
@@ -235,27 +244,6 @@ export class SimulationController {
    */
   getVariableStore() {
     return this.simulation?.variableStore ?? null;
-  }
-
-  /**
-   * Get the expression engine from the current simulation.
-   */
-  getExpressionEngine() {
-    return this.simulation?.expressionEngine ?? null;
-  }
-
-  /**
-   * Get the global script runner from the current simulation.
-   */
-  getGlobalScriptRunner() {
-    return this.simulation?.globalScriptRunner ?? null;
-  }
-
-  /**
-   * Get the link registry from the current simulation.
-   */
-  getLinkRegistry(): LinkRegistry | null {
-    return this.simulation?.linkRegistry ?? null;
   }
 
   /**
@@ -287,32 +275,41 @@ export class SimulationController {
   }
 
   /**
-   * Lazily ensure scripting engines are available on the current simulation.
-   * Creates a PyodideBridge if needed and attaches ExpressionEngine + GlobalScriptRunner.
+   * Auto-create PyodideBridge if the loaded preset has post-rule expression or script tags.
+   * This ensures needsAsyncTick() returns true so the compute path uses tickAsync().
    */
-  ensureScriptingEngines(): { bridge: PyodideBridge; expressionEngine: ExpressionEngine; scriptRunner: GlobalScriptRunner } | null {
-    if (!this.simulation) return null;
+  private autoLoadPyodideIfNeeded(): void {
+    if (!this.simulation) return;
+    const hasPostRule = this.simulation.tagRegistry.hasPostRuleTags();
+    const hasScripts = this.simulation.tagRegistry.getAll().some(
+      t => t.enabled && t.source === 'script',
+    );
+    logMin('pyodide', `autoLoadPyodideIfNeeded: hasPostRule=${hasPostRule}, hasScripts=${hasScripts}, bridgeExists=${!!this.pyodideBridge}`);
+    if (hasPostRule || hasScripts) {
+      const bridge = this.ensurePyodideBridge();
+      // Start loading Pyodide immediately so it's ready when compute-ahead starts
+      if (bridge) {
+        logMin('pyodide', `ensureReady() called — status=${bridge.getStatus()}`);
+        void bridge.ensureReady().then(() => {
+          logMin('pyodide', 'Pyodide ready!');
+        });
+      }
+    }
+  }
 
-    // Create bridge if needed
+  /**
+   * Lazily ensure a PyodideBridge is available and attached to the simulation.
+   * Returns the bridge or null if no simulation.
+   */
+  ensurePyodideBridge(): PyodideBridge | null {
+    if (!this.simulation) return null;
     if (!this.pyodideBridge) {
       this.pyodideBridge = new PyodideBridge();
     }
-
-    // Attach expression engine if needed
-    if (!this.simulation.expressionEngine) {
-      this.simulation.expressionEngine = new ExpressionEngine(this.pyodideBridge);
+    if (!this.simulation.pyodideBridge) {
+      this.simulation.pyodideBridge = this.pyodideBridge;
     }
-
-    // Attach script runner if needed
-    if (!this.simulation.globalScriptRunner) {
-      this.simulation.globalScriptRunner = new GlobalScriptRunner(this.pyodideBridge);
-    }
-
-    return {
-      bridge: this.pyodideBridge,
-      expressionEngine: this.simulation.expressionEngine,
-      scriptRunner: this.simulation.globalScriptRunner,
-    };
+    return this.pyodideBridge;
   }
 
   /**
@@ -321,6 +318,7 @@ export class SimulationController {
    * the playback loop at display FPS.
    */
   play(): void {
+    logMin('play', `play() — already=${this.playing}, needsAsync=${this.needsAsyncTick()}, computedGen=${this.computedGeneration}, playbackGen=${this.playbackGeneration}`);
     if (this.playing || !this.simulation) return;
     this.playing = true;
 
@@ -338,10 +336,12 @@ export class SimulationController {
    * Stop the simulation playback.
    */
   pause(): void {
+    logMin('play', `pause() — playing=${this.playing}`);
     if (!this.playing) return;
     this.playing = false;
 
     this.stopPlaybackLoop();
+    this.asyncPlaybackInFlight = false;
     // Don't stop compute-ahead — keep caching aggressively even when paused
 
     this.eventBus.emit('sim:pause', {});
@@ -353,6 +353,7 @@ export class SimulationController {
    */
   step(): void {
     if (!this.simulation) return;
+    logDbg('play', `step() — needsAsync=${this.needsAsyncTick()}, playbackGen=${this.playbackGeneration}, computedGen=${this.computedGeneration}`);
     if (this.simulation.needsAsyncTick()) {
       void this.stepAsync();
       return;
@@ -379,6 +380,7 @@ export class SimulationController {
    */
   async stepAsync(): Promise<void> {
     if (!this.simulation) return;
+    logDbg('play', `stepAsync() — playbackGen=${this.playbackGeneration}, computedGen=${this.computedGeneration}`);
 
     const nextGen = this.playbackGeneration + 1;
 
@@ -459,6 +461,12 @@ export class SimulationController {
 
     const targetGen = Math.max(0, generation);
 
+    // No-op if already at target (prevents seek→emit→seek loops)
+    if (targetGen === this.playbackGeneration && this.frameCache.has(targetGen)) {
+      return;
+    }
+    logDbg('play', `seek(${targetGen}) — playbackGen=${this.playbackGeneration}, computedGen=${this.computedGeneration}`);
+
     // Ensure the target frame is available in cache
     if (!this.frameCache.has(targetGen)) {
       if (targetGen > this.computedGeneration) {
@@ -478,6 +486,7 @@ export class SimulationController {
    * Computes in chunks to avoid freezing the UI.
    */
   computeAhead(targetGeneration: number): void {
+    logMin('compute', `computeAhead(${targetGeneration}) — computedGen=${this.computedGeneration}, timerRunning=${!!this.computeAheadTimer}, needsAsync=${this.needsAsyncTick()}`);
     this.computeAheadTarget = targetGeneration;
     if (this.computeAheadTimer) return; // Already running
     this.runComputeAheadChunk();
@@ -495,6 +504,7 @@ export class SimulationController {
    */
   reset(): void {
     if (!this.simulation) return;
+    logMin('ctrl', `reset() — computedGen=${this.computedGeneration}, playbackGen=${this.playbackGeneration}`);
     this.stopComputeAhead();
     if (this.initialSnapshot) {
       this.restoreInitialState();
@@ -616,6 +626,7 @@ export class SimulationController {
    */
   captureInitialState(cacheTarget?: number): void {
     if (!this.simulation) return;
+    logMin('ctrl', `captureInitialState(${cacheTarget}) — needsAsync=${this.needsAsyncTick()}, bridgeStatus=${this.pyodideBridge?.getStatus()}, simGen=${this.simulation.getGeneration()}`);
     this.initialSnapshot = new Map();
     for (const propName of this.simulation.grid.getPropertyNames()) {
       const buf = this.simulation.grid.getCurrentBuffer(propName);
@@ -627,7 +638,24 @@ export class SimulationController {
     // Aggressively start computing ahead immediately
     if (cacheTarget && cacheTarget > 0) {
       this.timelineDuration = cacheTarget;
-      this.computeAhead(cacheTarget);
+
+      // If async tick is needed but Pyodide isn't ready yet, defer compute-ahead
+      if (this.needsAsyncTick() && this.pyodideBridge && this.pyodideBridge.getStatus() !== 'ready') {
+        this.computeAheadTarget = cacheTarget;
+        // Cancel any previous deferred listener
+        if (this.deferredComputeAheadListener) {
+          this.eventBus.off('pyodide:ready', this.deferredComputeAheadListener);
+        }
+        const onReady = () => {
+          this.eventBus.off('pyodide:ready', onReady);
+          this.deferredComputeAheadListener = null;
+          this.computeAhead(cacheTarget);
+        };
+        this.deferredComputeAheadListener = onReady;
+        this.eventBus.on('pyodide:ready', onReady);
+      } else {
+        this.computeAhead(cacheTarget);
+      }
     }
   }
 
@@ -650,6 +678,7 @@ export class SimulationController {
     if (!this.simulation) return;
 
     const generation = this.simulation.getGeneration();
+    logDbg('compute', `cacheCurrentFrame() gen=${generation}, cacheSize=${this.frameCache.size}`);
     const buffers = new Map<string, Float32Array>();
     for (const propName of this.simulation.grid.getPropertyNames()) {
       const buf = this.simulation.grid.getCurrentBuffer(propName);
@@ -674,6 +703,7 @@ export class SimulationController {
    */
   private computeFrames(count: number): void {
     if (!this.simulation) return;
+    logDbg('compute', `computeFrames(${count}) — simGen=${this.simulation.getGeneration()}, computedGen=${this.computedGeneration}`);
 
     // Ensure the sim is at the computed frontier
     if (this.simulation.getGeneration() !== this.computedGeneration) {
@@ -687,6 +717,7 @@ export class SimulationController {
     }
     // Cache the final frame too
     this.cacheCurrentFrame();
+    logMin('compute', `computeFrames done — computedGen=${this.computedGeneration}`);
 
     // Emit progress
     this.eventBus.emit('sim:computeProgress', { computedGeneration: this.computedGeneration });
@@ -694,22 +725,66 @@ export class SimulationController {
 
   /**
    * Async version of computeFrames for Python rules.
+   * Guarded: only one async compute can run at a time.
+   *
+   * Saves the display state before computing and restores it after each
+   * await yield, so the renderer never shows intermediate compute-ahead frames.
    */
   private async computeFramesAsync(count: number): Promise<void> {
     if (!this.simulation) return;
-
-    if (this.simulation.getGeneration() !== this.computedGeneration) {
-      this.advanceSimTo(this.computedGeneration);
+    if (this.asyncComputeInFlight) {
+      logDbg('compute', `computeFramesAsync(${count}) SKIPPED — already in flight`);
+      return;
     }
+    this.asyncComputeInFlight = true;
+    logMin('compute', `computeFramesAsync(${count}) START — simGen=${this.simulation.getGeneration()}, computedGen=${this.computedGeneration}, playbackGen=${this.playbackGeneration}, bridgeStatus=${this.pyodideBridge?.getStatus()}`);
 
-    for (let i = 0; i < count; i++) {
-      this.cacheCurrentFrame();
-      await this.simulation.tickAsync();
-      this.computedGeneration = this.simulation.getGeneration();
+    // Lock the display: renderer reads frozen snapshot while we compute freely
+    const grid = this.simulation.grid;
+    const epoch = this.computeEpoch;
+    grid.lockDisplay();
+
+    try {
+      // Move sim to compute frontier (restores from cache — no sync replay needed)
+      if (this.simulation.getGeneration() !== this.computedGeneration) {
+        logDbg('compute', `advancing sim from ${this.simulation.getGeneration()} to computedGen=${this.computedGeneration}`);
+        this.advanceSimTo(this.computedGeneration);
+      }
+
+      for (let i = 0; i < count; i++) {
+        // Check if simulation was replaced (grid resize, preset change)
+        if (this.computeEpoch !== epoch) {
+          logMin('compute', `computeFramesAsync ABORTED — epoch changed (${epoch} → ${this.computeEpoch})`);
+          break;
+        }
+
+        this.cacheCurrentFrame();
+        logDbg('compute', `tickAsync() iteration ${i}/${count} — simGen=${this.simulation.getGeneration()}`);
+        await this.simulation.tickAsync();
+        this.computedGeneration = this.simulation.getGeneration();
+        logDbg('compute', `tickAsync() done — new computedGen=${this.computedGeneration}`);
+
+        // Cache the result with expressions applied
+        this.cacheCurrentFrame();
+      }
+
+      logMin('compute', `computeFramesAsync(${count}) DONE — computedGen=${this.computedGeneration}`);
+      this.eventBus.emit('sim:computeProgress', { computedGeneration: this.computedGeneration });
+    } catch (err) {
+      logMin('compute', `computeFramesAsync ERROR: ${err}`);
+      throw err;
+    } finally {
+      // Unlock the grid we locked (not this.simulation.grid — might have changed)
+      if (this.computeEpoch === epoch) {
+        // Same simulation: restore playback frame, then unlock
+        const playbackSnapshot = this.frameCache.get(this.playbackGeneration);
+        if (playbackSnapshot) {
+          this.applySnapshot(playbackSnapshot);
+        }
+      }
+      grid.unlockDisplay();
+      this.asyncComputeInFlight = false;
     }
-    this.cacheCurrentFrame();
-
-    this.eventBus.emit('sim:computeProgress', { computedGeneration: this.computedGeneration });
   }
 
   /**
@@ -724,11 +799,13 @@ export class SimulationController {
 
     // Check cache
     if (this.frameCache.has(targetGen)) {
+      logDbg('compute', `advanceSimTo(${targetGen}) — from cache (simGen was ${currentGen})`);
       this.applySnapshot(this.frameCache.get(targetGen)!);
       return;
     }
 
     // Need to replay
+    logDbg('compute', `advanceSimTo(${targetGen}) — REPLAY from ${currentGen < targetGen && this.frameCache.has(currentGen) ? currentGen : 0}`);
     if (targetGen < currentGen || !this.frameCache.has(currentGen)) {
       this.restoreInitialState();
       for (let i = 0; i < targetGen; i++) {
@@ -762,6 +839,7 @@ export class SimulationController {
    */
   private applySnapshot(snapshot: TickSnapshot): void {
     if (!this.simulation) return;
+    logDbg('compute', `applySnapshot(gen=${snapshot.generation}) — ${snapshot.buffers.size} buffers, liveCells=${snapshot.liveCellCount}`);
     for (const [propName, buffer] of snapshot.buffers) {
       const currentBuf = this.simulation.grid.getCurrentBuffer(propName);
       currentBuf.set(buffer);
@@ -774,8 +852,12 @@ export class SimulationController {
    */
   private restoreFrame(generation: number): void {
     const snapshot = this.frameCache.get(generation);
-    if (!snapshot) return;
+    if (!snapshot) {
+      logMin('play', `restoreFrame(${generation}) — MISS (not in cache, cacheSize=${this.frameCache.size})`);
+      return;
+    }
 
+    logDbg('play', `restoreFrame(${generation}) — liveCells=${snapshot.liveCellCount}`);
     this.applySnapshot(snapshot);
     this.eventBus.emit('sim:tick', { generation: snapshot.generation, liveCellCount: snapshot.liveCellCount });
   }
@@ -792,6 +874,7 @@ export class SimulationController {
 
   private playbackTick(): void {
     if (!this.simulation) return;
+    logDbg('play', `playbackTick() — playbackGen=${this.playbackGeneration}, computedGen=${this.computedGeneration}, needsAsync=${this.simulation.needsAsyncTick()}`);
 
     // Async rules (Python, expressions, scripts) use async playback
     if (this.simulation.needsAsyncTick()) {
@@ -826,7 +909,6 @@ export class SimulationController {
     }
 
     // If next frame isn't computed yet, compute just 1 frame to keep playback going
-    // (minimal synchronous work — bulk caching is handled by runComputeAheadChunk)
     if (nextGen > this.computedGeneration) {
       this.computeFrames(1);
     }
@@ -836,12 +918,19 @@ export class SimulationController {
       this.playbackGeneration = nextGen;
       this.restoreFrame(this.playbackGeneration);
     }
-    // else: frame still not ready, skip this tick (avoids blocking)
   }
 
   private async playbackTickAsync(): Promise<void> {
     if (!this.simulation) return;
+    if (this.asyncPlaybackInFlight) {
+      logDbg('play', `playbackTickAsync() SKIPPED — already in flight`);
+      return;
+    }
+    this.asyncPlaybackInFlight = true;
+    const epoch = this.computeEpoch;
+    logDbg('play', `playbackTickAsync() — playbackGen=${this.playbackGeneration}, computedGen=${this.computedGeneration}`);
 
+    try {
     const nextGen = this.playbackGeneration + 1;
 
     if (nextGen >= this.timelineDuration) {
@@ -867,9 +956,15 @@ export class SimulationController {
       await this.computeFramesAsync(1);
     }
 
+    // Bail if simulation was replaced during await
+    if (this.computeEpoch !== epoch) return;
+
     if (nextGen <= this.computedGeneration) {
       this.playbackGeneration = nextGen;
       this.restoreFrame(this.playbackGeneration);
+    }
+    } finally {
+      this.asyncPlaybackInFlight = false;
     }
   }
 
@@ -885,30 +980,34 @@ export class SimulationController {
 
   /**
    * Async compute-ahead: computes frames in chunks to avoid blocking.
-   * After each chunk, restores the grid to the playback generation so
-   * compute-ahead never corrupts the visible grid state (important for
-   * drawing while paused).
    */
   private runComputeAheadChunk(): void {
     if (this.computedGeneration >= this.computeAheadTarget) {
+      logMin('compute', `runComputeAheadChunk DONE — computedGen=${this.computedGeneration} >= target=${this.computeAheadTarget}`);
       this.computeAheadTimer = null;
       return;
     }
 
     const remaining = this.computeAheadTarget - this.computedGeneration;
-    // Use smaller chunks during playback to avoid blocking playback ticks
     const maxChunk = this.playing ? PLAYBACK_CHUNK_SIZE : COMPUTE_CHUNK_SIZE;
     const chunkSize = Math.min(maxChunk, remaining);
+    logDbg('compute', `runComputeAheadChunk — computedGen=${this.computedGeneration}, target=${this.computeAheadTarget}, chunk=${chunkSize}, needsAsync=${this.needsAsyncTick()}, asyncInFlight=${this.asyncComputeInFlight}`);
 
-    // If the tick pipeline requires async (expressions, scripts, Python rules),
-    // use the async path so Pyodide-based evaluations actually execute.
     if (this.needsAsyncTick()) {
+      if (this.asyncComputeInFlight) {
+        logDbg('compute', `runComputeAheadChunk — async in flight, deferring`);
+        // Already computing async — will reschedule when done
+        this.computeAheadTimer = null;
+        return;
+      }
+      logMin('compute', `runComputeAheadChunk — launching async chunk of ${chunkSize}`);
+      const chunkEpoch = this.computeEpoch;
       void this.computeFramesAsync(chunkSize).then(() => {
-        // Restore the grid to the playback frame so the visible state isn't corrupted.
+        // Don't continue if simulation was replaced
+        if (this.computeEpoch !== chunkEpoch) return;
         if (this.frameCache.has(this.playbackGeneration)) {
           this.applySnapshot(this.frameCache.get(this.playbackGeneration)!);
         }
-        // Schedule next chunk
         this.computeAheadTimer = setTimeout(() => {
           this.runComputeAheadChunk();
         }, 0);
@@ -918,13 +1017,10 @@ export class SimulationController {
 
     this.computeFrames(chunkSize);
 
-    // Restore the grid to the playback frame so the visible state isn't corrupted.
-    // computeFrames advanced the engine beyond playback; put the grid back.
     if (this.frameCache.has(this.playbackGeneration)) {
       this.applySnapshot(this.frameCache.get(this.playbackGeneration)!);
     }
 
-    // Schedule next chunk
     this.computeAheadTimer = setTimeout(() => {
       this.runComputeAheadChunk();
     }, 0);
@@ -934,9 +1030,15 @@ export class SimulationController {
    * Stop compute-ahead.
    */
   private stopComputeAhead(): void {
+    logDbg('compute', `stopComputeAhead() — timer=${!!this.computeAheadTimer}, deferredListener=${!!this.deferredComputeAheadListener}`);
     if (this.computeAheadTimer) {
       clearTimeout(this.computeAheadTimer);
       this.computeAheadTimer = null;
+    }
+    // Cancel deferred compute-ahead waiting for Pyodide
+    if (this.deferredComputeAheadListener) {
+      this.eventBus.off('pyodide:ready', this.deferredComputeAheadListener);
+      this.deferredComputeAheadListener = null;
     }
   }
 
@@ -944,14 +1046,12 @@ export class SimulationController {
 
   /**
    * Set a runtime parameter value. Validates range and emits event.
-   * Invalidates cache beyond current playback generation since params changed.
    */
   setParam(name: string, value: number): void {
     if (!this.simulation) return;
     const def = this.simulation.preset.params?.find((p) => p.name === name);
     if (!def) return;
 
-    // Clamp to range
     let clamped = value;
     if (def.min !== undefined) clamped = Math.max(def.min, clamped);
     if (def.max !== undefined) clamped = Math.min(def.max, clamped);
@@ -960,13 +1060,11 @@ export class SimulationController {
     this.simulation.setParam(name, clamped);
     this.eventBus.emit('sim:paramChanged', { name, value: clamped });
 
-    // Invalidate cache beyond current playback position since params changed
     this.invalidateCacheFrom(this.playbackGeneration + 1);
   }
 
   /**
    * Invalidate cached frames from a given generation onward.
-   * Automatically restarts compute-ahead to refill the cache.
    */
   private invalidateCacheFrom(fromGeneration: number): void {
     for (const key of this.frameCache.keys()) {
@@ -976,11 +1074,9 @@ export class SimulationController {
     }
     if (this.computedGeneration > fromGeneration) {
       this.computedGeneration = fromGeneration;
-      // Restore sim to the last valid state
       this.advanceSimTo(Math.max(0, fromGeneration - 1));
       this.eventBus.emit('sim:computeProgress', { computedGeneration: this.computedGeneration });
     }
-    // Restart compute-ahead to refill the cache
     this.stopComputeAhead();
     if (this.computeAheadTarget > this.computedGeneration) {
       this.computeAhead(this.computeAheadTarget);
@@ -989,22 +1085,14 @@ export class SimulationController {
 
   /**
    * Notify the controller that grid cells have been edited (draw/erase).
-   * Lightweight: only caches the edited frame and deletes stale future frames.
-   * Compute-ahead restart is debounced so rapid drawing stays responsive.
    */
   onGridEdited(): void {
     if (!this.simulation) return;
 
     const gen = this.playbackGeneration;
-
-    // Sync the engine's generation counter to playback (compute-ahead may have
-    // advanced it far beyond playback, but the grid buffers reflect playback gen).
     this.simulation.runner.setGeneration(gen);
-
-    // Snapshot the current (edited) grid
     this.cacheCurrentFrame();
 
-    // Update initial snapshot if at generation 0 so reset preserves edits
     if (gen === 0 && this.initialSnapshot) {
       for (const propName of this.simulation.grid.getPropertyNames()) {
         const buf = this.simulation.grid.getCurrentBuffer(propName);
@@ -1012,7 +1100,6 @@ export class SimulationController {
       }
     }
 
-    // Delete future cache entries (fast, no recomputation)
     this.stopComputeAhead();
     for (const key of this.frameCache.keys()) {
       if (key > gen) {
@@ -1022,13 +1109,11 @@ export class SimulationController {
     this.computedGeneration = gen;
     this.eventBus.emit('sim:computeProgress', { computedGeneration: gen });
 
-    // Emit tick to update UI with new cell count
     this.eventBus.emit('sim:tick', {
       generation: gen,
       liveCellCount: this.getLiveCellCount(),
     });
 
-    // Debounce compute-ahead restart — don't block drawing with heavy computation
     if (this.editDebounceTimer) {
       clearTimeout(this.editDebounceTimer);
     }
@@ -1090,7 +1175,6 @@ export class SimulationController {
 
     const registry = this.simulation.typeRegistry;
 
-    // Build cellTypes for the store, filtering out _cellType and tagging inherent
     const cellTypes = registry.getTypes().map((typeDef) => {
       const resolved = registry.resolveProperties(typeDef.id);
       return {
@@ -1109,7 +1193,6 @@ export class SimulationController {
       };
     });
 
-    // Also build flat cellProperties for backward compat
     const unionProps = registry
       .getPropertyUnion()
       .filter((p) => p.name !== '_cellType')
@@ -1140,12 +1223,10 @@ export class SimulationController {
   }
 
   /**
-   * Sync link store and tag store with registry state after preset load.
+   * Sync tag store with registry state after preset load.
    */
-  private syncLinkStore(): void {
+  private syncTagStore(): void {
     if (!this.simulation) return;
-    const links = this.simulation.linkRegistry.getAll();
-    linkStoreActions.setLinks(links);
     const tags = this.simulation.tagRegistry.getAll();
     expressionStoreActions.setTags(tags);
   }
@@ -1154,14 +1235,12 @@ export class SimulationController {
 
   /**
    * Resize the grid by recreating the simulation with new dimensions.
-   * Preserves current preset and params.
    */
   resizeGrid(width: number, height?: number): void {
     if (!this.simulation) return;
     const preset = this.simulation.preset;
     const paramValues = this.simulation.getParamsObject();
 
-    // Clone preset with new grid dimensions
     const newPreset = {
       ...preset,
       grid: {
@@ -1173,7 +1252,6 @@ export class SimulationController {
 
     this.loadPresetConfig(newPreset);
 
-    // Restore params
     for (const [k, v] of Object.entries(paramValues)) {
       this.simulation!.setParam(k, v);
     }
@@ -1192,7 +1270,6 @@ export class SimulationController {
   updateRule(newBody: string): void {
     if (!this.simulation) return;
     this.simulation.updateRule(newBody);
-    // Invalidate cache since rule changed
     this.invalidateCacheFrom(this.playbackGeneration + 1);
   }
 
@@ -1224,15 +1301,7 @@ export class SimulationController {
 
   // --- SG-8: State snapshot methods for multi-sim root switching ---
 
-  /**
-   * Save the controller's current per-root state to a snapshot.
-   * Used by SimulationManager when switching active roots.
-   * Stops timers (playback loop, compute-ahead) before saving — the new root
-   * will start its own timers as needed.
-   */
   saveState(): ControllerStateSnapshot {
-    // Stop timers before saving — they're runtime artifacts, not persistent state.
-    // The playback loop and compute-ahead will be restarted for the new root.
     this.stopPlaybackLoop();
     this.stopComputeAhead();
     if (this.editDebounceTimer) {
@@ -1256,7 +1325,6 @@ export class SimulationController {
       timelineDuration: this.timelineDuration,
     };
 
-    // Reset controller fields to a clean slate (the new root will restore its own state)
     this.simulation = null;
     this.commandHistory = null;
     this.playing = false;
@@ -1273,15 +1341,11 @@ export class SimulationController {
     return snapshot;
   }
 
-  /**
-   * Restore the controller's per-root state from a snapshot.
-   * Used by SimulationManager when switching active roots.
-   * Restarts playback loop if the restored state was playing.
-   */
   restoreState(snapshot: ControllerStateSnapshot): void {
-    // Stop any existing timers first
     this.stopPlaybackLoop();
     this.stopComputeAhead();
+    this.asyncComputeInFlight = false;
+    this.asyncPlaybackInFlight = false;
     if (this.editDebounceTimer) {
       clearTimeout(this.editDebounceTimer);
       this.editDebounceTimer = null;
@@ -1301,12 +1365,10 @@ export class SimulationController {
     this.playbackMode = snapshot.playbackMode;
     this.timelineDuration = snapshot.timelineDuration;
 
-    // Restart playback loop if the restored state was playing
     if (this.playing && this.simulation) {
       this.startPlaybackLoop();
     }
 
-    // Restart compute-ahead if there was a target
     if (this.computeAheadTarget > this.computedGeneration) {
       this.computeAhead(this.computeAheadTarget);
     }

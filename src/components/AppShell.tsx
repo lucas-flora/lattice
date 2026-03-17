@@ -37,6 +37,7 @@ import { InspectorPanel } from '@/components/panels/InspectorPanel';
 import { CardViewPanel } from '@/components/panels/CardViewPanel';
 import { MetricsPanel } from '@/components/panels/MetricsPanel';
 import { useSceneStore } from '@/store/sceneStore';
+import { logMin, logDbg } from '@/lib/debugLog';
 
 /** Module-level singleton for the simulation controller */
 let controllerSingleton: SimulationController | null = null;
@@ -53,6 +54,7 @@ export function getController(): SimulationController | null {
 function initializeSimulation(controller: SimulationController): void {
   const sim = controller.getSimulation();
   if (!sim) return;
+  logMin('ctrl', `initializeSimulation("${sim.preset.meta.name}") — tags=${sim.tagRegistry.getAll().length}, needsAsync=${sim.needsAsyncTick()}`);
 
   const presetName = sim.preset.meta.name;
   const dim = sim.preset.grid.dimensionality;
@@ -232,8 +234,10 @@ export function AppShell() {
     shortcutManager.attach(window);
 
     const onPresetLoaded = () => {
+      logMin('ctrl', `onPresetLoaded event fired — calling initializeSimulation + captureInitialState`);
       initializeSimulation(controller);
       const { timelineDuration } = useUiStore.getState();
+      logMin('ctrl', `captureInitialState(${timelineDuration}) — controller.needsAsync=${controller.needsAsyncTick()}`);
       controller.captureInitialState(timelineDuration);
       commandRegistry.execute('scene.buildTree', {}).then(() => {
         const { rootIds } = useSceneStore.getState();
@@ -244,10 +248,12 @@ export function AppShell() {
     };
     eventBus.on('sim:presetLoaded', onPresetLoaded);
 
+    logMin('ctrl', 'AppShell boot — loading default preset conways-gol');
     const config = loadBuiltinPresetClient('conways-gol');
     controller.loadPresetConfig(config);
     initializeSimulation(controller);
     const { timelineDuration } = useUiStore.getState();
+    logMin('ctrl', `AppShell boot — captureInitialState(${timelineDuration})`);
     controller.captureInitialState(timelineDuration);
 
     commandRegistry.execute('scene.buildTree', {}).then(() => {

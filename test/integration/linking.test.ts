@@ -11,8 +11,6 @@ import { CommandRegistry } from '../../src/commands/CommandRegistry';
 import { SimulationController } from '../../src/commands/SimulationController';
 import { registerAllCommands } from '../../src/commands/definitions';
 import { wireStores } from '../../src/commands/wireStores';
-import { Simulation } from '../../src/engine/rule/Simulation';
-import type { PresetConfig } from '../../src/engine/preset/types';
 import { PresetSchema } from '../../src/engine/preset/schema';
 
 /** Minimal preset with age and alpha properties */
@@ -73,13 +71,7 @@ describe('Link Integration', () => {
     ageBuf[0] = 50;
 
     // Add link: cell.age → cell.alpha, [0,100] → [1,0]
-    sim.linkRegistry.add({
-      source: 'cell.age',
-      target: 'cell.alpha',
-      sourceRange: [0, 100],
-      targetRange: [1, 0],
-      easing: 'linear',
-    });
+    sim.tagRegistry.addFromLink('cell.age', 'cell.alpha', [0, 100], [1, 0], 'linear');
 
     // After tick, link should have set alpha before rule read it
     sim.tick();
@@ -96,13 +88,7 @@ describe('Link Integration', () => {
     const sim = controller.getSimulation()!;
 
     // Link feedRate → killRate with 1:1 mapping
-    sim.linkRegistry.add({
-      source: 'env.feedRate',
-      target: 'env.killRate',
-      sourceRange: [0, 1],
-      targetRange: [0, 1],
-      easing: 'linear',
-    });
+    sim.tagRegistry.addFromLink('env.feedRate', 'env.killRate', [0, 1], [0, 1], 'linear');
 
     sim.tick();
 
@@ -116,13 +102,7 @@ describe('Link Integration', () => {
     const sim = controller.getSimulation()!;
 
     // Add link
-    sim.linkRegistry.add({
-      source: 'env.feedRate',
-      target: 'env.killRate',
-      sourceRange: [0, 1],
-      targetRange: [0, 1],
-      easing: 'linear',
-    });
+    sim.tagRegistry.addFromLink('env.feedRate', 'env.killRate', [0, 1], [0, 1], 'linear');
 
     // Verify link resolution works in sync tick (no expressions active)
     sim.tick();
@@ -203,11 +183,11 @@ describe('Link Integration', () => {
     const id = (addResult.data as { id: string }).id;
 
     await registry.execute('link.disable', { id });
-    let link = controller.getLinkRegistry()!.get(id)!;
-    expect(link.enabled).toBe(false);
+    let tag = controller.getTagRegistry()!.get(id)!;
+    expect(tag.enabled).toBe(false);
 
     await registry.execute('link.enable', { id });
-    link = controller.getLinkRegistry()!.get(id)!;
-    expect(link.enabled).toBe(true);
+    tag = controller.getTagRegistry()!.get(id)!;
+    expect(tag.enabled).toBe(true);
   });
 });

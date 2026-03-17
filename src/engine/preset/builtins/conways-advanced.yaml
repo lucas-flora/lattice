@@ -1,0 +1,94 @@
+# Conway's GoL with tag-driven visual effects.
+# Demonstrates expression tags for age-based fading, position-based color, and death-by-age.
+
+schema_version: "1"
+
+meta:
+  name: "Conway's Advanced"
+  author: "Lattice Engine"
+  description: "GoL with age-fading, position-based color, and death-by-age tags."
+  tags: ["2d", "tags", "visual", "advanced"]
+
+grid:
+  dimensionality: "2d"
+  width: 128
+  height: 128
+  topology: "toroidal"
+
+cell_properties:
+  - name: "alive"
+    type: "bool"
+    default: 0
+    role: "input_output"
+
+params:
+  - name: "maxAge"
+    label: "Max Age"
+    type: "int"
+    default: 200
+    min: 20
+    max: 1000
+    step: 10
+  - name: "fadeDuration"
+    label: "Fade Duration"
+    type: "int"
+    default: 50
+    min: 5
+    max: 200
+    step: 5
+
+rule:
+  type: "typescript"
+  compute: |
+    const alive = ctx.cell.alive;
+    const age = ctx.cell.age;
+    const liveNeighbors = ctx.neighbors.filter(n => n.alive === 1).length;
+    let newAlive;
+    if (alive === 1) {
+      newAlive = (liveNeighbors === 2 || liveNeighbors === 3) ? 1 : 0;
+    } else {
+      newAlive = liveNeighbors === 3 ? 1 : 0;
+    }
+    return { alive: newAlive, age: newAlive > 0 ? age + 1 : 0 };
+
+expression_tags:
+  - name: "fade-on-age"
+    owner: { type: "root" }
+    code: "self.alpha = max(0.1, 1.0 - self.age / env_fadeDuration)"
+    phase: "post-rule"
+    source: "code"
+    outputs: ["cell.alpha"]
+    inputs: ["cell.age"]
+
+  - name: "position-color"
+    owner: { type: "root" }
+    code: |
+      self.colorR = x / width
+      self.colorG = max(0.0, 1.0 - self.age / 100.0)
+      self.colorB = y / height
+    phase: "post-rule"
+    source: "code"
+    outputs: ["cell.colorR", "cell.colorG", "cell.colorB"]
+    inputs: ["cell.age"]
+
+  - name: "death-by-age"
+    owner: { type: "root" }
+    code: "self.alive = np.where(self.age > env_maxAge, 0.0, self.alive)"
+    phase: "post-rule"
+    source: "code"
+    outputs: ["cell.alive"]
+    inputs: ["cell.age"]
+
+visual_mappings:
+  - property: "alive"
+    channel: "color"
+    mapping:
+      "0": "#000000"
+      "1": "#00ff00"
+
+ai_context:
+  description: "Conway's GoL with tag-driven visual effects: age fading, position-based color, death-by-age"
+  hints:
+    - "Expression tags run as post-rule Python via Pyodide"
+    - "colorR/G/B are inherent properties read by the renderer"
+    - "Tags override the visual_mappings color when colorR+G+B > 0"

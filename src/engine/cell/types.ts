@@ -57,6 +57,9 @@ export const INHERENT_PROPERTIES: CellPropertyConfig[] = [
   { name: 'alive', type: 'bool', default: 0, role: 'input_output' },
   { name: 'age', type: 'int', default: 0, role: 'output' },
   { name: 'alpha', type: 'float', default: 1.0, role: 'output' },
+  { name: 'colorR', type: 'float', default: 0.0, role: 'output' },
+  { name: 'colorG', type: 'float', default: 0.0, role: 'output' },
+  { name: 'colorB', type: 'float', default: 0.0, role: 'output' },
   { name: '_cellType', type: 'int', default: 0, role: 'output' },
 ];
 

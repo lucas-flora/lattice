@@ -45,7 +45,7 @@ describe('PresetSelector Component', () => {
   });
 
   it('TestPresetSelector_AllPresetsAvailable', () => {
-    expect(BUILTIN_PRESET_NAMES).toHaveLength(7);
+    expect(BUILTIN_PRESET_NAMES).toHaveLength(8);
     expect(BUILTIN_PRESET_NAMES).toContain('conways-gol');
     expect(BUILTIN_PRESET_NAMES).toContain('rule-110');
     expect(BUILTIN_PRESET_NAMES).toContain('langtons-ant');
@@ -64,6 +64,6 @@ describe('PresetSelector Component', () => {
     const result = await commandRegistry.execute('preset.list', {});
     expect(result.success).toBe(true);
     const data = result.data as { presets: string[] };
-    expect(data.presets).toHaveLength(7);
+    expect(data.presets).toHaveLength(8);
   });
 });

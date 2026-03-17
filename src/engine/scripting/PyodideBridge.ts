@@ -8,6 +8,7 @@
 import { eventBus } from '../core/EventBus';
 import { createPyodideWorker } from './createPyodideWorker';
 import type { PyodideInMessage, PyodideOutMessage, PyodideStatus } from './types';
+import { logMin, logDbg } from '../../lib/debugLog';
 
 let idCounter = 0;
 function nextId(): string {
@@ -42,8 +43,12 @@ export class PyodideBridge {
    * if called multiple times.
    */
   ensureReady(): Promise<void> {
-    if (this.initPromise) return this.initPromise;
+    if (this.initPromise) {
+      logDbg('pyodide', `ensureReady() — already initialized/initializing (status=${this.status})`);
+      return this.initPromise;
+    }
 
+    logMin('pyodide', `ensureReady() — starting init`);
     this.initPromise = new Promise<void>((resolve, reject) => {
       this.status = 'loading';
       eventBus.emit('pyodide:loading', { phase: 'starting', progress: 0 });
@@ -91,6 +96,7 @@ export class PyodideBridge {
     gridDepth: number,
     params: Record<string, number>,
   ): Promise<Record<string, Float32Array>> {
+    logDbg('pyodide', `execRule() — ${gridWidth}x${gridHeight}, ${Object.keys(buffers).length} buffers`);
     await this.ensureReady();
 
     const id = nextId();
@@ -123,6 +129,7 @@ export class PyodideBridge {
     params: Record<string, number>,
     globalVars: Record<string, number>,
   ): Promise<Record<string, Float32Array>> {
+    logDbg('pyodide', `execExpressions() — ${gridWidth}x${gridHeight}, ${Object.keys(buffers).length} buffers, ${Object.keys(params).length} params`);
     await this.ensureReady();
 
     const id = nextId();
@@ -155,6 +162,7 @@ export class PyodideBridge {
     gridHeight: number,
     gridDepth: number,
   ): Promise<{ envChanges: Record<string, number>; varChanges: Record<string, number | string> }> {
+    logDbg('pyodide', `execScript() — ${gridWidth}x${gridHeight}`);
     await this.ensureReady();
 
     const id = nextId();
@@ -210,10 +218,12 @@ export class PyodideBridge {
   private handleMessage(msg: PyodideOutMessage): void {
     switch (msg.type) {
       case 'init-progress':
+        logDbg('pyodide', `init-progress: phase=${msg.phase}, progress=${msg.progress}`);
         eventBus.emit('pyodide:loading', { phase: msg.phase, progress: msg.progress });
         break;
 
       case 'ready':
+        logMin('pyodide', `worker READY`);
         if (this._initResolve) {
           this._initResolve();
           this._initResolve = null;
@@ -249,6 +259,7 @@ export class PyodideBridge {
       }
 
       case 'error': {
+        logMin('pyodide', `ERROR: ${msg.message} (id=${msg.id ?? 'init'})`);
         if (msg.id) {
           // Error for a specific request
           const p = this.pending.get(msg.id);

@@ -212,31 +212,58 @@ export class LatticeRenderer {
 
   /**
    * Update 2D grid: read current buffer and apply visual mappings.
+   * If colorR/G/B buffers have been written to (by tags/expressions), use direct RGB.
+   * Otherwise fall back to VisualMapper discrete mapping.
    */
   private update2D(colorProp: string | null, sizeProp: string | null): void {
     if (!this.grid || !this.instancedMesh || !this.visualMapper) return;
 
-    // Zero-copy read from grid buffer (RNDR-12)
-    const colorBuffer = colorProp ? this.grid.getCurrentBuffer(colorProp) : null;
-    const sizeBuffer = sizeProp ? this.grid.getCurrentBuffer(sizeProp) : null;
+    // Read from display buffer (returns locked snapshot during async compute, live buffer otherwise)
+    const colorBuffer = colorProp ? this.grid.getDisplayBuffer(colorProp) : null;
+    const sizeBuffer = sizeProp ? this.grid.getDisplayBuffer(sizeProp) : null;
     // Read alpha buffer if the grid has an alpha property
-    const alphaBuffer = this.grid.hasProperty('alpha') ? this.grid.getCurrentBuffer('alpha') : null;
+    const alphaBuffer = this.grid.hasProperty('alpha') ? this.grid.getDisplayBuffer('alpha') : null;
+
+    // Direct RGB buffers (inherent properties — always exist)
+    const colorR = this.grid.hasProperty('colorR') ? this.grid.getDisplayBuffer('colorR') : null;
+    const colorG = this.grid.hasProperty('colorG') ? this.grid.getDisplayBuffer('colorG') : null;
+    const colorB = this.grid.hasProperty('colorB') ? this.grid.getDisplayBuffer('colorB') : null;
+    const hasDirectColor = colorR !== null && colorG !== null && colorB !== null;
 
     for (let i = 0; i < this.grid.cellCount; i++) {
-      // Color mapping
-      if (colorBuffer && colorProp) {
+      let r: number, g: number, b: number;
+
+      // Check if this cell has direct RGB color set (by tags/expressions)
+      // Only use direct RGB for "visible" cells — if the primary visual property
+      // (e.g. alive) maps to 0, the cell is dead and should stay black.
+      const primaryValue = colorBuffer ? colorBuffer[i] : 1;
+      if (hasDirectColor && primaryValue > 0 && (colorR![i] + colorG![i] + colorB![i]) > 0.001) {
+        r = colorR![i];
+        g = colorG![i];
+        b = colorB![i];
+      } else if (colorBuffer && colorProp) {
+        // Fall back to VisualMapper discrete mapping
         const value = colorBuffer[i];
         const color = this.visualMapper.getColor(colorProp, value);
-
-        // Apply alpha: multiply RGB toward black (premultiplied fade)
-        if (alphaBuffer) {
-          const a = Math.max(0, Math.min(1, alphaBuffer[i]));
-          this.tempColor.set(color.r * a, color.g * a, color.b * a);
-          this.instancedMesh.setColorAt(i, this.tempColor);
-        } else {
-          this.instancedMesh.setColorAt(i, color);
-        }
+        r = color.r;
+        g = color.g;
+        b = color.b;
+      } else {
+        r = 0;
+        g = 0;
+        b = 0;
       }
+
+      // Apply alpha: multiply RGB toward black (premultiplied fade)
+      if (alphaBuffer) {
+        const a = Math.max(0, Math.min(1, alphaBuffer[i]));
+        r *= a;
+        g *= a;
+        b *= a;
+      }
+
+      this.tempColor.set(r, g, b);
+      this.instancedMesh.setColorAt(i, this.tempColor);
 
       // Size mapping: update instance matrix if needed
       if (sizeBuffer && sizeProp) {
@@ -264,8 +291,8 @@ export class LatticeRenderer {
   private update1DSpacetime(colorProp: string | null): void {
     if (!this.grid || !this.instancedMesh || !this.visualMapper || !colorProp) return;
 
-    // Snapshot current generation buffer
-    const currentBuffer = this.grid.getCurrentBuffer(colorProp);
+    // Snapshot current generation buffer (use display buffer for locked state)
+    const currentBuffer = this.grid.getDisplayBuffer(colorProp);
     const snapshot = new Float32Array(currentBuffer.length);
     snapshot.set(currentBuffer);
 

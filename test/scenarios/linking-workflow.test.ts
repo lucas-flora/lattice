@@ -13,7 +13,7 @@ import { CommandRegistry } from '../../src/commands/CommandRegistry';
 import { SimulationController } from '../../src/commands/SimulationController';
 import { registerAllCommands } from '../../src/commands/definitions';
 import { wireStores } from '../../src/commands/wireStores';
-import { useLinkStore } from '../../src/store/linkStore';
+import { useExpressionStore } from '../../src/store/expressionStore';
 import { PresetSchema } from '../../src/engine/preset/schema';
 
 describe('Linking Workflow Scenarios', () => {
@@ -28,7 +28,7 @@ describe('Linking Workflow Scenarios', () => {
     controller = new SimulationController(bus, 10000);
     registerAllCommands(registry, controller, bus);
     unwire = wireStores(bus);
-    useLinkStore.setState({ links: [] });
+    useExpressionStore.setState({ tags: [] });
   });
 
   afterEach(() => {
@@ -132,8 +132,9 @@ describe('Linking Workflow Scenarios', () => {
     controller.loadPresetConfig(preset);
     const sim = controller.getSimulation()!;
 
-    // Links should be loaded from config
-    expect(sim.linkRegistry.getAll()).toHaveLength(1);
+    // Links should be loaded from config into the tag registry
+    const linkTags = controller.getTagRegistry()!.getAll().filter(t => t.linkMeta !== undefined);
+    expect(linkTags).toHaveLength(1);
 
     // Tick — link should resolve feedRate→killRate
     sim.tick();
@@ -175,8 +176,9 @@ describe('Linking Workflow Scenarios', () => {
     });
     expect(add1.success).toBe(true);
 
-    // 2. Verify store updated
-    expect(useLinkStore.getState().links).toHaveLength(1);
+    // 2. Verify store updated — expressionStore now holds link tags
+    const linkTagsAfterAdd1 = useExpressionStore.getState().tags.filter(t => t.linkMeta !== undefined);
+    expect(linkTagsAfterAdd1).toHaveLength(1);
 
     // 3. Add second link
     const add2 = await registry.execute('link.add', {
@@ -186,7 +188,8 @@ describe('Linking Workflow Scenarios', () => {
       targetRange: [0, 1],
     });
     expect(add2.success).toBe(true);
-    expect(useLinkStore.getState().links).toHaveLength(2);
+    const linkTagsAfterAdd2 = useExpressionStore.getState().tags.filter(t => t.linkMeta !== undefined);
+    expect(linkTagsAfterAdd2).toHaveLength(2);
 
     // 4. List links
     const list = await registry.execute('link.list', {});
@@ -195,19 +198,21 @@ describe('Linking Workflow Scenarios', () => {
     // 5. Disable first link
     const id1 = (add1.data as { id: string }).id;
     await registry.execute('link.disable', { id: id1 });
-    expect(useLinkStore.getState().links.find(l => l.id === id1)?.enabled).toBe(false);
+    expect(useExpressionStore.getState().tags.find(t => t.id === id1)?.enabled).toBe(false);
 
     // 6. Re-enable
     await registry.execute('link.enable', { id: id1 });
-    expect(useLinkStore.getState().links.find(l => l.id === id1)?.enabled).toBe(true);
+    expect(useExpressionStore.getState().tags.find(t => t.id === id1)?.enabled).toBe(true);
 
     // 7. Remove second link
     const id2 = (add2.data as { id: string }).id;
     await registry.execute('link.remove', { id: id2 });
-    expect(useLinkStore.getState().links).toHaveLength(1);
+    const linkTagsAfterRemove = useExpressionStore.getState().tags.filter(t => t.linkMeta !== undefined);
+    expect(linkTagsAfterRemove).toHaveLength(1);
 
     // 8. Clear all
     await registry.execute('link.clear', {});
-    expect(useLinkStore.getState().links).toHaveLength(0);
+    const linkTagsAfterClear = useExpressionStore.getState().tags.filter(t => t.linkMeta !== undefined);
+    expect(linkTagsAfterClear).toHaveLength(0);
   });
 });
