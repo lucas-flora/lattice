@@ -110,6 +110,33 @@ export function registerUiCommands(
     },
   });
 
+  // --- Node Editor (center tab toggle) ---
+  registry.register({
+    name: 'ui.toggleNodeEditor',
+    description: 'Toggle to node editor tab in center zone',
+    category: 'ui',
+    params: NoParams,
+    execute: async () => {
+      const { zones } = useLayoutStore.getState();
+      const center = zones.center;
+      if (center.type === 'tabs') {
+        // Find the node editor tab index
+        const editorIdx = center.children.findIndex(
+          (c) => c.type === 'panel' && c.panelType === 'nodeEditor',
+        );
+        if (editorIdx >= 0) {
+          const newIndex = center.activeIndex === editorIdx ? 0 : editorIdx;
+          layoutStoreActions.setZoneLayout('center', {
+            ...center,
+            activeIndex: newIndex,
+          });
+          return { success: true, data: { activeIndex: newIndex } };
+        }
+      }
+      return { success: true, data: { activeIndex: 0 } };
+    },
+  });
+
   // --- Hotkey Help ---
   registry.register({
     name: 'ui.toggleHotkeyHelp',

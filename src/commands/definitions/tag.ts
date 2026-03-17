@@ -66,7 +66,11 @@ const EditParams = z.object({
   easing: z.enum(VALID_EASINGS).optional(),
   inputs: z.array(z.string()).optional(),
   outputs: z.array(z.string()).optional(),
-}).describe('{ id: string, [code], [name], [phase], ... }');
+  nodeGraph: z.object({
+    nodes: z.array(z.any()),
+    edges: z.array(z.any()),
+  }).optional(),
+}).describe('{ id: string, [code], [name], [phase], [nodeGraph], ... }');
 
 export function registerTagCommands(
   registry: CommandRegistry,
@@ -365,6 +369,7 @@ export function registerTagCommands(
       if (p.phase !== undefined) patch.phase = p.phase;
       if (p.inputs !== undefined) patch.inputs = p.inputs;
       if (p.outputs !== undefined) patch.outputs = p.outputs;
+      if (p.nodeGraph !== undefined) patch.nodeGraph = p.nodeGraph;
 
       // Update linkMeta if link-related fields are changed
       if (tag.linkMeta && (p.sourceRange || p.targetRange || p.easing)) {

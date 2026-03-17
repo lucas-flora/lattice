@@ -48,6 +48,7 @@ export const DEFAULT_SHORTCUTS: ShortcutBinding[] = [
   { keyLabel: 'F', key: 'f', commandName: 'view.fullscreen', description: 'Toggle fullscreen' },
   { keyLabel: 'S', key: 's', commandName: 'view.split', description: 'Toggle split view' },
   { keyLabel: 'G', key: 'g', commandName: 'view.gridLines', description: 'Toggle grid lines' },
+  { keyLabel: 'E', key: 'e', commandName: 'ui.toggleNodeEditor', description: 'Toggle node editor' },
   { keyLabel: '?', key: '?', commandName: 'ui.toggleHotkeyHelp', description: 'Show keyboard shortcuts' },
   { keyLabel: 'Ctrl+Z', key: 'z', ctrlOrMeta: true, commandName: 'edit.undo', description: 'Undo' },
   { keyLabel: 'Ctrl+Shift+Z', key: 'z', ctrlOrMeta: true, shift: true, commandName: 'edit.redo', description: 'Redo' },

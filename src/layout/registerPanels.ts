@@ -14,6 +14,7 @@ import { ScriptPanelWrapper } from '../components/panels/ScriptPanelWrapper';
 import { ObjectManagerPanel } from '../components/panels/ObjectManagerPanel';
 import { InspectorPanel } from '../components/panels/InspectorPanel';
 import { CardViewPanel } from '../components/panels/CardViewPanel';
+import { NodeEditorPanel } from '../components/panels/NodeEditorPanel';
 
 export function registerPanels(): void {
   panelRegistry.register({
@@ -69,6 +70,13 @@ export function registerPanels(): void {
     type: 'cardView',
     label: 'Card View',
     component: CardViewPanel,
+    allowMultiple: true,
+  });
+
+  panelRegistry.register({
+    type: 'nodeEditor',
+    label: 'Node Editor',
+    component: NodeEditorPanel,
     allowMultiple: true,
   });
 }

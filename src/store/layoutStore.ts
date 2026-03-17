@@ -235,25 +235,30 @@ export const layoutStoreActions = {
   toggleSplitView: (): void => {
     useLayoutStore.setState((s) => {
       const newCount = s.viewportCount === 1 ? 2 : 1;
+      const newCenter = newCount === 2 ? splitCenterLayout() : defaultCenterLayout();
+      // Preserve active tab index from current center if it's a tabs node
+      if (s.zones.center.type === 'tabs' && newCenter.type === 'tabs') {
+        newCenter.activeIndex = s.zones.center.activeIndex;
+      }
       return {
         viewportCount: newCount as 1 | 2,
-        zones: {
-          ...s.zones,
-          center: newCount === 2 ? splitCenterLayout() : defaultCenterLayout(),
-        },
+        zones: { ...s.zones, center: newCenter },
         fullscreenViewportId: null,
       };
     });
   },
 
   setViewportCount: (viewportCount: 1 | 2): void => {
-    useLayoutStore.setState((s) => ({
-      viewportCount,
-      zones: {
-        ...s.zones,
-        center: viewportCount === 2 ? splitCenterLayout() : defaultCenterLayout(),
-      },
-    }));
+    useLayoutStore.setState((s) => {
+      const newCenter = viewportCount === 2 ? splitCenterLayout() : defaultCenterLayout();
+      if (s.zones.center.type === 'tabs' && newCenter.type === 'tabs') {
+        newCenter.activeIndex = s.zones.center.activeIndex;
+      }
+      return {
+        viewportCount,
+        zones: { ...s.zones, center: newCenter },
+      };
+    });
   },
 
   setFullscreenViewport: (viewportId: string | null): void => {

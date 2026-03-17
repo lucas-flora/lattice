@@ -6,22 +6,38 @@
 
 import type { LayoutNode, DrawerStates, ZoneLayouts } from './types';
 
-/** Default center zone: single viewport */
+/** Default center zone: tabs with viewport + node editor */
 export function defaultCenterLayout(): LayoutNode {
-  return { type: 'panel', id: 'viewport-1', panelType: 'viewport' };
-}
-
-/** Split center zone: two viewports side by side */
-export function splitCenterLayout(): LayoutNode {
   return {
-    type: 'split',
-    id: 'center-split',
-    direction: 'h',
+    type: 'tabs',
+    id: 'center-tabs',
+    activeIndex: 0,
     children: [
       { type: 'panel', id: 'viewport-1', panelType: 'viewport' },
-      { type: 'panel', id: 'viewport-2', panelType: 'viewport' },
+      { type: 'panel', id: 'node-editor-1', panelType: 'nodeEditor' },
     ],
-    sizes: [50, 50],
+  };
+}
+
+/** Split center zone: two viewports side by side + node editor tab */
+export function splitCenterLayout(): LayoutNode {
+  return {
+    type: 'tabs',
+    id: 'center-tabs',
+    activeIndex: 0,
+    children: [
+      {
+        type: 'split',
+        id: 'center-split',
+        direction: 'h',
+        children: [
+          { type: 'panel', id: 'viewport-1', panelType: 'viewport' },
+          { type: 'panel', id: 'viewport-2', panelType: 'viewport' },
+        ],
+        sizes: [50, 50],
+      },
+      { type: 'panel', id: 'node-editor-1', panelType: 'nodeEditor' },
+    ],
   };
 }
 

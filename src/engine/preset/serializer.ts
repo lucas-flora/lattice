@@ -131,5 +131,12 @@ function serializeTag(tag: ExpressionTag): TagV2 {
     };
   }
 
+  if (tag.nodeGraph) {
+    (result as Record<string, unknown>).nodeGraph = {
+      nodes: tag.nodeGraph.nodes.map((n) => ({ ...n, position: { ...n.position }, data: { ...n.data } })),
+      edges: tag.nodeGraph.edges.map((e) => ({ ...e })),
+    };
+  }
+
   return result;
 }

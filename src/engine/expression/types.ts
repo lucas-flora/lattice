@@ -65,6 +65,8 @@ export interface ExpressionTag {
   outputs: string[];
   /** Link metadata — present on tags created via link wizard. Enables JS fast-path resolution. */
   linkMeta?: LinkMeta;
+  /** Node graph metadata — present on tags authored via the visual node editor. */
+  nodeGraph?: import('../nodes/types').NodeGraph;
 }
 
 /** Definition for creating a new ExpressionTag (ID auto-generated) */

@@ -184,5 +184,30 @@ See [KNOWN-ISSUES.md](./KNOWN-ISSUES.md) for tracked bugs.
 | Undo/redo | Done | |
 | Screenshot export | Done | |
 | Timeline scrubber | Done | |
+| Node-based visual scripting | Done | React Flow editor, 27 node types, graph→Python compiler |
+| Center zone layout tree | Done | Tabs/splits via LayoutRenderer, replaces hardcoded viewports |
 | WASM acceleration | Not wired | Engine exists, never called in prod |
 | Web Worker isolation | Not wired | Designed, never connected |
+
+---
+
+## Node Editor (v1.2)
+
+### Architecture
+- Center zone uses `LayoutRenderer` (recursive layout tree) instead of hardcoded viewports
+- Default center: `TabsNode` with Viewport + Node Editor tabs
+- NodeGraph engine is pure TypeScript, no React dependency — fully unit-testable
+- `ExpressionTag.nodeGraph` optional field (same pattern as `linkMeta`)
+- Graph→Python compilation via topological sort + per-node `compile()` functions
+- Round-trip via `@nodegraph` JSON comment embedded in generated code
+
+### Node Type Catalog (27 types)
+- **Property**: PropertyRead, PropertyWrite, Constant, Time
+- **Math**: Add, Subtract, Multiply, Divide, Negate, Abs, Power, Sqrt, Modulo, Sin, Cos, Floor, Ceil
+- **Range**: RangeMap, Clamp, Smoothstep, Linear
+- **Logic**: Compare, And, Or, Not, Select (np.where)
+- **Utility**: Random, Sum, Mean, Max, Min, Count, Coordinates
+
+### Commands (8 new)
+- `node.compile`, `node.addNode`, `node.removeNode`, `node.connect`, `node.disconnect`, `node.openEditor`, `node.autoLayout`
+- `ui.toggleNodeEditor` (E hotkey)

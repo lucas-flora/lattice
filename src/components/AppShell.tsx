@@ -23,6 +23,7 @@ import { wireStores } from '@/commands/wireStores';
 import { loadBuiltinPresetClient } from '@/engine/preset/builtinPresetsClient';
 import { KeyboardShortcutManager } from '@/commands/KeyboardShortcutManager';
 import { SimulationViewport } from '@/components/viewport/SimulationViewport';
+import { LayoutRenderer } from '@/components/layout/LayoutRenderer';
 import { HUD } from '@/components/hud/HUD';
 import { HotkeyHelp } from '@/components/hud/HotkeyHelp';
 import { BottomTray } from '@/components/layout/BottomTray';
@@ -37,7 +38,11 @@ import { InspectorPanel } from '@/components/panels/InspectorPanel';
 import { CardViewPanel } from '@/components/panels/CardViewPanel';
 import { MetricsPanel } from '@/components/panels/MetricsPanel';
 import { useSceneStore } from '@/store/sceneStore';
+import { registerPanels } from '@/layout/registerPanels';
 import { logMin, logDbg } from '@/lib/debugLog';
+
+// Register all panel types so PanelHost can resolve them
+registerPanels();
 
 /** Module-level singleton for the simulation controller */
 let controllerSingleton: SimulationController | null = null;
@@ -200,6 +205,7 @@ export function AppShell() {
   const initializedRef = useRef(false);
   const viewportCount = useLayoutStore((s) => s.viewportCount);
   const fullscreenViewportId = useLayoutStore((s) => s.fullscreenViewportId);
+  const centerLayout = useLayoutStore((s) => s.zones.center);
   const isTerminalOpen = useLayoutStore((s) => s.isTerminalOpen);
   const terminalMode = useLayoutStore((s) => s.terminalMode);
 
@@ -337,22 +343,17 @@ export function AppShell() {
       {/* === CENTER COLUMN === */}
       <div className="flex flex-col flex-1 min-w-0 min-h-0">
         <div className="flex flex-1 min-h-0 relative">
-          {/* Primary viewport */}
-          {(!isAnyFullscreen || fullscreenViewportId === 'viewport-1') && (
-            <div
-              className={`${viewportCount === 2 && !isAnyFullscreen ? 'w-1/2 border-r border-zinc-700' : 'w-full'} h-full`}
-            >
-              <SimulationViewport viewportId="viewport-1" />
+          {/* Center zone: fullscreen bypass or LayoutRenderer tree */}
+          {isAnyFullscreen ? (
+            <div className="w-full h-full">
+              <SimulationViewport viewportId={fullscreenViewportId!} />
             </div>
+          ) : (
+            <LayoutRenderer
+              node={centerLayout}
+              onLayoutChange={(node) => layoutStoreActions.setZoneLayout('center', node)}
+            />
           )}
-
-          {/* Secondary viewport */}
-          {(viewportCount === 2 || fullscreenViewportId === 'viewport-2') &&
-            (!isAnyFullscreen || fullscreenViewportId === 'viewport-2') && (
-              <div className={`${viewportCount === 2 && !isAnyFullscreen ? 'w-1/2' : 'w-full'} h-full`}>
-                <SimulationViewport viewportId="viewport-2" />
-              </div>
-            )}
 
           {/* Peeking grips — edges when drawers closed */}
           {!isAnyFullscreen && !d1Open && !d2Open && (
