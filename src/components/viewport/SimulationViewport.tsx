@@ -477,8 +477,16 @@ export function SimulationViewport({ viewportId = 'viewport-1' }: SimulationView
       }
     }
 
-    // Delay GPU renderer setup slightly to let tryInitGPURuleRunner finish
-    const gpuSetupTimer = setTimeout(trySetupGPURenderer, 100);
+    // Try immediately (in case GPU runner is already ready from a previous load)
+    trySetupGPURenderer();
+
+    // Also listen for the event when GPU runner finishes async init
+    const onGPURuleRunnerReady = () => {
+      if (!gpuGridRenderer) {
+        trySetupGPURenderer();
+      }
+    };
+    eventBus.on('gpu:ruleRunnerReady', onGPURuleRunnerReady);
 
     // Animation loop
     const animate = () => {
@@ -523,7 +531,7 @@ export function SimulationViewport({ viewportId = 'viewport-1' }: SimulationView
 
     // Cleanup
     return () => {
-      clearTimeout(gpuSetupTimer);
+      eventBus.off('gpu:ruleRunnerReady', onGPURuleRunnerReady);
       cancelAnimationFrame(rafRef.current);
       canvas.removeEventListener('mousedown', onMouseDown);
       canvas.removeEventListener('mousemove', onMouseMove);

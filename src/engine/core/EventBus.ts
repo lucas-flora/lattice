@@ -60,6 +60,7 @@ export interface EngineEventMap {
   'gpu:device-lost': { reason: string };
   'gpu:error': { message: string };
   'gpu:shader-compiled': { label: string; cached: boolean };
+  'gpu:ruleRunnerReady': Record<string, never>;
 }
 
 /** Valid event names */

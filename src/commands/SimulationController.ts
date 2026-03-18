@@ -141,6 +141,7 @@ export class SimulationController {
 
   /**
    * Try to initialize a GPURuleRunner for the current simulation.
+   * Waits for GPUContext if WebGPU is available but not yet initialized.
    * Silently falls back to CPU if WebGPU unavailable or no built-in IR.
    */
   private async tryInitGPURuleRunner(): Promise<void> {
@@ -154,17 +155,31 @@ export class SimulationController {
     const presetName = this.simulation.preset.meta.name;
     try {
       if (!GPUContext.isAvailable()) return;
-      const ctx = GPUContext.tryGet();
-      if (!ctx) return;
       const irBuilder = BUILTIN_IR[presetName];
       if (!irBuilder) return;
       const ir = irBuilder(this.simulation.preset);
       if (!ir) return;
 
+      // Wait for GPU context if not yet initialized
+      let ctx = GPUContext.tryGet();
+      if (!ctx) {
+        logGPU(`Waiting for GPU context before initializing rule runner...`);
+        ctx = await GPUContext.initialize();
+      }
+
+      const epoch = this.computeEpoch;
       const runner = new GPURuleRunner(this.simulation.grid, this.simulation.preset);
       await runner.initialize();
+
+      // Check that preset didn't change while we were waiting
+      if (this.computeEpoch !== epoch) {
+        runner.destroy();
+        return;
+      }
+
       this.gpuRuleRunner = runner;
       logGPU(`Rule runner active for "${presetName}"`);
+      this.eventBus.emit('gpu:ruleRunnerReady', {});
     } catch (err) {
       logGPU(`Rule runner init FAILED for "${presetName}": ${err}`);
       this.gpuRuleRunner = null;
