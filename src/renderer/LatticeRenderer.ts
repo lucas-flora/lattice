@@ -67,10 +67,11 @@ export class LatticeRenderer {
     this.camera.position.set(0, 0, 10);
     this.camera.lookAt(0, 0, 0);
 
-    // WebGL renderer
+    // WebGL renderer (alpha: true allows transparent background for GPU canvas layering)
     this._renderer = new THREE.WebGLRenderer({
       canvas: config.canvas,
       antialias: config.antialias ?? true,
+      alpha: true,
     });
     this._renderer.setSize(config.width, config.height);
   }

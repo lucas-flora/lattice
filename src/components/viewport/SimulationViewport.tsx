@@ -480,13 +480,20 @@ export function SimulationViewport({ viewportId = 'viewport-1' }: SimulationView
 
       const gpuRunner = simController.getGPURuleRunner();
       if (gpuGridRenderer && gpuRunner && cameraController) {
-        // GPU rendering path
+        // GPU path: tick simulation at render rate when playing
+        if (simController.isPlaying()) {
+          gpuRunner.tick();
+        }
+
+        // GPU rendering path: read directly from sim buffer
         gpuGridRenderer.updateReadBuffer(gpuRunner.getReadBuffer());
         const cam = cameraController.camera;
+        const halfW = (cam.right - cam.left) / 2;
+        const halfH = (cam.top - cam.bottom) / 2;
         const camState: GPUCameraState = {
-          offsetX: cam.position.x + cam.left / 1,
-          offsetY: -(cam.position.y + cam.top / 1),
-          scale: cam.zoom * ((gpuCanvas?.height ?? height) / (cam.top - cam.bottom)),
+          offsetX: cam.position.x - halfW,
+          offsetY: -(cam.position.y + halfH),
+          scale: (gpuCanvas?.height ?? height) / (cam.top - cam.bottom),
           canvasWidth: gpuCanvas?.width ?? width,
           canvasHeight: gpuCanvas?.height ?? height,
         };
@@ -498,7 +505,7 @@ export function SimulationViewport({ viewportId = 'viewport-1' }: SimulationView
         );
       }
 
-      // Three.js still renders overlays (grid lines, HUD elements)
+      // Three.js renders overlays (grid lines) or full CPU path
       latticeRenderer.update();
       if (orbitController) {
         latticeRenderer.renderWithCamera(orbitController.camera);
