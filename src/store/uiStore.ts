@@ -30,6 +30,8 @@ export interface UiState {
   timelineAutoExtend: boolean;
   /** Playback end-of-timeline behavior */
   playbackMode: PlaybackMode;
+  /** Dead cell color (hex string like "#1a1a2e") or null for transparent/background */
+  deadCellColor: string | null;
 }
 
 export const useUiStore = create<UiState>()(
@@ -43,6 +45,7 @@ export const useUiStore = create<UiState>()(
     timelineZoomEnd: 256,
     timelineAutoExtend: true,
     playbackMode: 'loop' as PlaybackMode,
+    deadCellColor: null,
   })),
 );
 
@@ -81,5 +84,8 @@ export const uiStoreActions = {
   },
   setPlaybackMode: (playbackMode: PlaybackMode): void => {
     useUiStore.setState({ playbackMode });
+  },
+  setDeadCellColor: (color: string | null): void => {
+    useUiStore.setState({ deadCellColor: color });
   },
 };

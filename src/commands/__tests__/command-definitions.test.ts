@@ -134,7 +134,7 @@ describe('Command Definitions', () => {
     expect(names).toContain('state.list');
     expect(names).toContain('state.delete');
 
-    expect(list.length).toBe(114);
+    expect(list.length).toBe(115);
   });
 
   it('TestCommandDefinitions_SimPlay_StartsSimulation', async () => {

@@ -286,8 +286,13 @@ export class SimulationController {
     this.restoreInitialState();
     // Cache the clean initial frame
     this.cacheCurrentFrame();
-    // Emit sim:reset so stores (simStore, timeline) snap back to gen 0
-    this.eventBus.emit('sim:reset', {});
+    // Emit targeted events: generation=0, paused, computedGeneration=0.
+    // Don't use sim:reset which nukes maxGeneration (timeline needs that for scrub ceiling).
+    this.eventBus.emit('sim:tick', {
+      generation: 0,
+      liveCellCount: this.getLiveCellCount(),
+    });
+    this.eventBus.emit('sim:computeProgress', { computedGeneration: 0 });
     // Restart compute-ahead from clean state
     if (this.computeAheadTarget > 0) {
       this.computeAhead(this.computeAheadTarget);

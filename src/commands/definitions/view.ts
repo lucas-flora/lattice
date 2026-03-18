@@ -146,4 +146,24 @@ export function registerViewCommands(
       return { success: true, data: { visible: uiStore.getState().gridLinesVisible } };
     },
   });
+
+  const DeadCellColorParams = z.object({
+    color: z.string().optional(),
+  }).describe('{ [color]: string }');
+
+  registry.register({
+    name: 'view.deadCellColor',
+    description: 'Set dead cell color (hex like #1a1a2e) or "off" to hide',
+    category: 'view',
+    params: DeadCellColorParams,
+    execute: async (params) => {
+      const { color } = params as z.infer<typeof DeadCellColorParams>;
+      if (!color || color === 'off' || color === 'none') {
+        uiStoreActions.setDeadCellColor(null);
+        return { success: true, data: { color: null } };
+      }
+      uiStoreActions.setDeadCellColor(color);
+      return { success: true, data: { color } };
+    },
+  });
 }

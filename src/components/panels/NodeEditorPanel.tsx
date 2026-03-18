@@ -92,8 +92,14 @@ export function NodeEditorPanel({ panelId, config }: PanelProps) {
     [tags],
   );
 
-  // Load graph from selected tag
+  // Load graph from selected tag — only when the tag ID changes (not on every tags array mutation,
+  // which would overwrite local unsaved edits when other tags update).
+  const prevTagIdRef = useRef<string | undefined>(undefined);
   useEffect(() => {
+    // Only reload when the selected tag actually changes
+    if (selectedTagId === prevTagIdRef.current) return;
+    prevTagIdRef.current = selectedTagId;
+
     if (!selectedTagId) {
       setGraph(EMPTY_GRAPH);
       setCompiledCode('');

@@ -391,6 +391,13 @@ export function SimulationViewport({ viewportId = 'viewport-1' }: SimulationView
     // Initialize grid lines state
     latticeRenderer.setGridLines(useUiStore.getState().gridLinesVisible);
 
+    // Wire dead cell color from uiStore
+    const unsubDeadColor = useUiStore.subscribe(
+      (s) => s.deadCellColor,
+      (color) => { latticeRenderer.setDeadCellColor(color); },
+    );
+    latticeRenderer.setDeadCellColor(useUiStore.getState().deadCellColor);
+
     // Animation loop
     const animate = () => {
       rafRef.current = requestAnimationFrame(animate);
@@ -416,6 +423,7 @@ export function SimulationViewport({ viewportId = 'viewport-1' }: SimulationView
       eventBus.off('sim:presetLoaded', onPresetLoaded);
       eventBus.off('view:change', onViewChange);
       unsubGridLines();
+      unsubDeadColor();
 
       latticeRenderer.dispose();
       rendererRef.current = null;

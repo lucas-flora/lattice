@@ -43,6 +43,10 @@ export class LatticeRenderer {
   private gridLinesMesh: THREE.LineSegments | null = null;
   private gridLinesVisible: boolean = false;
 
+  // Dead cell color: when set, dead cells (primaryValue=0) render with this color
+  // instead of blending into the background. null = transparent (default behavior).
+  private deadCellColor: THREE.Color | null = null;
+
   constructor(config: RendererConfig) {
     // Scene
     this.scene = new THREE.Scene();
@@ -237,7 +241,12 @@ export class LatticeRenderer {
       // Only use direct RGB for "visible" cells — if the primary visual property
       // (e.g. alive) maps to 0, the cell is dead and should stay black.
       const primaryValue = colorBuffer ? colorBuffer[i] : 1;
-      if (hasDirectColor && primaryValue > 0 && (colorR![i] + colorG![i] + colorB![i]) > 0.001) {
+      if (primaryValue === 0 && this.deadCellColor) {
+        // Dead cell with visible dead-cell color
+        r = this.deadCellColor.r;
+        g = this.deadCellColor.g;
+        b = this.deadCellColor.b;
+      } else if (hasDirectColor && primaryValue > 0 && (colorR![i] + colorG![i] + colorB![i]) > 0.001) {
         r = colorR![i];
         g = colorG![i];
         b = colorB![i];
@@ -480,6 +489,14 @@ export class LatticeRenderer {
    */
   setMaxHistory(depth: number): void {
     this.maxHistory = Math.max(1, depth);
+  }
+
+  /**
+   * Set the dead cell color. Pass null to disable (dead cells = background).
+   * Accepts hex string (#rrggbb) or null.
+   */
+  setDeadCellColor(color: string | null): void {
+    this.deadCellColor = color ? new THREE.Color(color) : null;
   }
 
   /**
