@@ -160,6 +160,14 @@ CREATE TABLE perf_benchmarks (
 
 **Each record includes**: git commit hash, browser UA, GPU name, timestamp, architecture tag.
 
+**Phase 0 Status: COMPLETE** (commit `c40afd7`)
+- Supabase project: `lattice` (`jcrmmezzyybuhcdnqcew`, us-east-1)
+- `perf_benchmarks` table live with open RLS
+- Benchmark harness: async with periodic yields, live terminal progress bar via EventBus
+- CLI commands: `bench.run [test]`, `bench.results`
+- `next.config.ts` injects `NEXT_PUBLIC_GIT_COMMIT` at build time
+- Architecture tag: `baseline-cpu` for all pre-WebGPU measurements
+
 ### Phase 1: GPU Infrastructure
 
 **Goal**: WebGPU device acquisition, buffer management, basic compute shader dispatch. Prove the GPU pipeline works before migrating any simulation logic.
@@ -181,6 +189,38 @@ src/engine/gpu/
 - `ShaderCompiler` caches compiled modules by WGSL hash
 
 **Validation**: Dispatch a trivial compute shader (fill buffer with 1.0, read back, verify). Confirm on Chrome + Safari + Firefox.
+
+**Phase 1 Status: COMPLETE** (commit `a94c491`)
+
+Implementation notes:
+- `BufferManager` uses interleaved layout (all props for cell 0, then cell 1, etc.) for GPU cache coherence, rather than separate buffers per property
+- `ShaderCompiler` uses FNV-1a content hash for cache keys — fast, sufficient for ~dozens of shaders
+- `ComputeDispatcher` supports both single-pass (`dispatchAndSubmit`) and multi-pass batching (`beginCommandEncoder` → `dispatch` × N → `submit`) for the tick pipeline
+- `GPUContext` requests `powerPreference: 'high-performance'` and negotiates max available `maxStorageBufferBindingSize`
+- Non-blocking GPU init at app startup in `AppShell.tsx` — CPU paths still work if WebGPU unavailable
+- `gpu_compatibility` Supabase table tracks adapter fingerprints, device limits, and test results per browser/GPU
+
+**First gpu.test result** (2026-03-18, Firefox 148, macOS):
+
+| Metric | Value | Notes |
+|--------|-------|-------|
+| Test | PASSED | 4096/4096 cells = 1.0 |
+| Init | 0.9ms | GPU context already warm from AppShell startup |
+| Compile | 0.2ms | Trivial fill shader |
+| Dispatch | 28.1ms | Dominated by submission fence overhead, not compute |
+| Readback | 105.5ms | `mapAsync` + staging buffer copy — confirms readback is the expensive path |
+| Total | 134.6ms | |
+| Max storage buffer | 1024 MB | |
+| Max grid (4ch) | 8192×8192 | 67M cells |
+| Max grid (8ch) | 5792×5792 | 33M cells |
+| Max grid (16ch) | 4096×4096 | 16M cells |
+| Adapter info | null | Firefox 148 does not expose GPUAdapterInfo fields |
+
+**Key takeaways:**
+- **Readback is the bottleneck** (105ms for 16KB). GPU-native rendering (Phase 4) must eliminate readback from the hot loop entirely. The fullscreen quad reads directly from storage buffers.
+- **Dispatch overhead** (28ms) is submission fence + GPU scheduling, not compute time. Real workloads on large grids will amortize this to <1ms/tick.
+- **1GB storage buffer limit** gives massive headroom — 5792×5792 at 8 channels is far beyond our 1024×512 target.
+- **Firefox hides adapter info** — Chrome/Safari will populate vendor/arch/device fields. The compatibility table captures this variance automatically.
 
 ### Phase 2: IR + WGSL Codegen
 
