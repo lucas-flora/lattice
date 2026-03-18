@@ -26,6 +26,7 @@ import { useUiStore } from '@/store/uiStore';
 import { useSimStore } from '@/store/simStore';
 import { HUD } from '@/components/hud/HUD';
 import { GPUContext } from '@/engine/gpu/GPUContext';
+import { logGPU } from '@/lib/debugLog';
 
 /** Props for multi-viewport support */
 interface SimulationViewportProps {
@@ -410,7 +411,11 @@ export function SimulationViewport({ viewportId = 'viewport-1' }: SimulationView
     function trySetupGPURenderer() {
       if (!simController || !container || !sim) return;
       const gpuRunner = simController.getGPURuleRunner();
-      if (!gpuRunner || is3D || !GPUContext.isAvailable() || !GPUContext.tryGet()) return;
+      if (!gpuRunner || is3D || !GPUContext.isAvailable() || !GPUContext.tryGet()) {
+        logGPU(`Renderer setup skipped (runner=${!!gpuRunner}, is3D=${is3D}, webgpu=${GPUContext.isAvailable()})`);
+        return;
+      }
+      logGPU('Setting up GPU grid renderer (dual-canvas)');
 
       // Create WebGPU canvas underneath the Three.js canvas
       gpuCanvas = document.createElement('canvas');
@@ -461,8 +466,9 @@ export function SimulationViewport({ viewportId = 'viewport-1' }: SimulationView
           layout,
           colorMapping,
         );
+        logGPU(`Renderer ready (mode=${colorMapping.mode}, stride=${gpuRunner.getStride()}, ${gpuRunner.getWidth()}×${gpuRunner.getHeight()})`);
       } catch (err) {
-        console.warn('GPU grid renderer setup failed:', err);
+        logGPU(`Renderer setup FAILED: ${err}`);
         gpuGridRenderer = null;
         if (gpuCanvas && container?.contains(gpuCanvas)) {
           container.removeChild(gpuCanvas);

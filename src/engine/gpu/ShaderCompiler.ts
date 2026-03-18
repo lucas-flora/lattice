@@ -7,7 +7,7 @@
  */
 
 import { GPUContext } from './GPUContext';
-import { logMin, logDbg } from '../../lib/debugLog';
+import { logMin, logDbg, logGPU } from '../../lib/debugLog';
 import { eventBus } from '../core/EventBus';
 
 /**
@@ -50,7 +50,7 @@ export class ShaderCompiler {
     });
 
     this.cache.set(hash, module);
-    logMin('gpu', `Shader compiled: ${label ?? hash}`);
+    logGPU(`Shader compiled: ${label ?? hash}`);
     eventBus.emit('gpu:shader-compiled', { label: label ?? hash, cached: false });
 
     // Check for compilation errors/warnings asynchronously
@@ -105,7 +105,7 @@ export class ShaderCompiler {
         const location = lineNum > 0 ? ` (line ${lineNum}: ${sourceLine.trim()})` : '';
 
         if (msg.type === 'error') {
-          logMin('gpu', `Shader error in ${label}: ${msg.message}${location}`);
+          logGPU(`Shader ERROR in ${label}: ${msg.message}${location}`);
         } else if (msg.type === 'warning') {
           logDbg('gpu', `Shader warning in ${label}: ${msg.message}${location}`);
         }

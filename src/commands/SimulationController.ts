@@ -21,7 +21,7 @@ import type { SceneGraph } from '../engine/scene/SceneGraph';
 import type { SceneNode } from '../engine/scene/SceneNode';
 import { NODE_TYPES, generateNodeId } from '../engine/scene/SceneNode';
 import { sceneStoreActions, useSceneStore } from '../store/sceneStore';
-import { logMin, logDbg } from '../lib/debugLog';
+import { logMin, logDbg, logGPU } from '../lib/debugLog';
 import { GPURuleRunner } from '../engine/rule/GPURuleRunner';
 import { GPUContext } from '../engine/gpu/GPUContext';
 import { BUILTIN_IR } from '../engine/ir/builtinIR';
@@ -164,9 +164,9 @@ export class SimulationController {
       const runner = new GPURuleRunner(this.simulation.grid, this.simulation.preset);
       await runner.initialize();
       this.gpuRuleRunner = runner;
-      logMin('gpu', `GPU rule runner active for "${presetName}"`);
+      logGPU(`Rule runner active for "${presetName}"`);
     } catch (err) {
-      logMin('gpu', `GPU rule runner init failed for "${presetName}": ${err}`);
+      logGPU(`Rule runner init FAILED for "${presetName}": ${err}`);
       this.gpuRuleRunner = null;
     }
   }

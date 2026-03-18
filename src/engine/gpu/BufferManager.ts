@@ -17,7 +17,7 @@
 import { GPUContext } from './GPUContext';
 import type { GPUGridConfig, PropertyLayout } from './types';
 import { SIM_PARAMS_SIZE_BYTES, SIM_PARAMS_ENV_OFFSET_FLOATS, SIM_PARAMS_MAX_ENV_PARAMS } from './types';
-import { logMin, logDbg } from '../../lib/debugLog';
+import { logMin, logDbg, logGPU } from '../../lib/debugLog';
 
 export class BufferManager {
   /** Total floats per cell (sum of all property channels) */
@@ -130,7 +130,7 @@ export class BufferManager {
     // Write initial params
     this.writeParams({});
 
-    logMin('gpu', `Buffers allocated: ${cellCount} cells × ${stride} stride = ${(bufferSizeBytes / 1024).toFixed(0)}KB/buffer, ${(this.totalGPUBytes / 1024 / 1024).toFixed(1)}MB total`);
+    logGPU(`Buffers allocated: ${cellCount} cells × ${stride} stride = ${(bufferSizeBytes / 1024).toFixed(0)}KB/buffer, ${(this.totalGPUBytes / 1024 / 1024).toFixed(1)}MB total`);
     logDbg('gpu', `Layout: ${layout.map(l => `${l.name}@${l.offset}[${l.channels}]`).join(', ')}`);
   }
 

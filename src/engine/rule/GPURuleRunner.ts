@@ -24,7 +24,7 @@ import { BUILTIN_IR } from '../ir/builtinIR';
 import { validateIR } from '../ir/validate';
 import { generateWGSL, type WGSLCodegenConfig } from '../ir/WGSLCodegen';
 import type { IRProgram } from '../ir/types';
-import { logMin } from '../../lib/debugLog';
+import { logGPU } from '../../lib/debugLog';
 
 export class GPURuleRunner {
   private grid: Grid;
@@ -136,7 +136,7 @@ export class GPURuleRunner {
     // 10. Write initial params
     this.updateParams({}, 0, 1.0);
 
-    logMin('gpu', `GPURuleRunner initialized: ${presetName} (${width}×${height}, stride=${this.bufferManager.stride}, ${this.wgsl.length} chars WGSL)`);
+    logGPU(`GPURuleRunner initialized: ${presetName} (${width}×${height}, stride=${this.bufferManager.stride}, ${this.wgsl.length} chars WGSL)`);
   }
 
   /**

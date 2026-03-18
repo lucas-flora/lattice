@@ -16,6 +16,7 @@ const COLORS: Record<string, string> = {
   play:   'color: #38bdf8',  // blue — playback
   pyodide:'color: #f472b6',  // pink — pyodide bridge
   sim:    'color: #a78bfa',  // purple — simulation tick
+  gpu:    'color: #fb923c',  // orange — GPU pipeline
 };
 
 function ts(): string {
@@ -47,3 +48,8 @@ export function logDbg(category: string, msg: string, data?: Record<string, unkn
 
 export function isLogEnabled(): boolean { return level >= 1; }
 export function isDbgEnabled(): boolean { return level >= 2; }
+
+/** GPU pipeline log — always visible regardless of log level */
+export function logGPU(msg: string): void {
+  console.log(`%c[gpu] ${msg}`, COLORS.gpu);
+}

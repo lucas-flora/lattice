@@ -7,7 +7,7 @@
  */
 
 import { eventBus } from '../core/EventBus';
-import { logMin, logDbg } from '../../lib/debugLog';
+import { logMin, logDbg, logGPU } from '../../lib/debugLog';
 
 export class GPUContext {
   private static instance: GPUContext | null = null;
@@ -75,7 +75,7 @@ export class GPUContext {
     const adapterInfo = adapter.info;
 
     // Log adapter info
-    logMin('gpu', `Adapter: ${adapterInfo.vendor} ${adapterInfo.architecture} — ${adapterInfo.description || adapterInfo.device}`);
+    logGPU(`Adapter: ${adapterInfo.vendor} ${adapterInfo.architecture} — ${adapterInfo.description || adapterInfo.device}`);
     logDbg('gpu', `Max storage buffer: ${adapter.limits.maxStorageBufferBindingSize} bytes`);
     logDbg('gpu', `Max compute workgroups/dim: ${adapter.limits.maxComputeWorkgroupsPerDimension}`);
     logDbg('gpu', `Max workgroup size X: ${adapter.limits.maxComputeWorkgroupSizeX}`);
@@ -116,7 +116,7 @@ export class GPUContext {
     // Calculate max supported grid size
     const maxGridSize = ctx.getMaxGridSize(8); // assume 8 properties as typical
 
-    logMin('gpu', `GPU initialized — max grid: ${maxGridSize}x${maxGridSize} (8 props), buffer limit: ${(maxStorage / (1024 * 1024)).toFixed(0)}MB`);
+    logGPU(`GPU initialized — max grid: ${maxGridSize}×${maxGridSize} (8 props), buffer limit: ${(maxStorage / (1024 * 1024)).toFixed(0)}MB`);
 
     eventBus.emit('gpu:initialized', {
       adapter: `${adapterInfo.vendor} ${adapterInfo.architecture}`,
