@@ -95,6 +95,8 @@ const FORMATTERS: Record<string, Formatter> = {
   'bench.results': formatBenchSummary,
   'gpu.test': formatBenchSummary,
   'gpu.info': formatBenchSummary,
+  'ir.test': formatBenchSummary,
+  'ir.show': formatBenchSummary,
 };
 
 export function formatCommandResult(commandName: string, data: unknown): FormattedResult {

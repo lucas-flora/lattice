@@ -142,7 +142,11 @@ describe('Command Definitions', () => {
     expect(names).toContain('gpu.test');
     expect(names).toContain('gpu.info');
 
-    expect(list.length).toBe(119);
+    // IR commands
+    expect(names).toContain('ir.test');
+    expect(names).toContain('ir.show');
+
+    expect(list.length).toBe(121);
   });
 
   it('TestCommandDefinitions_SimPlay_StartsSimulation', async () => {
