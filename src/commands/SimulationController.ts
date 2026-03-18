@@ -1117,9 +1117,8 @@ export class SimulationController {
       return;
     }
 
-    // GPU live playback: tick directly on GPU, no frame cache needed
+    // GPU live playback: RAF loop handles ticking. Just sync generation and emit events.
     if (this.gpuRuleRunner) {
-      this.gpuRuleRunner.tick();
       this.playbackGeneration = this.gpuRuleRunner.getGeneration();
       this.computedGeneration = this.playbackGeneration;
       this.simulation.runner.setGeneration(this.playbackGeneration);
