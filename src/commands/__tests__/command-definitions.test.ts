@@ -134,7 +134,15 @@ describe('Command Definitions', () => {
     expect(names).toContain('state.list');
     expect(names).toContain('state.delete');
 
-    expect(list.length).toBe(115);
+    // Benchmark commands
+    expect(names).toContain('bench.run');
+    expect(names).toContain('bench.results');
+
+    // GPU commands
+    expect(names).toContain('gpu.test');
+    expect(names).toContain('gpu.info');
+
+    expect(list.length).toBe(119);
   });
 
   it('TestCommandDefinitions_SimPlay_StartsSimulation', async () => {

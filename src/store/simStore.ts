@@ -67,6 +67,12 @@ export interface SimState {
   activeRootId: string;
   /** SG-8: List of all simulation root IDs */
   rootIds: string[];
+  /** Whether WebGPU is available and initialized */
+  gpuAvailable: boolean;
+  /** GPU adapter description (e.g. 'apple arm') */
+  gpuAdapter: string | null;
+  /** Max square grid side length for 8-channel properties */
+  gpuMaxGridSize: number;
 }
 
 /** Default initial state */
@@ -86,6 +92,9 @@ const initialSimState: SimState = {
   cellTypes: [],
   activeRootId: 'default',
   rootIds: ['default'],
+  gpuAvailable: false,
+  gpuAdapter: null,
+  gpuMaxGridSize: 0,
 };
 
 export const useSimStore = create<SimState>()(
@@ -163,5 +172,9 @@ export const simStoreActions = {
     useSimStore.setState((s) => ({
       rootIds: s.rootIds.filter((id) => id !== rootId),
     }));
+  },
+  /** Set GPU availability and adapter info */
+  setGpuStatus: (available: boolean, adapter: string | null, maxGridSize: number): void => {
+    useSimStore.setState({ gpuAvailable: available, gpuAdapter: adapter, gpuMaxGridSize: maxGridSize });
   },
 };

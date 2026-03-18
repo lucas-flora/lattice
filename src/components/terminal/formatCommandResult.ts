@@ -93,6 +93,8 @@ const FORMATTERS: Record<string, Formatter> = {
   'sim.status': formatKeyValue,
   'bench.run': formatBenchSummary,
   'bench.results': formatBenchSummary,
+  'gpu.test': formatBenchSummary,
+  'gpu.info': formatBenchSummary,
 };
 
 export function formatCommandResult(commandName: string, data: unknown): FormattedResult {

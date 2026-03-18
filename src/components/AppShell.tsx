@@ -20,6 +20,7 @@ import { SimulationController } from '@/commands/SimulationController';
 import { commandRegistry } from '@/commands/CommandRegistry';
 import { registerAllCommands } from '@/commands/definitions';
 import { wireStores } from '@/commands/wireStores';
+import { GPUContext } from '@/engine/gpu/GPUContext';
 import { loadBuiltinPresetClient } from '@/engine/preset/builtinPresetsClient';
 import { KeyboardShortcutManager } from '@/commands/KeyboardShortcutManager';
 import { SimulationViewport } from '@/components/viewport/SimulationViewport';
@@ -234,6 +235,11 @@ export function AppShell() {
     registerAllCommands(commandRegistry, controller, eventBus);
 
     unwireFn = wireStores(eventBus);
+
+    // Attempt GPU initialization (non-blocking — app works without it)
+    GPUContext.initialize().catch(() => {
+      // Silently degrade — CPU paths still work. Error already emitted via EventBus.
+    });
 
     shortcutManager = new KeyboardShortcutManager(commandRegistry);
     shortcutManager.attach(window);

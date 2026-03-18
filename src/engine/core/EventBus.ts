@@ -55,6 +55,11 @@ export interface EngineEventMap {
   'scene:treeLoaded': { nodeCount: number; rootCount: number };
   // Benchmark progress
   'bench:progress': { message: string; testIndex: number; totalTests: number };
+  // GPU subsystem events
+  'gpu:initialized': { adapter: string; device: string; maxBufferSize: number };
+  'gpu:device-lost': { reason: string };
+  'gpu:error': { message: string };
+  'gpu:shader-compiled': { label: string; cached: boolean };
 }
 
 /** Valid event names */
