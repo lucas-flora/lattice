@@ -290,6 +290,19 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
 **Validation**: Compile Conway's GoL node graph → IR → WGSL. Inspect shader. Compare output against hand-written WGSL reference.
 
+**Phase 2 Status: COMPLETE** (commit `d5d8ce6`)
+
+Implementation notes:
+- `IRBuilder.ts` exports an `IR` object with fluent construction methods — `IR.lit()`, `IR.add()`, `IR.neighborSum()`, `IR.select()`, etc. Type propagation is automatic.
+- `validate.ts` checks type consistency, variable scoping, property declarations, and built-in function arities before codegen.
+- `WGSLCodegen.ts` handles WGSL quirks: `select()` arg order reversal, bool logic with `&`/`|` instead of `&&`/`||`, literal suffixes (`.0` for f32, `u` for u32), toroidal wrapping via modular arithmetic.
+- `PythonCodegen.ts` emits NumPy-convention code and preserves `@nodegraph` metadata comments for round-trip decompilation.
+- Three reference IR programs hand-built for validation: Conway's GoL, age-fade expression, Gray-Scott reaction-diffusion.
+- `ir.test` CLI command: full IR→validate→WGSL→GPU→readback pipeline. Seeds a glider on 16×16 grid, dispatches one tick, verifies glider advanced correctly. Runs in ~4ms.
+- `ir.show [preset]` CLI command: displays generated WGSL and Python for `conway`, `fade`, or `gray-scott` reference programs.
+- `optimize.ts` deferred — constant folding and dead code elimination not needed yet.
+- `NodeCompiler` retargeting deferred to Phase 3 — reference programs prove the IR→codegen pipeline works end-to-end.
+
 ### Phase 3: GPU Simulation Pipeline
 
 **Goal**: Execute simulation rules as GPU compute shaders. This is where performance flips.

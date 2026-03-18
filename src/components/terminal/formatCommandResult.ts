@@ -77,7 +77,7 @@ function formatBenchSummary(data: unknown): FormattedResult {
   const d = data as { summary?: string };
   if (d.summary) {
     return {
-      message: d.summary,
+      message: '',
       structured: { kind: 'code', language: 'text', content: d.summary },
     };
   }

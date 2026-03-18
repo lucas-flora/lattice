@@ -96,6 +96,7 @@ const PARAM_MAPPINGS: Record<string, string[]> = {
   'state.clearInitial': ['id'],
   'state.list': ['?simRootId'],
   'state.delete': ['id'],
+  'ir.show': ['?preset'],
 };
 
 /**
@@ -154,6 +155,7 @@ const ARG_HINTS: Record<string, string> = {
   'state.clearInitial': '<id>',
   'state.list': '[simRootId]',
   'state.delete': '<id>',
+  'ir.show': '[conway|fade|gray-scott]',
 };
 
 /**
