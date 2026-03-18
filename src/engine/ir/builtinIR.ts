@@ -175,15 +175,18 @@ function conwayAdvanced(_preset: PresetConfig): IRProgram {
   });
 }
 
-/** Registry of built-in IR programs. Returns null if no GPU IR available for this preset. */
+/**
+ * Registry of built-in IR programs, keyed by YAML meta.name (display name).
+ * Returns null if no GPU IR available for this preset.
+ */
 export const BUILTIN_IR: Record<string, (preset: PresetConfig) => IRProgram | null> = {
-  'conways-gol': conwayGol,
-  'gray-scott': grayScott,
-  'brians-brain': briansBrain,
-  'conways-advanced': conwayAdvanced,
+  "Conway's Game of Life": conwayGol,
+  'Gray-Scott Reaction-Diffusion': grayScott,
+  "Brian's Brain": briansBrain,
+  "Conway's Advanced": conwayAdvanced,
   // These fall back to CPU for now
-  'rule-110': () => null,
-  'langtons-ant': () => null,
-  'navier-stokes': () => null,
-  'link-testbed': () => null,
+  'Rule 110': () => null,
+  "Langton's Ant": () => null,
+  'Navier-Stokes Fluid Dynamics': () => null,
+  'Link Testbed': () => null,
 };
