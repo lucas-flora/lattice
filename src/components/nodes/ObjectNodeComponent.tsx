@@ -11,7 +11,7 @@
 
 'use client';
 
-import { memo, useState, useCallback, useContext } from 'react';
+import { memo, useState, useCallback, useContext, useRef } from 'react';
 import { Handle, Position, useReactFlow, type NodeProps } from '@xyflow/react';
 import { PORT_COLORS, CATEGORY_COLORS } from './nodeTheme';
 import { NodeSyncContext } from './NodeEditorCanvas';
@@ -33,6 +33,9 @@ export const ObjectNodeComponent = memo(function ObjectNodeComponent({
   const { updateNodeData, setEdges } = useReactFlow();
   const requestSync = useContext(NodeSyncContext);
   const [showAll, setShowAll] = useState(false);
+  // Keep a ref to data so toggle callbacks don't recreate on every render
+  const dataRef = useRef(data);
+  dataRef.current = data;
 
   const accentColor = CATEGORY_COLORS.object;
   const enabledIn = new Set(data.enabledInputs ?? []);
@@ -47,38 +50,38 @@ export const ObjectNodeComponent = memo(function ObjectNodeComponent({
 
   const toggleInput = useCallback(
     (propName: string) => {
-      const current = new Set(data.enabledInputs ?? []);
+      const d = dataRef.current;
+      const current = new Set(d.enabledInputs ?? []);
       const removing = current.has(propName);
       if (removing) {
         current.delete(propName);
-        // Remove edges connected to this input port
         const portId = `in_${propName}`;
         setEdges((eds) => eds.filter((e) => !(e.target === id && e.targetHandle === portId)));
       } else {
         current.add(propName);
       }
-      updateNodeData(id, { ...data, enabledInputs: Array.from(current) });
+      updateNodeData(id, { ...d, enabledInputs: Array.from(current) });
       setTimeout(requestSync, 0);
     },
-    [id, data, updateNodeData, setEdges, requestSync],
+    [id, updateNodeData, setEdges, requestSync],
   );
 
   const toggleOutput = useCallback(
     (propName: string) => {
-      const current = new Set(data.enabledOutputs ?? []);
+      const d = dataRef.current;
+      const current = new Set(d.enabledOutputs ?? []);
       const removing = current.has(propName);
       if (removing) {
         current.delete(propName);
-        // Remove edges connected to this output port
         const portId = `out_${propName}`;
         setEdges((eds) => eds.filter((e) => !(e.source === id && e.sourceHandle === portId)));
       } else {
         current.add(propName);
       }
-      updateNodeData(id, { ...data, enabledOutputs: Array.from(current) });
+      updateNodeData(id, { ...d, enabledOutputs: Array.from(current) });
       setTimeout(requestSync, 0);
     },
-    [id, data, updateNodeData, setEdges, requestSync],
+    [id, updateNodeData, setEdges, requestSync],
   );
 
   return (
@@ -94,6 +97,12 @@ export const ObjectNodeComponent = memo(function ObjectNodeComponent({
       >
         <span>{KIND_ICONS[data.objectKind] ?? '\u25CF'}</span>
         <span>{data.objectName || 'Object'}</span>
+      </div>
+
+      {/* Column labels */}
+      <div className="flex items-center px-2 pt-0.5 text-[8px] font-mono uppercase tracking-wider text-zinc-600">
+        <span className="flex-1">{'\u25B6'} in</span>
+        <span className="flex-1 text-right">out {'\u25B6'}</span>
       </div>
 
       {/* Property rows */}

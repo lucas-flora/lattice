@@ -53,7 +53,7 @@ function buildInitGraph(initProperty: string): NodeGraph | null {
         objectId: 'default',
         objectName: 'Default Cell',
         enabledInputs: [initProperty],
-        enabledOutputs: [initProperty],
+        enabledOutputs: [],
         availableProperties: props,
       },
     }],
