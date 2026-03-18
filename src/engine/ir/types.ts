@@ -44,6 +44,8 @@ export type IRNode =
   | { kind: 'call'; fn: IRBuiltinFn; args: IRNode[]; type: IRType }
   /** Neighbor reduction: sum a property across Moore neighborhood, or count where predicate holds */
   | { kind: 'neighbor_reduce'; property: string; op: 'sum' | 'count_where'; predicate?: IRNode; type: IRType }
+  /** Read a single neighbor cell's property at a relative offset */
+  | { kind: 'neighbor_at'; dx: number; dy: number; property: string; type: IRType }
   /** Reference a previously declared local variable */
   | { kind: 'var_ref'; name: string; type: IRType }
   /** Type cast — type equals target */

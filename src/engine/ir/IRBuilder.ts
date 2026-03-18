@@ -97,6 +97,10 @@ export const IR = {
   neighborSum(property: string): IRNode {
     return { kind: 'neighbor_reduce', property, op: 'sum', type: 'f32' };
   },
+  /** Read a single neighbor cell's property at relative offset (dx, dy) */
+  neighborAt(dx: number, dy: number, property: string): IRNode {
+    return { kind: 'neighbor_at', dx, dy, property, type: 'f32' };
+  },
   /**
    * Count neighbors where property matches a comparison.
    * E.g. neighborCount('alive', '>', 0) counts live neighbors.

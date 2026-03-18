@@ -17,6 +17,7 @@ import { useRef, useEffect, useCallback } from 'react';
 import { LatticeRenderer } from '@/renderer/LatticeRenderer';
 import { CameraController } from '@/renderer/CameraController';
 import { OrbitCameraController } from '@/renderer/OrbitCameraController';
+import { GPUGridRenderer, type GPUCameraState, type ColorMappingConfig } from '@/renderer/GPUGridRenderer';
 import { getController } from '@/components/AppShell';
 import { eventBus } from '@/engine/core/EventBus';
 import { commandRegistry } from '@/commands/CommandRegistry';
@@ -24,6 +25,7 @@ import { useLayoutStore, layoutStoreActions } from '@/store/layoutStore';
 import { useUiStore } from '@/store/uiStore';
 import { useSimStore } from '@/store/simStore';
 import { HUD } from '@/components/hud/HUD';
+import { GPUContext } from '@/engine/gpu/GPUContext';
 
 /** Props for multi-viewport support */
 interface SimulationViewportProps {
@@ -165,6 +167,9 @@ export function SimulationViewport({ viewportId = 'viewport-1' }: SimulationView
         const { width: w, height: h } = entry.contentRect;
         if (w > 0 && h > 0) {
           latticeRenderer.resize(w, h);
+          if (gpuGridRenderer && gpuCanvas) {
+            gpuGridRenderer.resize(w, h);
+          }
           if (cameraController) {
             cameraController.resize(w, h);
             syncCamera(latticeRenderer, cameraController);
@@ -398,9 +403,102 @@ export function SimulationViewport({ viewportId = 'viewport-1' }: SimulationView
     );
     latticeRenderer.setDeadCellColor(useUiStore.getState().deadCellColor);
 
+    // GPU Grid Renderer setup (if WebGPU available and GPU rule runner active)
+    let gpuGridRenderer: GPUGridRenderer | null = null;
+    let gpuCanvas: HTMLCanvasElement | null = null;
+
+    function trySetupGPURenderer() {
+      if (!simController || !container || !sim) return;
+      const gpuRunner = simController.getGPURuleRunner();
+      if (!gpuRunner || is3D || !GPUContext.isAvailable() || !GPUContext.tryGet()) return;
+
+      // Create WebGPU canvas underneath the Three.js canvas
+      gpuCanvas = document.createElement('canvas');
+      gpuCanvas.style.display = 'block';
+      gpuCanvas.style.position = 'absolute';
+      gpuCanvas.style.top = '0';
+      gpuCanvas.style.left = '0';
+      gpuCanvas.style.zIndex = '0';
+      gpuCanvas.width = width;
+      gpuCanvas.height = height;
+      container.insertBefore(gpuCanvas, canvas);
+
+      // Make Three.js canvas transparent so GPU canvas shows through
+      canvas.style.zIndex = '1';
+      latticeRenderer.scene.background = null;
+
+      try {
+        latticeRenderer.setGPURenderingActive(true);
+        gpuGridRenderer = new GPUGridRenderer(gpuCanvas);
+        const layout = gpuRunner.getPropertyLayout();
+        const primaryProp = layout[0];
+
+        // Determine color mapping based on preset
+        const presetName = sim.preset.meta.name;
+        let colorMapping: ColorMappingConfig;
+        if (presetName === 'gray-scott') {
+          const vProp = layout.find(p => p.name === 'v');
+          colorMapping = {
+            mode: 'gradient',
+            primaryOffset: primaryProp?.offset ?? 0,
+            gradientOffset: vProp?.offset ?? 1,
+            deadColor: [0, 0, 0],
+            aliveColor: [0.3, 0.85, 0.3],
+          };
+        } else {
+          colorMapping = {
+            mode: 'binary',
+            primaryOffset: primaryProp?.offset ?? 0,
+            gradientOffset: 0,
+            deadColor: [0, 0, 0],
+            aliveColor: [0.29, 0.87, 0.5], // green-400
+          };
+        }
+
+        gpuGridRenderer.setSimulation(
+          gpuRunner.getReadBuffer(),
+          gpuRunner.getParamsBuffer(),
+          layout,
+          colorMapping,
+        );
+      } catch (err) {
+        console.warn('GPU grid renderer setup failed:', err);
+        gpuGridRenderer = null;
+        if (gpuCanvas && container?.contains(gpuCanvas)) {
+          container.removeChild(gpuCanvas);
+          gpuCanvas = null;
+        }
+      }
+    }
+
+    // Delay GPU renderer setup slightly to let tryInitGPURuleRunner finish
+    const gpuSetupTimer = setTimeout(trySetupGPURenderer, 100);
+
     // Animation loop
     const animate = () => {
       rafRef.current = requestAnimationFrame(animate);
+
+      const gpuRunner = simController.getGPURuleRunner();
+      if (gpuGridRenderer && gpuRunner && cameraController) {
+        // GPU rendering path
+        gpuGridRenderer.updateReadBuffer(gpuRunner.getReadBuffer());
+        const cam = cameraController.camera;
+        const camState: GPUCameraState = {
+          offsetX: cam.position.x + cam.left / 1,
+          offsetY: -(cam.position.y + cam.top / 1),
+          scale: cam.zoom * ((gpuCanvas?.height ?? height) / (cam.top - cam.bottom)),
+          canvasWidth: gpuCanvas?.width ?? width,
+          canvasHeight: gpuCanvas?.height ?? height,
+        };
+        gpuGridRenderer.render(
+          camState,
+          gpuRunner.getWidth(),
+          gpuRunner.getHeight(),
+          gpuRunner.getStride(),
+        );
+      }
+
+      // Three.js still renders overlays (grid lines, HUD elements)
       latticeRenderer.update();
       if (orbitController) {
         latticeRenderer.renderWithCamera(orbitController.camera);
@@ -412,6 +510,7 @@ export function SimulationViewport({ viewportId = 'viewport-1' }: SimulationView
 
     // Cleanup
     return () => {
+      clearTimeout(gpuSetupTimer);
       cancelAnimationFrame(rafRef.current);
       canvas.removeEventListener('mousedown', onMouseDown);
       canvas.removeEventListener('mousemove', onMouseMove);
@@ -425,11 +524,19 @@ export function SimulationViewport({ viewportId = 'viewport-1' }: SimulationView
       unsubGridLines();
       unsubDeadColor();
 
+      if (gpuGridRenderer) {
+        gpuGridRenderer.destroy();
+        gpuGridRenderer = null;
+      }
+
       latticeRenderer.dispose();
       rendererRef.current = null;
       cameraRef.current = null;
       orbitCameraRef.current = null;
 
+      if (gpuCanvas && container.contains(gpuCanvas)) {
+        container.removeChild(gpuCanvas);
+      }
       if (container.contains(canvas)) {
         container.removeChild(canvas);
       }

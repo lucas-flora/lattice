@@ -47,6 +47,9 @@ export class LatticeRenderer {
   // instead of blending into the background. null = transparent (default behavior).
   private deadCellColor: THREE.Color | null = null;
 
+  // When true, skip the per-cell update loop (GPU handles cell rendering)
+  private gpuRenderingActive: boolean = false;
+
   constructor(config: RendererConfig) {
     // Scene
     this.scene = new THREE.Scene();
@@ -195,12 +198,18 @@ export class LatticeRenderer {
     }
   }
 
+  /** Set whether GPU rendering is handling cell display (skip CPU update loop) */
+  setGPURenderingActive(active: boolean): void {
+    this.gpuRenderingActive = active;
+  }
+
   /**
    * Update instance matrices and colors from current grid state.
    * Reads typed arrays directly from Grid -- zero-copy (RNDR-12).
    */
   update(): void {
     if (!this.grid || !this.instancedMesh || !this.visualMapper) return;
+    if (this.gpuRenderingActive) return; // GPU handles cell rendering
 
     const colorProp = this.visualMapper.getPrimaryColorProperty();
     const sizeProp = this.visualMapper.getPrimarySizeProperty();

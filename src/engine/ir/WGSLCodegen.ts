@@ -179,6 +179,11 @@ export function generateWGSL(program: IRProgram, config: WGSLCodegenConfig): str
         if (node.op === 'sum') return `nr_sum_${node.property}`;
         return `nr_count_${node.property}`;
 
+      case 'neighbor_at': {
+        const naOffset = propOffsets.get(node.property) ?? 0;
+        return `getCell(neighborIndex(i32(x) + ${node.dx}, i32(y) + ${node.dy}, params.width, params.height), ${naOffset}u)`;
+      }
+
       case 'var_ref':
         return node.name;
 

@@ -61,7 +61,8 @@ export const AGE_FADE_IR: IRProgram = IR.program([
 /**
  * Gray-Scott reaction-diffusion.
  *
- * Uses env params (Du, Dv, F, k, dt) and Laplacian via neighbor sum.
+ * Uses env params (Du, Dv, F, k, dt) and von Neumann Laplacian via neighbor_at.
+ * lap = cell(up) + cell(down) + cell(left) + cell(right) - 4*center
  * newU = u + dt * (Du * lap_u - u*v*v + F*(1-u))
  * newV = v + dt * (Dv * lap_v + u*v*v - (F+k)*v)
  */
@@ -75,17 +76,23 @@ export const GRAY_SCOTT_IR: IRProgram = (() => {
   const dt = IR.readEnv('dt');
 
   return IR.program([
-    // Laplacian = neighborSum - center * 8, normalized by /8 * 4 = /2
-    // Simplified: lap = (neighborSum - center * neighborCount) * (4/neighborCount)
-    // For Moore neighborhood (8): lap = (sum - center*8) * 0.5
-    // But the standard discrete Laplacian for 8-neighbor is: sum/8 - center, scaled by 4
-    // Use: lap = (neighborSum - 8*center) * 0.5
-    IR.declareVar('sum_u', 'f32', IR.neighborSum('u')),
-    IR.declareVar('sum_v', 'f32', IR.neighborSum('v')),
+    // Von Neumann Laplacian: sum of 4 orthogonal neighbors minus 4 * center
     IR.declareVar('lap_u', 'f32',
-      IR.mul(IR.sub(IR.varRef('sum_u'), IR.mul(u, IR.f32(8))), IR.f32(0.5))),
+      IR.sub(
+        IR.add(
+          IR.add(IR.neighborAt(0, -1, 'u'), IR.neighborAt(0, 1, 'u')),
+          IR.add(IR.neighborAt(-1, 0, 'u'), IR.neighborAt(1, 0, 'u')),
+        ),
+        IR.mul(u, IR.f32(4)),
+      )),
     IR.declareVar('lap_v', 'f32',
-      IR.mul(IR.sub(IR.varRef('sum_v'), IR.mul(v, IR.f32(8))), IR.f32(0.5))),
+      IR.sub(
+        IR.add(
+          IR.add(IR.neighborAt(0, -1, 'v'), IR.neighborAt(0, 1, 'v')),
+          IR.add(IR.neighborAt(-1, 0, 'v'), IR.neighborAt(1, 0, 'v')),
+        ),
+        IR.mul(v, IR.f32(4)),
+      )),
     IR.declareVar('uvv', 'f32', IR.mul(IR.mul(u, v), v)),
     IR.declareVar('new_u', 'f32',
       IR.clamp(

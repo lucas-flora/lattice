@@ -22,6 +22,9 @@ import type { SceneNode } from '../engine/scene/SceneNode';
 import { NODE_TYPES, generateNodeId } from '../engine/scene/SceneNode';
 import { sceneStoreActions, useSceneStore } from '../store/sceneStore';
 import { logMin, logDbg } from '../lib/debugLog';
+import { GPURuleRunner } from '../engine/rule/GPURuleRunner';
+import { GPUContext } from '../engine/gpu/GPUContext';
+import { BUILTIN_IR } from '../engine/ir/builtinIR';
 
 export interface ParamDef {
   name: string;
@@ -128,9 +131,49 @@ export class SimulationController {
   /** Timeline duration in frames (for end-of-timeline detection) */
   protected timelineDuration: number = 256;
 
+  /** GPU rule runner — when set, simulation ticks run on the GPU */
+  protected gpuRuleRunner: GPURuleRunner | null = null;
+
   constructor(eventBus: EventBus, tickIntervalMs: number = 100) {
     this.eventBus = eventBus;
     this.tickIntervalMs = tickIntervalMs;
+  }
+
+  /**
+   * Try to initialize a GPURuleRunner for the current simulation.
+   * Silently falls back to CPU if WebGPU unavailable or no built-in IR.
+   */
+  private async tryInitGPURuleRunner(): Promise<void> {
+    if (!this.simulation) return;
+    // Clean up existing
+    if (this.gpuRuleRunner) {
+      this.gpuRuleRunner.destroy();
+      this.gpuRuleRunner = null;
+    }
+
+    const presetName = this.simulation.preset.meta.name;
+    try {
+      if (!GPUContext.isAvailable()) return;
+      const ctx = GPUContext.tryGet();
+      if (!ctx) return;
+      const irBuilder = BUILTIN_IR[presetName];
+      if (!irBuilder) return;
+      const ir = irBuilder(this.simulation.preset);
+      if (!ir) return;
+
+      const runner = new GPURuleRunner(this.simulation.grid, this.simulation.preset);
+      await runner.initialize();
+      this.gpuRuleRunner = runner;
+      logMin('gpu', `GPU rule runner active for "${presetName}"`);
+    } catch (err) {
+      logMin('gpu', `GPU rule runner init failed for "${presetName}": ${err}`);
+      this.gpuRuleRunner = null;
+    }
+  }
+
+  /** Get the GPU rule runner (for renderer access) */
+  getGPURuleRunner(): GPURuleRunner | null {
+    return this.gpuRuleRunner;
   }
 
   /**
@@ -172,6 +215,8 @@ export class SimulationController {
     // and defers compute-ahead until Pyodide is ready (with tickAsync).
     this.userParamDefs = [];
     this.autoLoadPyodideIfNeeded();
+    // Try GPU acceleration (async, non-blocking — emit happens immediately, GPU init finishes in background)
+    void this.tryInitGPURuleRunner();
     logMin('ctrl', `loadPreset: bridge=${!!this.pyodideBridge}, bridgeStatus=${this.pyodideBridge?.getStatus()}, needsAsync=${this.needsAsyncTick()}, postRuleTags=${this.simulation.tagRegistry.hasPostRuleTags()}`);
     this.emitPresetLoaded(config);
     this.emitParamDefs();
@@ -202,6 +247,7 @@ export class SimulationController {
 
     this.userParamDefs = [];
     this.autoLoadPyodideIfNeeded();
+    void this.tryInitGPURuleRunner();
     logMin('ctrl', `loadPresetConfig: bridge=${!!this.pyodideBridge}, needsAsync=${this.needsAsyncTick()}`);
     this.emitPresetLoaded(config);
     this.emitParamDefs();
@@ -877,23 +923,35 @@ export class SimulationController {
   /**
    * Compute N frames ahead from the current computed frontier.
    * Synchronous — use computeAhead() for async chunked computation.
+   * When GPU rule runner is active, ticks happen on the GPU.
    */
   private computeFrames(count: number): void {
     if (!this.simulation) return;
-    logDbg('compute', `computeFrames(${count}) — simGen=${this.simulation.getGeneration()}, computedGen=${this.computedGeneration}`);
+    logDbg('compute', `computeFrames(${count}) — simGen=${this.simulation.getGeneration()}, computedGen=${this.computedGeneration}, gpu=${!!this.gpuRuleRunner}`);
 
-    // Ensure the sim is at the computed frontier
-    if (this.simulation.getGeneration() !== this.computedGeneration) {
-      this.advanceSimTo(this.computedGeneration);
-    }
-
-    for (let i = 0; i < count; i++) {
+    if (this.gpuRuleRunner) {
+      // GPU path: tick on GPU, sync generation counter to CPU runner
+      for (let i = 0; i < count; i++) {
+        this.cacheCurrentFrame();
+        this.gpuRuleRunner.tick();
+        const gpuGen = this.gpuRuleRunner.getGeneration();
+        this.simulation.runner.setGeneration(gpuGen);
+        this.computedGeneration = gpuGen;
+      }
       this.cacheCurrentFrame();
-      this.simulation.tick();
-      this.computedGeneration = this.simulation.getGeneration();
+    } else {
+      // CPU path (unchanged)
+      if (this.simulation.getGeneration() !== this.computedGeneration) {
+        this.advanceSimTo(this.computedGeneration);
+      }
+
+      for (let i = 0; i < count; i++) {
+        this.cacheCurrentFrame();
+        this.simulation.tick();
+        this.computedGeneration = this.simulation.getGeneration();
+      }
+      this.cacheCurrentFrame();
     }
-    // Cache the final frame too
-    this.cacheCurrentFrame();
     logDbg('compute', `computeFrames done — computedGen=${this.computedGeneration}`);
 
     // Emit progress
@@ -1051,11 +1109,24 @@ export class SimulationController {
 
   private playbackTick(): void {
     if (!this.simulation) return;
-    logDbg('play', `playbackTick() — playbackGen=${this.playbackGeneration}, computedGen=${this.computedGeneration}, needsAsync=${this.simulation.needsAsyncTick()}`);
+    logDbg('play', `playbackTick() — playbackGen=${this.playbackGeneration}, computedGen=${this.computedGeneration}, needsAsync=${this.simulation.needsAsyncTick()}, gpu=${!!this.gpuRuleRunner}`);
 
     // Async rules (Python, expressions, scripts) use async playback
     if (this.simulation.needsAsyncTick()) {
       void this.playbackTickAsync();
+      return;
+    }
+
+    // GPU live playback: tick directly on GPU, no frame cache needed
+    if (this.gpuRuleRunner) {
+      this.gpuRuleRunner.tick();
+      this.playbackGeneration = this.gpuRuleRunner.getGeneration();
+      this.computedGeneration = this.playbackGeneration;
+      this.simulation.runner.setGeneration(this.playbackGeneration);
+      this.eventBus.emit('sim:tick', {
+        generation: this.playbackGeneration,
+        liveCellCount: -1,  // unknown without readback
+      });
       return;
     }
 

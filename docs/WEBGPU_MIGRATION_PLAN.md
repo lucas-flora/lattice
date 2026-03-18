@@ -303,9 +303,9 @@ Implementation notes:
 - `optimize.ts` deferred — constant folding and dead code elimination not needed yet.
 - `NodeCompiler` retargeting deferred to Phase 3 — reference programs prove the IR→codegen pipeline works end-to-end.
 
-### Phase 3: GPU Simulation Pipeline
+### Phase 3+4: GPU Simulation Pipeline + GPU-Native Rendering
 
-**Goal**: Execute simulation rules as GPU compute shaders. This is where performance flips.
+**Goal**: Execute simulation rules as GPU compute shaders and render directly from GPU storage buffers. This is where performance flips.
 
 **New files:**
 ```
@@ -339,6 +339,18 @@ Step 5: Render pass reads from cellsOut directly (zero readback)
 Note: `liveCellCount` requires a GPU reduction or readback. Options: (a) async readback with 1-frame latency, (b) GPU atomic counter, (c) compute reduction shader. Atomic counter is simplest.
 
 **Validation**: Conway's GoL at 1024×512 at 60fps. Gray-Scott at 512×512 at 60fps. Cell-for-cell correctness comparison against CPU baseline.
+
+**Phase 3+4 Status: COMPLETE**
+
+Implementation notes:
+- `neighbor_at` IR node added for directional neighbor reads (von Neumann Laplacian). Supported in WGSLCodegen, PythonCodegen, and validator.
+- `builtinIR.ts` provides hand-built IR programs for 4 presets: `conways-gol`, `gray-scott`, `brians-brain`, `conways-advanced`. Others fall back to CPU.
+- Gray-Scott uses proper von Neumann 4-neighbor Laplacian via `neighbor_at(dx, dy, prop)` instead of Moore 8-neighbor sum.
+- `GPURuleRunner` orchestrates the full GPU tick: IR→WGSL→compile→dispatch→swap. Uses ping-pong bind groups (zero-cost swap, no buffer copy).
+- `GPUGridRenderer` renders a fullscreen triangle (3 vertices) with a fragment shader that reads directly from the simulation storage buffer. Supports binary (alive/dead) and gradient (reaction-diffusion) color mapping modes.
+- Dual-canvas architecture: WebGPU canvas (cell rendering) underneath Three.js canvas (grid lines, HUD). Three.js `update()` skipped when GPU rendering active.
+- `SimulationController` tries GPU init on preset load. GPU playback ticks directly on GPU (no frame cache needed for live play). CPU fallback preserved for non-GPU browsers and presets without built-in IR.
+- Camera coordination: orthographic camera state from `CameraController` is converted to grid-space uniforms for the WebGPU fragment shader.
 
 ### Phase 4: GPU-Native Rendering
 

@@ -67,6 +67,9 @@ function emitExpr(node: IRNode): string {
       if (node.op === 'sum') return `neighbor_sum_${node.property}`;
       return `neighbor_count_${node.property}`;
 
+    case 'neighbor_at':
+      return `neighbor_at(${node.dx}, ${node.dy}, '${node.property}')`;
+
     case 'var_ref':
       return node.name;
 

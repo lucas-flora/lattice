@@ -119,6 +119,12 @@ export function validateIR(program: IRProgram): ValidationResult {
         }
         break;
 
+      case 'neighbor_at':
+        if (!program.neighborhoodAccess) {
+          errors.push({ message: `neighbor_at used but neighborhoodAccess is false`, path });
+        }
+        break;
+
       case 'var_ref':
         referencedVars.add(node.name);
         if (!declaredVars.has(node.name)) {
