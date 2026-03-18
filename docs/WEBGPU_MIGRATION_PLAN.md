@@ -217,10 +217,24 @@ Implementation notes:
 | Adapter info | null | Firefox 148 does not expose GPUAdapterInfo fields |
 
 **Key takeaways:**
-- **Readback is the bottleneck** (105ms for 16KB). GPU-native rendering (Phase 4) must eliminate readback from the hot loop entirely. The fullscreen quad reads directly from storage buffers.
-- **Dispatch overhead** (28ms) is submission fence + GPU scheduling, not compute time. Real workloads on large grids will amortize this to <1ms/tick.
-- **1GB storage buffer limit** gives massive headroom — 5792×5792 at 8 channels is far beyond our 1024×512 target.
-- **Firefox hides adapter info** — Chrome/Safari will populate vendor/arch/device fields. The compatibility table captures this variance automatically.
+- **Readback cost varies wildly by browser** — Firefox 105ms, Safari 3ms, Chrome 1.6ms for the same 16KB buffer. Firefox's `mapAsync` path is ~70× slower. GPU-native rendering (Phase 4) must eliminate readback from the hot loop regardless.
+- **Dispatch overhead** (22-48ms) is submission fence + GPU scheduling, not compute time. Real workloads on large grids will amortize this.
+- **Chrome gives the most storage** (4GB) followed by Safari (2GB) then Firefox (1GB). All far exceed our needs.
+- **Adapter info varies** — Chrome reports "metal-3" architecture, Safari just says "apple" for everything, Firefox reports nothing.
+- **iOS Safari does NOT support WebGPU** even with the feature flag enabled. The flag exists in settings but `navigator.gpu` is not exposed at runtime. Desktop Safari 26+ only.
+
+#### GPU Compatibility Matrix (as of 2026-03-18)
+
+| Browser | OS | Adapter | Pass | Init | Compile | Dispatch | Readback | Total | Max Buffer | Max Grid (8ch) |
+|---------|-----|---------|------|------|---------|----------|----------|-------|------------|----------------|
+| Chrome 146 | macOS | apple metal-3 | PASS | 0.6ms | 0.5ms | 22.8ms | 1.6ms | 25.6ms | 4096 MB | 11585² |
+| Safari 26.2 | macOS | apple apple | PASS | 1.8ms | 0.7ms | 48.4ms | 3.0ms | 53.9ms | 2048 MB | 8191² |
+| Firefox 148 | macOS | (hidden) | PASS | 0.9ms | 0.2ms | 28.1ms | 105.5ms | 134.6ms | 1024 MB | 5792² |
+| Safari 26.3 | iOS 18.7 | N/A | FAIL | — | — | — | — | — | — | — |
+
+**iOS note**: Safari 26.3 on iOS 18.7 (iPhone) has a "WebGPU" feature flag in WebKit settings, but the runtime API (`navigator.gpu`) is not present. The flag appears to be a placeholder — Apple has not shipped WebGPU on iOS as of March 2026. Our `isAvailable()` check correctly detects this at the `navigator.gpu` level before even attempting `requestAdapter()`.
+
+**Compatibility data is auto-collected**: every `gpu test` invocation submits adapter fingerprint, device limits, timing, and pass/fail to the `gpu_compatibility` Supabase table. Failures are logged too — the iOS row above was captured automatically.
 
 ### Phase 2: IR + WGSL Codegen
 
