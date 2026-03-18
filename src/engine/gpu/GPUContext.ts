@@ -11,6 +11,7 @@ import { logMin, logDbg, logGPU } from '../../lib/debugLog';
 
 export class GPUContext {
   private static instance: GPUContext | null = null;
+  private static initPromise: Promise<GPUContext> | null = null;
 
   readonly adapter: GPUAdapter;
   readonly device: GPUDevice;
@@ -54,6 +55,12 @@ export class GPUContext {
    */
   static async initialize(): Promise<GPUContext> {
     if (GPUContext.instance) return GPUContext.instance;
+    if (GPUContext.initPromise) return GPUContext.initPromise;
+    GPUContext.initPromise = GPUContext.doInitialize();
+    return GPUContext.initPromise;
+  }
+
+  private static async doInitialize(): Promise<GPUContext> {
 
     if (!GPUContext.isAvailable()) {
       const msg = 'WebGPU not available in this browser. Requires Chrome 113+, Safari 26+, or Firefox 141+.';
