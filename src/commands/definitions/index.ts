@@ -27,6 +27,7 @@ import { registerSceneCommands } from './scene';
 import { registerCellCommands } from './cell';
 import { registerNodeCommands } from './node';
 import { registerStateCommands } from './state';
+import { registerBenchCommands } from './bench';
 
 /**
  * Register all commands in the registry.
@@ -55,4 +56,5 @@ export function registerAllCommands(
   registerCellCommands(registry, controller, eventBus);
   registerNodeCommands(registry, controller, eventBus);
   registerStateCommands(registry, controller, eventBus);
+  registerBenchCommands(registry, eventBus);
 }

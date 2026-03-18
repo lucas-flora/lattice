@@ -73,6 +73,17 @@ function fallback(data: unknown): FormattedResult {
   };
 }
 
+function formatBenchSummary(data: unknown): FormattedResult {
+  const d = data as { summary?: string };
+  if (d.summary) {
+    return {
+      message: d.summary,
+      structured: { kind: 'code', language: 'text', content: d.summary },
+    };
+  }
+  return fallback(data);
+}
+
 const FORMATTERS: Record<string, Formatter> = {
   'rule.show': formatRuleShow,
   'param.list': formatParamList,
@@ -80,6 +91,8 @@ const FORMATTERS: Record<string, Formatter> = {
   'param.get': formatParamGetSet,
   'param.set': formatParamGetSet,
   'sim.status': formatKeyValue,
+  'bench.run': formatBenchSummary,
+  'bench.results': formatBenchSummary,
 };
 
 export function formatCommandResult(commandName: string, data: unknown): FormattedResult {

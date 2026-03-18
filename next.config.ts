@@ -1,7 +1,19 @@
 import type { NextConfig } from "next";
+import { execSync } from "child_process";
+
+const gitCommit = (() => {
+  try {
+    return execSync("git rev-parse --short HEAD").toString().trim();
+  } catch {
+    return "unknown";
+  }
+})();
 
 const nextConfig: NextConfig = {
   turbopack: {},
+  env: {
+    NEXT_PUBLIC_GIT_COMMIT: gitCommit,
+  },
   async headers() {
     return [
       {

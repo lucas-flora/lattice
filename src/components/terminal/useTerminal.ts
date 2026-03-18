@@ -71,6 +71,23 @@ export function useTerminal() {
     const onSpeedChange = (payload: { fps: number }) => addLogEntry('info', `Speed set to ${payload.fps === 0 ? 'max' : payload.fps + ' FPS'}`);
     const onParamChanged = (payload: { name: string; value: number }) => addLogEntry('info', `${payload.name} = ${payload.value}`);
 
+    // Bench progress: replace the last entry if it's also a progress line (avoids flooding)
+    const BENCH_PREFIX = '\u200B'; // zero-width space marks bench progress entries
+    const onBenchProgress = (payload: { message: string }) => {
+      setOutput((prev) => {
+        const msg = BENCH_PREFIX + payload.message;
+        const last = prev.length > 0 ? prev[prev.length - 1] : null;
+        if (last && last.message.startsWith(BENCH_PREFIX)) {
+          // Replace in-place
+          const updated = [...prev];
+          updated[updated.length - 1] = { ...last, message: msg, timestamp: new Date() };
+          return updated;
+        }
+        // First progress entry
+        return [...prev, { id: nextId++, type: 'info' as LogEntryType, message: msg, timestamp: new Date() }];
+      });
+    };
+
     eventBus.on('sim:play', onPlay);
     eventBus.on('sim:pause', onPause);
     eventBus.on('sim:reset', onReset);
@@ -78,6 +95,7 @@ export function useTerminal() {
     eventBus.on('sim:clear', onClear);
     eventBus.on('sim:speedChange', onSpeedChange);
     eventBus.on('sim:paramChanged', onParamChanged);
+    eventBus.on('bench:progress', onBenchProgress);
 
     return () => {
       eventBus.off('sim:play', onPlay);
@@ -87,6 +105,7 @@ export function useTerminal() {
       eventBus.off('sim:clear', onClear);
       eventBus.off('sim:speedChange', onSpeedChange);
       eventBus.off('sim:paramChanged', onParamChanged);
+      eventBus.off('bench:progress', onBenchProgress);
     };
   }, [addLogEntry]);
 

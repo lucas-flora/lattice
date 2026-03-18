@@ -53,6 +53,8 @@ export interface EngineEventMap {
   'scene:nodeUpdated': { id: string; name?: string; enabled?: boolean; properties?: Record<string, unknown> };
   'scene:selectionChanged': { id: string | null };
   'scene:treeLoaded': { nodeCount: number; rootCount: number };
+  // Benchmark progress
+  'bench:progress': { message: string; testIndex: number; totalTests: number };
 }
 
 /** Valid event names */
