@@ -457,11 +457,18 @@ function NodeEditorCanvasInner({ graph, onGraphChange }: NodeEditorCanvasProps) 
       // If we can't determine type, be permissive
       if (!srcType || !tgtType) return true;
 
-      // Allow scalar↔array connections (implicit broadcast)
+      // Allow compatible connections
       if (srcType === tgtType) return true;
+      // Implicit scalar↔array broadcast (numpy)
       if (
         (srcType === 'scalar' && tgtType === 'array') ||
         (srcType === 'array' && tgtType === 'scalar')
+      )
+        return true;
+      // Implicit bool↔scalar (numpy bools are ints: True=1, False=0)
+      if (
+        (srcType === 'bool' && tgtType === 'scalar') ||
+        (srcType === 'scalar' && tgtType === 'bool')
       )
         return true;
       return false;
