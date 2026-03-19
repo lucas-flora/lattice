@@ -1190,14 +1190,35 @@ export class SimulationController {
       return;
     }
 
-    // GPU live playback: RAF loop handles ticking. Just sync generation and emit events.
+    // GPU live playback: tick on GPU, respect timeline bounds and playback mode
     if (this.gpuRuleRunner) {
+      const nextGen = this.playbackGeneration + 1;
+      if (nextGen >= this.timelineDuration) {
+        switch (this.playbackMode) {
+          case 'once':
+            this.pause();
+            return;
+          case 'loop':
+            this.playbackGeneration = 0;
+            this.gpuRuleRunner.setGeneration(0);
+            this.syncGridToGPU(); // re-upload initial state
+            this.eventBus.emit('sim:tick', { generation: 0, liveCellCount: -1 });
+            return;
+          case 'endless': {
+            const newDuration = smartExtendDuration(this.timelineDuration);
+            this.timelineDuration = newDuration;
+            this.eventBus.emit('sim:timelineExtend', { duration: newDuration });
+            break;
+          }
+        }
+      }
+      this.gpuRuleRunner.tick();
       this.playbackGeneration = this.gpuRuleRunner.getGeneration();
       this.computedGeneration = this.playbackGeneration;
       this.simulation.runner.setGeneration(this.playbackGeneration);
       this.eventBus.emit('sim:tick', {
         generation: this.playbackGeneration,
-        liveCellCount: -1,  // unknown without readback
+        liveCellCount: -1,
       });
       return;
     }
@@ -1302,13 +1323,15 @@ export class SimulationController {
    * Async compute-ahead: computes frames in chunks to avoid blocking.
    */
   private runComputeAheadChunk(): void {
-    if (this.computedGeneration >= this.computeAheadTarget) {
-      logDbg('compute', `runComputeAheadChunk DONE — computedGen=${this.computedGeneration} >= target=${this.computeAheadTarget}`);
+    // Cap compute-ahead to timeline duration
+    const effectiveTarget = Math.min(this.computeAheadTarget, this.timelineDuration);
+    if (this.computedGeneration >= effectiveTarget) {
+      logDbg('compute', `runComputeAheadChunk DONE — computedGen=${this.computedGeneration} >= target=${effectiveTarget}`);
       this.computeAheadTimer = null;
       return;
     }
 
-    const remaining = this.computeAheadTarget - this.computedGeneration;
+    const remaining = effectiveTarget - this.computedGeneration;
     const maxChunk = this.playing ? PLAYBACK_CHUNK_SIZE : COMPUTE_CHUNK_SIZE;
     const chunkSize = Math.min(maxChunk, remaining);
     logDbg('compute', `runComputeAheadChunk — computedGen=${this.computedGeneration}, target=${this.computeAheadTarget}, chunk=${chunkSize}, needsAsync=${this.needsAsyncTick()}, asyncInFlight=${this.asyncComputeInFlight}`);

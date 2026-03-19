@@ -26,6 +26,7 @@ import { useUiStore } from '@/store/uiStore';
 import { useSimStore } from '@/store/simStore';
 import { HUD } from '@/components/hud/HUD';
 import { GPUContext } from '@/engine/gpu/GPUContext';
+import { BUILTIN_IR } from '@/engine/ir/builtinIR';
 import { logGPU } from '@/lib/debugLog';
 
 /** Props for multi-viewport support */
@@ -138,6 +139,12 @@ export function SimulationViewport({ viewportId = 'viewport-1' }: SimulationView
 
     // Determine if 3D mode
     const is3D = sim.preset.grid.dimensionality === '3d';
+
+    // If GPU rendering is likely (built-in IR exists), hide InstancedMesh immediately
+    // to prevent the old grid flashing before the GPU renderer takes over
+    if (!is3D && GPUContext.isAvailable() && BUILTIN_IR[sim.preset.meta.name]) {
+      latticeRenderer.setGPURenderingActive(true);
+    }
 
     // Create appropriate camera controller
     let cameraController: CameraController | null = null;
@@ -495,19 +502,19 @@ export function SimulationViewport({ viewportId = 'viewport-1' }: SimulationView
       const gpuRunner = simController.getGPURuleRunner();
       if (gpuGridRenderer && gpuRunner && cameraController) {
         // GPU path: tick simulation at render rate when playing
-        if (simController.isPlaying()) {
-          gpuRunner.tick();
-        }
+        // (playback mode / timeline bounds handled by controller's playbackTick)
+
 
         // GPU rendering path: read directly from sim buffer
         gpuGridRenderer.updateReadBuffer(gpuRunner.getReadBuffer());
         const cam = cameraController.camera;
-        const halfW = (cam.right - cam.left) / 2;
-        const halfH = (cam.top - cam.bottom) / 2;
         const camState: GPUCameraState = {
-          offsetX: cam.position.x - halfW,
-          offsetY: -(cam.position.y + halfH),
-          scale: (gpuCanvas?.height ?? height) / (cam.top - cam.bottom),
+          // Left edge in world coords
+          offsetX: cam.position.x + cam.left,
+          // Bottom edge in world coords (pixelY is flipped in shader)
+          offsetY: cam.position.y + cam.bottom,
+          // Pixels per world unit
+          scale: (gpuCanvas?.width ?? width) / (cam.right - cam.left),
           canvasWidth: gpuCanvas?.width ?? width,
           canvasHeight: gpuCanvas?.height ?? height,
         };

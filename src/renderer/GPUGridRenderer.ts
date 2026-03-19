@@ -78,7 +78,7 @@ struct RenderParams {
 @fragment
 fn fs(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
   let pixelX = uv.x * rp.canvasWidth;
-  let pixelY = uv.y * rp.canvasHeight;
+  let pixelY = (1.0 - uv.y) * rp.canvasHeight;  // flip Y: screen top = high grid Y
   let gridX = (pixelX / rp.viewScale) + rp.viewOffsetX;
   let gridY = (pixelY / rp.viewScale) + rp.viewOffsetY;
 
