@@ -581,16 +581,6 @@ export class SimulationController {
       this.editDebounceTimer = null;
     }
 
-    // GPU mode: ensure GPU is at the playback position before starting
-    if (this.gpuRuleRunner) {
-      this.gpuRuleRunner.setGeneration(this.playbackGeneration);
-      const snapshot = this.frameCache.get(this.playbackGeneration);
-      if (snapshot) {
-        this.applySnapshot(snapshot);
-        this.gpuRuleRunner.uploadFromGrid();
-      }
-    }
-
     this.eventBus.emit('sim:play', {});
     this.startPlaybackLoop();
   }
@@ -1308,7 +1298,7 @@ export class SimulationController {
       return;
     }
 
-    // GPU live playback: tick on GPU, respect timeline bounds and playback mode
+    // GPU playback: use cached frames when available, tick live when not
     if (this.gpuRuleRunner) {
       const nextGen = this.playbackGeneration + 1;
       if (nextGen >= this.timelineDuration) {
@@ -1318,10 +1308,7 @@ export class SimulationController {
             return;
           case 'loop':
             this.playbackGeneration = 0;
-            if (this.initialSnapshot) this.restoreInitialState();
-            this.gpuRuleRunner.setGeneration(0);
-            this.gpuRuleRunner.uploadFromGrid();
-            this.eventBus.emit('sim:tick', { generation: 0, liveCellCount: -1 });
+            this.restoreFrame(0);
             return;
           case 'endless': {
             const newDuration = smartExtendDuration(this.timelineDuration);
@@ -1331,14 +1318,20 @@ export class SimulationController {
           }
         }
       }
-      this.gpuRuleRunner.tick();
-      this.playbackGeneration = this.gpuRuleRunner.getGeneration();
-      this.computedGeneration = this.playbackGeneration;
-      this.simulation.runner.setGeneration(this.playbackGeneration);
-      this.eventBus.emit('sim:tick', {
-        generation: this.playbackGeneration,
-        liveCellCount: -1,
-      });
+      // Prefer cached frame (preserves edits and deterministic replay)
+      if (this.frameCache.has(nextGen)) {
+        this.playbackGeneration = nextGen;
+        this.restoreFrame(nextGen);
+      } else {
+        // No cache — tick GPU live
+        this.gpuRuleRunner.tick();
+        this.playbackGeneration = this.gpuRuleRunner.getGeneration();
+        this.simulation.runner.setGeneration(this.playbackGeneration);
+        this.eventBus.emit('sim:tick', {
+          generation: this.playbackGeneration,
+          liveCellCount: -1,
+        });
+      }
       return;
     }
 
