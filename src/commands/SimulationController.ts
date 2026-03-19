@@ -229,50 +229,60 @@ export class SimulationController {
   private gpuCacheFillEpoch: number = 0;
 
   /**
-   * Background GPU cache fill: tick on GPU, readback each frame, store in cache.
-   * Runs when paused (or after initial load). Yields to browser between frames.
-   * After filling, restores GPU to the playhead position.
+   * Background GPU cache fill using a SEPARATE offscreen GPURuleRunner.
+   * The display runner's buffers are never touched — zero visual artifacts.
+   * Creates a temporary runner, seeds it with initial state, ticks + readback
+   * for each frame, stores snapshots in the frame cache, then destroys it.
    */
   private async gpuCacheFill(): Promise<void> {
     if (!this.gpuRuleRunner || !this.simulation) return;
-    if (this.playing) return; // Don't fill during live playback
+    if (this.playing) return;
 
     const epoch = ++this.gpuCacheFillEpoch;
     const target = this.timelineDuration;
-    const runner = this.gpuRuleRunner;
-    const startGen = this.computedGeneration;
 
-    // Ensure GPU starts from the compute frontier
-    if (startGen > 0 && this.frameCache.has(startGen)) {
-      const snapshot = this.frameCache.get(startGen)!;
-      this.applySnapshot(snapshot);
-      this.syncGridToGPU();
-    } else if (startGen === 0) {
-      if (this.initialSnapshot) this.restoreInitialState();
-      runner.uploadFromGrid();
-      runner.setGeneration(0);
+    // Create offscreen runner (shader compilation is cached — instant)
+    let offscreen: GPURuleRunner;
+    try {
+      offscreen = new GPURuleRunner(this.simulation.grid, this.simulation.preset);
+      await offscreen.initialize();
+    } catch (err) {
+      logGPU(`Cache fill: offscreen runner init failed: ${err}`);
+      return;
     }
 
-    logGPU(`Cache fill starting: gen ${startGen} → ${target}`);
+    // Seed offscreen runner with initial state
+    if (this.initialSnapshot) {
+      this.restoreInitialState(); // writes to CPU Grid
+      offscreen.uploadFromGrid();
+      offscreen.setGeneration(0);
+      // Restore display grid back to playhead (we just overwrote it)
+      const playbackSnap = this.frameCache.get(this.playbackGeneration);
+      if (playbackSnap) this.applySnapshot(playbackSnap);
+    }
 
-    for (let gen = startGen; gen < target; gen++) {
-      // Bail if cancelled (preset change, play started, new fill requested)
-      if (this.gpuCacheFillEpoch !== epoch || this.playing) break;
-      if (!this.gpuRuleRunner) break;
+    logGPU(`Cache fill starting: gen 0 → ${target} (offscreen)`);
 
-      // Cache current state before ticking
+    for (let gen = 0; gen < target; gen++) {
+      if (this.gpuCacheFillEpoch !== epoch) break;
+
+      // Readback current state and cache
       if (!this.frameCache.has(gen)) {
-        const data = await runner.readBack();
-        runner.applyToGrid(data);
-        this.cacheCurrentFrame();
+        const data = await offscreen.readBack();
+        offscreen.applyToGrid(data);
+        // Store snapshot from Grid (applyToGrid wrote to CPU Grid)
+        const buffers = new Map<string, Float32Array>();
+        for (const propName of this.simulation.grid.getPropertyNames()) {
+          buffers.set(propName, new Float32Array(this.simulation.grid.getCurrentBuffer(propName)));
+        }
+        this.frameCache.set(gen, { generation: gen, buffers, liveCellCount: -1 });
       }
 
-      // Tick to next
-      runner.tick();
-      this.simulation.runner.setGeneration(runner.getGeneration());
-      this.computedGeneration = runner.getGeneration();
+      // Tick offscreen to next generation
+      offscreen.tick();
+      this.computedGeneration = gen + 1;
 
-      // Yield every 10 frames for responsive rendering
+      // Yield every 10 frames
       if (gen % 10 === 0) {
         this.eventBus.emit('sim:computeProgress', { computedGeneration: this.computedGeneration });
         await new Promise(r => setTimeout(r, 0));
@@ -280,23 +290,31 @@ export class SimulationController {
     }
 
     // Cache the final frame
-    if (this.gpuCacheFillEpoch === epoch && this.gpuRuleRunner && !this.playing) {
-      const data = await runner.readBack();
-      runner.applyToGrid(data);
-      this.cacheCurrentFrame();
-      this.eventBus.emit('sim:computeProgress', { computedGeneration: this.computedGeneration });
-
-      // Restore GPU to playhead position (cache fill left it at the end)
-      const playbackSnapshot = this.frameCache.get(this.playbackGeneration);
-      if (playbackSnapshot) {
-        this.applySnapshot(playbackSnapshot);
-        this.syncGridToGPU();
-      } else if (this.playbackGeneration === 0 && this.initialSnapshot) {
-        this.restoreInitialState();
-        runner.uploadFromGrid();
-        runner.setGeneration(0);
+    if (this.gpuCacheFillEpoch === epoch) {
+      const data = await offscreen.readBack();
+      offscreen.applyToGrid(data);
+      const buffers = new Map<string, Float32Array>();
+      for (const propName of this.simulation.grid.getPropertyNames()) {
+        buffers.set(propName, new Float32Array(this.simulation.grid.getCurrentBuffer(propName)));
       }
+      const finalGen = offscreen.getGeneration();
+      this.frameCache.set(finalGen, { generation: finalGen, buffers, liveCellCount: -1 });
+      this.computedGeneration = finalGen;
+      this.eventBus.emit('sim:computeProgress', { computedGeneration: this.computedGeneration });
       logGPU(`Cache fill complete: ${this.frameCache.size} frames cached`);
+    }
+
+    // Destroy offscreen runner — display runner was never touched
+    offscreen.destroy();
+
+    // Restore CPU Grid to playhead position (cache fill overwrote it during readback)
+    if (this.gpuCacheFillEpoch === epoch) {
+      const snap = this.frameCache.get(this.playbackGeneration);
+      if (snap) {
+        this.applySnapshot(snap);
+      } else if (this.initialSnapshot) {
+        this.restoreInitialState();
+      }
     }
   }
 
@@ -588,11 +606,6 @@ export class SimulationController {
     this.asyncPlaybackInFlight = false;
 
     this.eventBus.emit('sim:pause', {});
-
-    // GPU mode: restart cache fill from where we are (fills remaining uncached frames)
-    if (this.gpuRuleRunner) {
-      void this.gpuCacheFill();
-    }
   }
 
   /**
