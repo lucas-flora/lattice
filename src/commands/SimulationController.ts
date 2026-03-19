@@ -179,15 +179,14 @@ export class SimulationController {
 
       this.gpuRuleRunner = runner;
 
-      // CPU compute-ahead may have advanced the Grid past the playback position.
-      // Restore the playback frame to the Grid and re-upload to GPU.
-      const playbackSnapshot = this.frameCache.get(this.playbackGeneration);
-      if (playbackSnapshot) {
-        this.applySnapshot(playbackSnapshot);
-      } else if (this.initialSnapshot) {
+      // Stop any CPU compute-ahead that may be running — GPU takes over
+      this.stopComputeAhead();
+
+      // Ensure GPU has the initial state (not whatever CPU compute-ahead left in the Grid)
+      if (this.initialSnapshot) {
         this.restoreInitialState();
+        runner.uploadFromGrid();
       }
-      runner.uploadFromGrid();
       runner.setGeneration(this.playbackGeneration);
 
       logGPU(`Rule runner active for "${presetName}"`);
@@ -654,8 +653,9 @@ export class SimulationController {
    * Computes in chunks to avoid freezing the UI.
    */
   computeAhead(targetGeneration: number): void {
-    logMin('compute', `computeAhead(${targetGeneration}) — computedGen=${this.computedGeneration}, timerRunning=${!!this.computeAheadTimer}, needsAsync=${this.needsAsyncTick()}`);
     this.computeAheadTarget = targetGeneration;
+    if (this.gpuRuleRunner) return; // GPU ticks live, no compute-ahead
+    logMin('compute', `computeAhead(${targetGeneration}) — computedGen=${this.computedGeneration}, timerRunning=${!!this.computeAheadTimer}, needsAsync=${this.needsAsyncTick()}`);
     if (this.computeAheadTimer) return; // Already running
     this.runComputeAheadChunk();
   }
@@ -683,10 +683,10 @@ export class SimulationController {
     this.computedGeneration = 0;
     this.playbackGeneration = 0;
     this.syncGridToGPU();
-    this.cacheCurrentFrame();
+    if (!this.gpuRuleRunner) this.cacheCurrentFrame();
     this.eventBus.emit('sim:reset', {});
-    // Restart aggressive compute-ahead
-    if (this.computeAheadTarget > 0) {
+    // Restart compute-ahead (CPU mode only)
+    if (!this.gpuRuleRunner && this.computeAheadTarget > 0) {
       this.computeAhead(this.computeAheadTarget);
     }
   }
@@ -806,9 +806,11 @@ export class SimulationController {
     // Sync to scene graph for persistence
     this.syncInitialStateToScene();
 
-    // Aggressively start computing ahead immediately
+    // Start compute-ahead (CPU mode only — GPU ticks live, no pre-compute needed)
     if (cacheTarget && cacheTarget > 0) {
       this.timelineDuration = cacheTarget;
+      this.computeAheadTarget = cacheTarget;
+      if (this.gpuRuleRunner) return; // GPU ticks live, no compute-ahead
 
       // If async tick is needed but Pyodide isn't ready yet, defer compute-ahead
       if (this.needsAsyncTick() && this.pyodideBridge && this.pyodideBridge.getStatus() !== 'ready') {
@@ -978,8 +980,8 @@ export class SimulationController {
 
   /**
    * Compute N frames ahead from the current computed frontier.
-   * Synchronous — use computeAhead() for async chunked computation.
-   * GPU compute-ahead uses computeFramesGPU() instead.
+   * GPU path: just tick (no cache — GPU renders live from buffers).
+   * CPU path: tick + cache for timeline scrubbing.
    */
   private computeFrames(count: number): void {
     if (!this.simulation) return;
@@ -1011,45 +1013,6 @@ export class SimulationController {
 
     // Emit progress
     this.eventBus.emit('sim:computeProgress', { computedGeneration: this.computedGeneration });
-  }
-
-  /**
-   * Async GPU compute-ahead: tick on GPU, readback each frame, cache as TickSnapshot.
-   * After caching, restores the GPU to the current playback frame so the renderer
-   * shows the right state (not the compute frontier).
-   */
-  private async computeFramesGPU(count: number): Promise<void> {
-    if (!this.simulation || !this.gpuRuleRunner) return;
-    if (this.asyncComputeInFlight) return;
-    this.asyncComputeInFlight = true;
-    const epoch = this.computeEpoch;
-
-    try {
-      for (let i = 0; i < count; i++) {
-        if (this.computeEpoch !== epoch) break;
-        this.gpuRuleRunner.tick();
-        const gpuGen = this.gpuRuleRunner.getGeneration();
-        this.simulation.runner.setGeneration(gpuGen);
-        this.computedGeneration = gpuGen;
-
-        // Readback and cache
-        const data = await this.gpuRuleRunner.readBack();
-        this.gpuRuleRunner.applyToGrid(data);
-        this.cacheCurrentFrame();
-      }
-      this.eventBus.emit('sim:computeProgress', { computedGeneration: this.computedGeneration });
-
-      // Restore GPU to playback position so renderer shows the right frame
-      if (this.computeEpoch === epoch) {
-        const playbackSnapshot = this.frameCache.get(this.playbackGeneration);
-        if (playbackSnapshot) {
-          this.applySnapshot(playbackSnapshot);
-          this.syncGridToGPU();
-        }
-      }
-    } finally {
-      this.asyncComputeInFlight = false;
-    }
   }
 
   /**
@@ -1222,8 +1185,9 @@ export class SimulationController {
             return;
           case 'loop':
             this.playbackGeneration = 0;
+            if (this.initialSnapshot) this.restoreInitialState();
             this.gpuRuleRunner.setGeneration(0);
-            this.syncGridToGPU(); // re-upload initial state
+            this.gpuRuleRunner.uploadFromGrid();
             this.eventBus.emit('sim:tick', { generation: 0, liveCellCount: -1 });
             return;
           case 'endless': {
@@ -1345,6 +1309,12 @@ export class SimulationController {
    * Async compute-ahead: computes frames in chunks to avoid blocking.
    */
   private runComputeAheadChunk(): void {
+    // GPU mode: no compute-ahead. GPU ticks live.
+    if (this.gpuRuleRunner) {
+      this.computeAheadTimer = null;
+      return;
+    }
+
     // Cap compute-ahead to timeline duration
     const effectiveTarget = Math.min(this.computeAheadTarget, this.timelineDuration);
     if (this.computedGeneration >= effectiveTarget) {
@@ -1356,40 +1326,7 @@ export class SimulationController {
     const remaining = effectiveTarget - this.computedGeneration;
     const maxChunk = this.playing ? PLAYBACK_CHUNK_SIZE : COMPUTE_CHUNK_SIZE;
     const chunkSize = Math.min(maxChunk, remaining);
-    logDbg('compute', `runComputeAheadChunk — computedGen=${this.computedGeneration}, target=${this.computeAheadTarget}, chunk=${chunkSize}, needsAsync=${this.needsAsyncTick()}, asyncInFlight=${this.asyncComputeInFlight}`);
-
-    // GPU compute-ahead: only needed if frames aren't already cached by CPU.
-    // If CPU already cached these frames (GPU runner arrived late), skip GPU re-computation.
-    if (this.gpuRuleRunner) {
-      // Check if the next frame to compute is already in cache (CPU did it)
-      const nextFrameGen = this.computedGeneration + 1;
-      if (this.frameCache.has(nextFrameGen)) {
-        // CPU already cached this range — just advance computedGeneration to match
-        while (this.computedGeneration < effectiveTarget && this.frameCache.has(this.computedGeneration + 1)) {
-          this.computedGeneration++;
-        }
-        this.eventBus.emit('sim:computeProgress', { computedGeneration: this.computedGeneration });
-        if (this.computedGeneration < effectiveTarget) {
-          this.computeAheadTimer = setTimeout(() => this.runComputeAheadChunk(), 0);
-        } else {
-          this.computeAheadTimer = null;
-        }
-        return;
-      }
-      // Actually need to compute — use async readback path
-      if (this.asyncComputeInFlight) {
-        this.computeAheadTimer = null;
-        return;
-      }
-      const chunkEpoch = this.computeEpoch;
-      void this.computeFramesGPU(chunkSize).then(() => {
-        if (this.computeEpoch !== chunkEpoch) return;
-        this.computeAheadTimer = setTimeout(() => {
-          this.runComputeAheadChunk();
-        }, 0);
-      });
-      return;
-    }
+    logDbg('compute', `runComputeAheadChunk — computedGen=${this.computedGeneration}, target=${effectiveTarget}, chunk=${chunkSize}`);
 
     if (this.needsAsyncTick()) {
       if (this.asyncComputeInFlight) {
