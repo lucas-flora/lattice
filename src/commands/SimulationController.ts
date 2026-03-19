@@ -654,7 +654,9 @@ export class SimulationController {
    */
   computeAhead(targetGeneration: number): void {
     this.computeAheadTarget = targetGeneration;
-    if (this.gpuRuleRunner) return; // GPU ticks live, no compute-ahead
+    // GPU ticks live, no compute-ahead (check both runner and expected GPU capability)
+    if (this.gpuRuleRunner) return;
+    if (GPUContext.isAvailable() && this.simulation && BUILTIN_IR[this.simulation.preset.meta.name]) return;
     logMin('compute', `computeAhead(${targetGeneration}) — computedGen=${this.computedGeneration}, timerRunning=${!!this.computeAheadTimer}, needsAsync=${this.needsAsyncTick()}`);
     if (this.computeAheadTimer) return; // Already running
     this.runComputeAheadChunk();
@@ -810,7 +812,9 @@ export class SimulationController {
     if (cacheTarget && cacheTarget > 0) {
       this.timelineDuration = cacheTarget;
       this.computeAheadTarget = cacheTarget;
-      if (this.gpuRuleRunner) return; // GPU ticks live, no compute-ahead
+      // Skip compute-ahead if GPU will handle this preset (runner may still be initializing)
+      if (this.gpuRuleRunner) return;
+      if (GPUContext.isAvailable() && this.simulation && BUILTIN_IR[this.simulation.preset.meta.name]) return;
 
       // If async tick is needed but Pyodide isn't ready yet, defer compute-ahead
       if (this.needsAsyncTick() && this.pyodideBridge && this.pyodideBridge.getStatus() !== 'ready') {
