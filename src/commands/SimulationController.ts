@@ -178,6 +178,18 @@ export class SimulationController {
       }
 
       this.gpuRuleRunner = runner;
+
+      // CPU compute-ahead may have advanced the Grid past the playback position.
+      // Restore the playback frame to the Grid and re-upload to GPU.
+      const playbackSnapshot = this.frameCache.get(this.playbackGeneration);
+      if (playbackSnapshot) {
+        this.applySnapshot(playbackSnapshot);
+      } else if (this.initialSnapshot) {
+        this.restoreInitialState();
+      }
+      runner.uploadFromGrid();
+      runner.setGeneration(this.playbackGeneration);
+
       logGPU(`Rule runner active for "${presetName}"`);
       this.eventBus.emit('gpu:ruleRunnerReady', {});
     } catch (err) {
@@ -1003,7 +1015,8 @@ export class SimulationController {
 
   /**
    * Async GPU compute-ahead: tick on GPU, readback each frame, cache as TickSnapshot.
-   * Used for compute-ahead so timeline scrubbing works in GPU mode.
+   * After caching, restores the GPU to the current playback frame so the renderer
+   * shows the right state (not the compute frontier).
    */
   private async computeFramesGPU(count: number): Promise<void> {
     if (!this.simulation || !this.gpuRuleRunner) return;
@@ -1025,6 +1038,15 @@ export class SimulationController {
         this.cacheCurrentFrame();
       }
       this.eventBus.emit('sim:computeProgress', { computedGeneration: this.computedGeneration });
+
+      // Restore GPU to playback position so renderer shows the right frame
+      if (this.computeEpoch === epoch) {
+        const playbackSnapshot = this.frameCache.get(this.playbackGeneration);
+        if (playbackSnapshot) {
+          this.applySnapshot(playbackSnapshot);
+          this.syncGridToGPU();
+        }
+      }
     } finally {
       this.asyncComputeInFlight = false;
     }
