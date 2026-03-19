@@ -192,6 +192,11 @@ export class SimulationController {
       logGPU(`Rule runner active for "${presetName}"`);
       this.eventBus.emit('gpu:ruleRunnerReady', {});
 
+      // GPU can tick to any frame — set computedGeneration to timeline end
+      // so the Timeline UI allows scrubbing the full range immediately
+      this.computedGeneration = this.timelineDuration;
+      this.eventBus.emit('sim:computeProgress', { computedGeneration: this.computedGeneration });
+
       // Start background cache fill (non-blocking, yields to browser)
       void this.gpuCacheFill();
     } catch (err) {
@@ -242,6 +247,11 @@ export class SimulationController {
     const epoch = ++this.gpuCacheFillEpoch;
     const target = this.timelineDuration;
 
+    // Find the first uncached frame — start fill from there
+    let startGen = 0;
+    while (startGen < target && this.frameCache.has(startGen)) startGen++;
+    if (startGen >= target) return; // All cached already
+
     // Create offscreen runner (shader compilation is cached — instant)
     let offscreen: GPURuleRunner;
     try {
@@ -252,36 +262,43 @@ export class SimulationController {
       return;
     }
 
-    // Seed offscreen with initial state — use initialSnapshot directly,
-    // never touch the CPU Grid (it belongs to the display path).
-    if (this.initialSnapshot) {
+    // Seed offscreen runner: use the cached frame just before startGen,
+    // or initial state if starting from 0. Uses Grid as temp transfer buffer.
+    const savedGridBufs = new Map<string, Float32Array>();
+    for (const propName of this.simulation.grid.getPropertyNames()) {
+      savedGridBufs.set(propName, new Float32Array(this.simulation.grid.getCurrentBuffer(propName)));
+    }
+
+    if (startGen > 0 && this.frameCache.has(startGen - 1)) {
+      this.applySnapshot(this.frameCache.get(startGen - 1)!);
+      offscreen.uploadFromGrid();
+      offscreen.setGeneration(startGen - 1);
+      offscreen.tick(); // advance to startGen
+    } else if (startGen === 0 && this.initialSnapshot) {
       for (const [propName, buf] of this.initialSnapshot) {
-        const gridBuf = this.simulation.grid.getCurrentBuffer(propName);
-        gridBuf.set(buf);
+        this.simulation.grid.getCurrentBuffer(propName).set(buf);
       }
       offscreen.uploadFromGrid();
       offscreen.setGeneration(0);
-      // Immediately restore Grid to whatever the display should be showing
-      const displaySnap = this.frameCache.get(this.playbackGeneration);
-      if (displaySnap) this.applySnapshot(displaySnap);
-      else {
-        // Restore initial state back (we just wrote it, so it's fine)
-      }
     }
 
-    logGPU(`Cache fill starting: gen 0 → ${target} (offscreen)`);
+    // Restore Grid to what it was (display path owns it)
+    for (const [propName, buf] of savedGridBufs) {
+      this.simulation.grid.getCurrentBuffer(propName).set(buf);
+    }
 
-    for (let gen = 0; gen < target; gen++) {
+    logGPU(`Cache fill starting: gen ${startGen} → ${target} (offscreen)`);
+
+    for (let gen = startGen; gen < target; gen++) {
       if (this.gpuCacheFillEpoch !== epoch) break;
 
-      // Readback from offscreen runner directly — does NOT touch CPU Grid
       if (!this.frameCache.has(gen)) {
         const buffers = await offscreen.readBackToGrid();
         this.frameCache.set(gen, { generation: gen, buffers, liveCellCount: -1 });
       }
 
       offscreen.tick();
-      this.computedGeneration = gen + 1;
+      this.computedGeneration = Math.max(this.computedGeneration, gen + 1);
 
       if (gen % 10 === 0) {
         this.eventBus.emit('sim:computeProgress', { computedGeneration: this.computedGeneration });
@@ -294,7 +311,7 @@ export class SimulationController {
       const buffers = await offscreen.readBackToGrid();
       const finalGen = offscreen.getGeneration();
       this.frameCache.set(finalGen, { generation: finalGen, buffers, liveCellCount: -1 });
-      this.computedGeneration = finalGen;
+      this.computedGeneration = Math.max(this.computedGeneration, finalGen);
       this.eventBus.emit('sim:computeProgress', { computedGeneration: this.computedGeneration });
       logGPU(`Cache fill complete: ${this.frameCache.size} frames cached`);
     }
@@ -1570,7 +1587,10 @@ export class SimulationController {
     }
     this.editDebounceTimer = setTimeout(() => {
       this.editDebounceTimer = null;
-      if (this.computeAheadTarget > this.computedGeneration) {
+      if (this.gpuRuleRunner) {
+        // GPU mode: re-fill cache from the edit frame onwards
+        void this.gpuCacheFill();
+      } else if (this.computeAheadTarget > this.computedGeneration) {
         this.computeAhead(this.computeAheadTarget);
       }
     }, 150);
