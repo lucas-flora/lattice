@@ -202,6 +202,10 @@ export class LatticeRenderer {
   /** Set whether GPU rendering is handling cell display (skip CPU update loop) */
   setGPURenderingActive(active: boolean): void {
     this.gpuRenderingActive = active;
+    // Hide InstancedMesh so it doesn't render on top of GPU canvas
+    if (this.instancedMesh) {
+      this.instancedMesh.visible = !active;
+    }
   }
 
   /**
