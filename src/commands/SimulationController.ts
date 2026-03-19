@@ -1358,8 +1358,25 @@ export class SimulationController {
     const chunkSize = Math.min(maxChunk, remaining);
     logDbg('compute', `runComputeAheadChunk — computedGen=${this.computedGeneration}, target=${this.computeAheadTarget}, chunk=${chunkSize}, needsAsync=${this.needsAsyncTick()}, asyncInFlight=${this.asyncComputeInFlight}`);
 
-    // GPU compute-ahead: async readback path
+    // GPU compute-ahead: only needed if frames aren't already cached by CPU.
+    // If CPU already cached these frames (GPU runner arrived late), skip GPU re-computation.
     if (this.gpuRuleRunner) {
+      // Check if the next frame to compute is already in cache (CPU did it)
+      const nextFrameGen = this.computedGeneration + 1;
+      if (this.frameCache.has(nextFrameGen)) {
+        // CPU already cached this range — just advance computedGeneration to match
+        while (this.computedGeneration < effectiveTarget && this.frameCache.has(this.computedGeneration + 1)) {
+          this.computedGeneration++;
+        }
+        this.eventBus.emit('sim:computeProgress', { computedGeneration: this.computedGeneration });
+        if (this.computedGeneration < effectiveTarget) {
+          this.computeAheadTimer = setTimeout(() => this.runComputeAheadChunk(), 0);
+        } else {
+          this.computeAheadTimer = null;
+        }
+        return;
+      }
+      // Actually need to compute — use async readback path
       if (this.asyncComputeInFlight) {
         this.computeAheadTimer = null;
         return;
