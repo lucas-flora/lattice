@@ -191,6 +191,9 @@ export class SimulationController {
 
       logGPU(`Rule runner active for "${presetName}"`);
       this.eventBus.emit('gpu:ruleRunnerReady', {});
+
+      // Start background cache fill (non-blocking, yields to browser)
+      void this.gpuCacheFill();
     } catch (err) {
       logGPU(`Rule runner init FAILED for "${presetName}": ${err}`);
       this.gpuRuleRunner = null;
@@ -220,6 +223,81 @@ export class SimulationController {
     if (!this.gpuRuleRunner || !this.simulation) return;
     const data = await this.gpuRuleRunner.readBack();
     this.gpuRuleRunner.applyToGrid(data);
+  }
+
+  /** Epoch for GPU cache fill — incremented to cancel in-flight fills */
+  private gpuCacheFillEpoch: number = 0;
+
+  /**
+   * Background GPU cache fill: tick on GPU, readback each frame, store in cache.
+   * Runs when paused (or after initial load). Yields to browser between frames.
+   * After filling, restores GPU to the playhead position.
+   */
+  private async gpuCacheFill(): Promise<void> {
+    if (!this.gpuRuleRunner || !this.simulation) return;
+    if (this.playing) return; // Don't fill during live playback
+
+    const epoch = ++this.gpuCacheFillEpoch;
+    const target = this.timelineDuration;
+    const runner = this.gpuRuleRunner;
+    const startGen = this.computedGeneration;
+
+    // Ensure GPU starts from the compute frontier
+    if (startGen > 0 && this.frameCache.has(startGen)) {
+      const snapshot = this.frameCache.get(startGen)!;
+      this.applySnapshot(snapshot);
+      this.syncGridToGPU();
+    } else if (startGen === 0) {
+      if (this.initialSnapshot) this.restoreInitialState();
+      runner.uploadFromGrid();
+      runner.setGeneration(0);
+    }
+
+    logGPU(`Cache fill starting: gen ${startGen} → ${target}`);
+
+    for (let gen = startGen; gen < target; gen++) {
+      // Bail if cancelled (preset change, play started, new fill requested)
+      if (this.gpuCacheFillEpoch !== epoch || this.playing) break;
+      if (!this.gpuRuleRunner) break;
+
+      // Cache current state before ticking
+      if (!this.frameCache.has(gen)) {
+        const data = await runner.readBack();
+        runner.applyToGrid(data);
+        this.cacheCurrentFrame();
+      }
+
+      // Tick to next
+      runner.tick();
+      this.simulation.runner.setGeneration(runner.getGeneration());
+      this.computedGeneration = runner.getGeneration();
+
+      // Yield every 10 frames for responsive rendering
+      if (gen % 10 === 0) {
+        this.eventBus.emit('sim:computeProgress', { computedGeneration: this.computedGeneration });
+        await new Promise(r => setTimeout(r, 0));
+      }
+    }
+
+    // Cache the final frame
+    if (this.gpuCacheFillEpoch === epoch && this.gpuRuleRunner && !this.playing) {
+      const data = await runner.readBack();
+      runner.applyToGrid(data);
+      this.cacheCurrentFrame();
+      this.eventBus.emit('sim:computeProgress', { computedGeneration: this.computedGeneration });
+
+      // Restore GPU to playhead position (cache fill left it at the end)
+      const playbackSnapshot = this.frameCache.get(this.playbackGeneration);
+      if (playbackSnapshot) {
+        this.applySnapshot(playbackSnapshot);
+        this.syncGridToGPU();
+      } else if (this.playbackGeneration === 0 && this.initialSnapshot) {
+        this.restoreInitialState();
+        runner.uploadFromGrid();
+        runner.setGeneration(0);
+      }
+      logGPU(`Cache fill complete: ${this.frameCache.size} frames cached`);
+    }
   }
 
   /**
@@ -476,11 +554,22 @@ export class SimulationController {
     logMin('play', `play() — already=${this.playing}, needsAsync=${this.needsAsyncTick()}, computedGen=${this.computedGeneration}, playbackGen=${this.playbackGeneration}`);
     if (this.playing || !this.simulation) return;
     this.playing = true;
+    this.gpuCacheFillEpoch++; // Cancel any in-flight GPU cache fill
 
     // If edits were pending a debounced compute-ahead restart, flush it now
     if (this.editDebounceTimer) {
       clearTimeout(this.editDebounceTimer);
       this.editDebounceTimer = null;
+    }
+
+    // GPU mode: ensure GPU is at the playback position before starting
+    if (this.gpuRuleRunner) {
+      this.gpuRuleRunner.setGeneration(this.playbackGeneration);
+      const snapshot = this.frameCache.get(this.playbackGeneration);
+      if (snapshot) {
+        this.applySnapshot(snapshot);
+        this.gpuRuleRunner.uploadFromGrid();
+      }
     }
 
     this.eventBus.emit('sim:play', {});
@@ -497,9 +586,13 @@ export class SimulationController {
 
     this.stopPlaybackLoop();
     this.asyncPlaybackInFlight = false;
-    // Don't stop compute-ahead — keep caching aggressively even when paused
 
     this.eventBus.emit('sim:pause', {});
+
+    // GPU mode: restart cache fill from where we are (fills remaining uncached frames)
+    if (this.gpuRuleRunner) {
+      void this.gpuCacheFill();
+    }
   }
 
   /**
@@ -685,12 +778,13 @@ export class SimulationController {
     this.computedGeneration = 0;
     this.playbackGeneration = 0;
     this.syncGridToGPU();
-    if (!this.gpuRuleRunner) this.cacheCurrentFrame();
-    this.eventBus.emit('sim:reset', {});
-    // Restart compute-ahead (CPU mode only)
-    if (!this.gpuRuleRunner && this.computeAheadTarget > 0) {
-      this.computeAhead(this.computeAheadTarget);
+    if (!this.gpuRuleRunner) {
+      this.cacheCurrentFrame();
+      if (this.computeAheadTarget > 0) this.computeAhead(this.computeAheadTarget);
+    } else {
+      void this.gpuCacheFill();
     }
+    this.eventBus.emit('sim:reset', {});
   }
 
   /**
