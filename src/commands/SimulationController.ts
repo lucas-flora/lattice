@@ -729,12 +729,28 @@ export class SimulationController {
     }
     logDbg('play', `seek(${targetGen}) — playbackGen=${this.playbackGeneration}, computedGen=${this.computedGeneration}`);
 
-    // Ensure the target frame is available in cache
+    // GPU mode: only seek to cached frames — never block with sync compute
+    if (this.gpuRuleRunner) {
+      if (this.frameCache.has(targetGen)) {
+        this.playbackGeneration = targetGen;
+        this.restoreFrame(targetGen);
+      } else {
+        // Find nearest cached frame
+        let nearest = targetGen;
+        while (nearest > 0 && !this.frameCache.has(nearest)) nearest--;
+        if (this.frameCache.has(nearest)) {
+          this.playbackGeneration = nearest;
+          this.restoreFrame(nearest);
+        }
+      }
+      return;
+    }
+
+    // CPU mode: compute to target if not cached (may block)
     if (!this.frameCache.has(targetGen)) {
       if (targetGen > this.computedGeneration) {
         this.computeFrames(targetGen - this.computedGeneration);
       } else {
-        // Before computed but evicted — recompute
         this.recomputeTo(targetGen);
       }
     }
