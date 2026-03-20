@@ -14,9 +14,14 @@ import { loadBuiltinPresetClient, type BuiltinPresetNameClient } from '../engine
 import type { PresetConfig } from '../engine/preset/types';
 import { supabase } from './supabaseClient';
 import type { BenchmarkConfig } from './benchmarkSuite';
+import { GPURuleRunner } from '../engine/rule/GPURuleRunner';
+import { GPUContext } from '../engine/gpu/GPUContext';
+import { BUILTIN_IR } from '../engine/ir/builtinIR';
 
-/** Architecture tag for all baseline (pre-WebGPU) measurements */
-const ARCHITECTURE_TAG = 'baseline-cpu';
+/** Architecture tag for CPU measurements */
+const CPU_TAG = 'baseline-cpu';
+/** Architecture tag for GPU measurements */
+const GPU_TAG = 'phase-3-gpu-sim';
 
 export interface BenchmarkResult {
   gitCommit: string;
@@ -205,7 +210,7 @@ export async function runBenchmark(
 
   return {
     gitCommit: getGitCommit(),
-    architectureTag: ARCHITECTURE_TAG,
+    architectureTag: CPU_TAG,
     browser: detectBrowser(),
     gpu: detectGPU(),
     testName: config.testName,
@@ -217,6 +222,101 @@ export async function runBenchmark(
       measureTicks: config.measureTicks,
       presetName: config.presetName,
       ruleType: 'typescript',
+      numProperties: sim.grid.getPropertyNames().length,
+    },
+  };
+}
+
+/**
+ * Check if a benchmark config can run on GPU.
+ */
+export function canRunGPU(config: BenchmarkConfig): boolean {
+  if (!GPUContext.isAvailable()) return false;
+  const presetConfig = loadBuiltinPresetClient(config.presetName as BuiltinPresetNameClient);
+  const irBuilder = BUILTIN_IR[presetConfig.meta.name];
+  return !!irBuilder && !!irBuilder(presetConfig);
+}
+
+/**
+ * Run a GPU benchmark: create GPURuleRunner, tick on GPU, measure with
+ * device.queue.onSubmittedWorkDone() for accurate GPU execution time.
+ */
+export async function runBenchmarkGPU(
+  config: BenchmarkConfig,
+  onProgress?: BenchmarkProgressFn,
+): Promise<BenchmarkResult | null> {
+  if (!canRunGPU(config)) return null;
+  if (config.testName.startsWith('render-only')) return null;
+
+  const ctx = GPUContext.tryGet();
+  if (!ctx) return null;
+
+  const sim = createBenchmarkSimulation(config);
+  const runner = new GPURuleRunner(sim.grid, sim.preset);
+  await runner.initialize();
+
+  // Warmup phase
+  for (let i = 0; i < config.warmupTicks; i++) {
+    runner.tick();
+    if ((i + 1) % YIELD_INTERVAL === 0) {
+      await ctx.device.queue.onSubmittedWorkDone();
+      onProgress?.(config.testName + '-gpu', i + 1, config.warmupTicks, 'warmup');
+      await yieldFrame();
+    }
+  }
+  await ctx.device.queue.onSubmittedWorkDone();
+
+  // Measurement phase — time includes GPU execution via onSubmittedWorkDone()
+  const tickTimes: number[] = [];
+  const heapBefore = getHeapMB();
+
+  for (let i = 0; i < config.measureTicks; i++) {
+    const start = performance.now();
+    runner.tick();
+    await ctx.device.queue.onSubmittedWorkDone();
+    const end = performance.now();
+    tickTimes.push(end - start);
+
+    if ((i + 1) % YIELD_INTERVAL === 0) {
+      onProgress?.(config.testName + '-gpu', i + 1, config.measureTicks, 'measure');
+      await yieldFrame();
+    }
+  }
+
+  const heapAfter = getHeapMB();
+  runner.destroy();
+
+  // Compute statistics
+  const sorted = [...tickTimes].sort((a, b) => a - b);
+  const avgMs = tickTimes.reduce((s, t) => s + t, 0) / tickTimes.length;
+  const p95Ms = sorted[Math.floor(sorted.length * 0.95)];
+  const fps = 1000 / avgMs;
+
+  const metrics: Record<string, number> = {
+    tick_ms: round2(avgMs),
+    tick_p95_ms: round2(p95Ms),
+    fps: round2(fps),
+  };
+
+  if (heapAfter !== null) metrics.heap_mb = heapAfter;
+  if (heapBefore !== null && heapAfter !== null) {
+    metrics.heap_delta_mb = round2(heapAfter - heapBefore);
+  }
+
+  return {
+    gitCommit: getGitCommit(),
+    architectureTag: GPU_TAG,
+    browser: detectBrowser(),
+    gpu: detectGPU(),
+    testName: config.testName + '-gpu',
+    gridWidth: config.gridWidth,
+    gridHeight: config.gridHeight,
+    metrics,
+    metadata: {
+      warmupTicks: config.warmupTicks,
+      measureTicks: config.measureTicks,
+      presetName: config.presetName,
+      ruleType: 'webgpu',
       numProperties: sim.grid.getPropertyNames().length,
     },
   };

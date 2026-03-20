@@ -14,7 +14,7 @@ import { z } from 'zod';
 import type { CommandRegistry } from '../CommandRegistry';
 import type { EventBus } from '../../engine/core/EventBus';
 import { BENCHMARK_SUITE } from '../../lib/benchmarkSuite';
-import { runBenchmark, submitResults, queryResults, type BenchmarkResult } from '../../lib/benchmarkRunner';
+import { runBenchmark, runBenchmarkGPU, canRunGPU, submitResults, queryResults, type BenchmarkResult } from '../../lib/benchmarkRunner';
 
 const RunParams = z.object({
   test: z.string().optional(),
@@ -42,9 +42,9 @@ function formatSummaryTable(results: BenchmarkResult[]): string {
   const col = (s: string, w: number) => s.length >= w ? s.slice(0, w) : s + ' '.repeat(w - s.length);
   const rCol = (s: string, w: number) => s.length >= w ? s.slice(0, w) : ' '.repeat(w - s.length) + s;
 
-  lines.push('┌' + '─'.repeat(23) + '┬' + '─'.repeat(10) + '┬' + '─'.repeat(10) + '┬' + '─'.repeat(11) + '┬' + '─'.repeat(10) + '┐');
-  lines.push('│ ' + col('Test', 21) + '│' + rCol('Tick(ms)', 9) + ' │' + rCol('P95(ms)', 9) + ' │' + rCol('FPS', 10) + ' │' + rCol('Heap(MB)', 9) + ' │');
-  lines.push('├' + '─'.repeat(23) + '┼' + '─'.repeat(10) + '┼' + '─'.repeat(10) + '┼' + '─'.repeat(11) + '┼' + '─'.repeat(10) + '┤');
+  lines.push('┌' + '─'.repeat(27) + '┬' + '─'.repeat(10) + '┬' + '─'.repeat(10) + '┬' + '─'.repeat(11) + '┬' + '─'.repeat(10) + '┐');
+  lines.push('│ ' + col('Test', 25) + '│' + rCol('Tick(ms)', 9) + ' │' + rCol('P95(ms)', 9) + ' │' + rCol('FPS', 10) + ' │' + rCol('Heap(MB)', 9) + ' │');
+  lines.push('├' + '─'.repeat(27) + '┼' + '─'.repeat(10) + '┼' + '─'.repeat(10) + '┼' + '─'.repeat(11) + '┼' + '─'.repeat(10) + '┤');
 
   for (const r of results) {
     const tick = r.metrics.tick_ms?.toFixed(1) ?? '-';
@@ -52,7 +52,7 @@ function formatSummaryTable(results: BenchmarkResult[]): string {
     const fps = r.metrics.fps?.toFixed(1) ?? '-';
     const heap = r.metrics.heap_mb?.toFixed(0) ?? '-';
     lines.push(
-      '│ ' + col(r.testName, 21) + '│' +
+      '│ ' + col(r.testName, 25) + '│' +
       rCol(tick, 9) + ' │' +
       rCol(p95, 9) + ' │' +
       rCol(fps, 10) + ' │' +
@@ -60,7 +60,7 @@ function formatSummaryTable(results: BenchmarkResult[]): string {
     );
   }
 
-  lines.push('└' + '─'.repeat(23) + '┴' + '─'.repeat(10) + '┴' + '─'.repeat(10) + '┴' + '─'.repeat(11) + '┴' + '─'.repeat(10) + '┘');
+  lines.push('└' + '─'.repeat(27) + '┴' + '─'.repeat(10) + '┴' + '─'.repeat(10) + '┴' + '─'.repeat(11) + '┴' + '─'.repeat(10) + '┘');
   return lines.join('\n');
 }
 
@@ -155,10 +155,42 @@ export function registerBenchCommands(registry: CommandRegistry, eventBus: Event
         await submitResults(result);
       }
 
+      // GPU benchmarks — run matching tests on GPU
+      const gpuSuite = suite.filter(canRunGPU);
+      for (let idx = 0; idx < gpuSuite.length; idx++) {
+        const config = gpuSuite[idx];
+        const label = `[${idx + 1}/${gpuSuite.length}] ${config.testName}-gpu`;
+
+        eventBus.emit('bench:progress', {
+          message: `${label}  warming up (GPU)...`,
+          testIndex: suite.length + idx,
+          totalTests: suite.length + gpuSuite.length,
+        });
+
+        const gpuResult = await runBenchmarkGPU(config, (testName, tick, total, phase) => {
+          const bar = progressBar(tick, total);
+          eventBus.emit('bench:progress', {
+            message: `${label}  ${phase} ${bar}  (${tick}/${total})`,
+            testIndex: suite.length + idx,
+            totalTests: suite.length + gpuSuite.length,
+          });
+        });
+
+        if (gpuResult) {
+          results.push(gpuResult);
+          eventBus.emit('bench:progress', {
+            message: `${label}  done — ${gpuResult.metrics.tick_ms}ms/tick, ${gpuResult.metrics.fps} fps`,
+            testIndex: suite.length + idx,
+            totalTests: suite.length + gpuSuite.length,
+          });
+          await submitResults(gpuResult);
+        }
+      }
+
       const table = formatSummaryTable(results);
-      const archTag = results[0]?.architectureTag ?? 'baseline-cpu';
+      const tags = [...new Set(results.map(r => r.architectureTag))].join(', ');
       const supabaseNote = (await import('../../lib/supabaseClient')).supabase
-        ? `Results saved to Supabase (architecture: ${archTag})`
+        ? `Results saved to Supabase (tags: ${tags})`
         : 'Results logged to console (Supabase not configured)';
 
       return {
