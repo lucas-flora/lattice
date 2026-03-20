@@ -49,7 +49,7 @@ Full details: `.planning/milestones/v1.0-ROADMAP.md`
 - [x] Phase 1: GPU Infrastructure — `GPUContext`, `BufferManager`, `ShaderCompiler`, `ComputeDispatcher`
 - [x] Phase 2: IR + WGSL Codegen — Typed IR, `IRBuilder`, `WGSLCodegen`, `PythonCodegen`, `validate`, `neighbor_at`
 - [x] Phase 3+4: GPU Simulation + Rendering — `GPURuleRunner`, `GPUGridRenderer`, dual-canvas, playback integration
-- [ ] Phase 5: Python Transpiler — PythonParser → IR for user-authored rules on GPU
+- [x] Phase 5: Python Transpiler — PythonParser → IR for user-authored rules on GPU
 - [ ] Phase 6: Cleanup — Remove legacy CPU execution paths, update presets to `webgpu` type
 
 Full details: `docs/WEBGPU_MIGRATION_PLAN.md`
@@ -62,5 +62,5 @@ Full details: `docs/WEBGPU_MIGRATION_PLAN.md`
 | 1. GPU Infrastructure | WebGPU | Complete | 2026-03-18 |
 | 2. IR + WGSL Codegen | WebGPU | Complete | 2026-03-19 |
 | 3+4. GPU Sim + Rendering | WebGPU | Complete | 2026-03-20 |
-| 5. Python Transpiler | WebGPU | Planned | — |
+| 5. Python Transpiler | WebGPU | Complete | 2026-03-20 |
 | 6. Cleanup | WebGPU | Planned | — |

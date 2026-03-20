@@ -24,6 +24,7 @@ import { BUILTIN_IR } from '../ir/builtinIR';
 import { validateIR } from '../ir/validate';
 import { generateWGSL, type WGSLCodegenConfig } from '../ir/WGSLCodegen';
 import type { IRProgram } from '../ir/types';
+import { parsePython, ParseError } from '../ir/PythonParser';
 import { logGPU } from '../../lib/debugLog';
 
 export class GPURuleRunner {
@@ -77,14 +78,43 @@ export class GPURuleRunner {
     // 3. Build env param names (order matters — maps to uniform buffer slots)
     this.envParamNames = (this.preset.params ?? []).map(p => p.name);
 
-    // 4. Build IR program
+    // 4. Build IR program — try built-in first, then transpile from compute body
+    let irProgram: IRProgram | null = null;
+
+    // 4a. Try hand-built IR (optimization for known presets)
     const irBuilder = BUILTIN_IR[presetName];
-    if (!irBuilder) {
-      throw new Error(`No built-in IR for preset "${presetName}"`);
+    if (irBuilder) {
+      irProgram = irBuilder(this.preset);
     }
-    const irProgram = irBuilder(this.preset);
+
+    // 4b. Try transpiling the compute body as Python
+    if (!irProgram && this.preset.rule.compute) {
+      try {
+        const cellProps = (this.preset.cell_properties ?? []);
+        const context = {
+          cellProperties: cellProps.map(p => ({
+            name: p.name,
+            type: 'f32' as const,
+            channels: CHANNELS_PER_TYPE[p.type] ?? 1,
+          })),
+          envParams: this.envParamNames,
+          globalVars: [] as string[],
+          neighborhoodType: 'moore' as const,
+        };
+        const result = parsePython(this.preset.rule.compute, context);
+        irProgram = result.program;
+        logGPU(`Python transpiled to IR for "${presetName}" (${irProgram.statements.length} statements)`);
+      } catch (e) {
+        if (e instanceof ParseError) {
+          logGPU(`Python transpilation failed for "${presetName}": ${e.message}`);
+        } else {
+          throw e;
+        }
+      }
+    }
+
     if (!irProgram) {
-      throw new Error(`Built-in IR for "${presetName}" returned null`);
+      throw new Error(`No IR available for preset "${presetName}" — no built-in IR and transpilation failed`);
     }
 
     // 5. Validate IR
