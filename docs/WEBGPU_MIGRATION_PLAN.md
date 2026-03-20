@@ -340,17 +340,30 @@ Note: `liveCellCount` requires a GPU reduction or readback. Options: (a) async r
 
 **Validation**: Conway's GoL at 1024×512 at 60fps. Gray-Scott at 512×512 at 60fps. Cell-for-cell correctness comparison against CPU baseline.
 
-**Phase 3+4 Status: COMPLETE**
+**Phase 3+4 Status: COMPLETE** (commit `6df9cd6`)
 
 Implementation notes:
 - `neighbor_at` IR node added for directional neighbor reads (von Neumann Laplacian). Supported in WGSLCodegen, PythonCodegen, and validator.
-- `builtinIR.ts` provides hand-built IR programs for 4 presets: `conways-gol`, `gray-scott`, `brians-brain`, `conways-advanced`. Others fall back to CPU.
+- `builtinIR.ts` provides hand-built IR programs for 4 presets: `Conway's Game of Life`, `Gray-Scott Reaction-Diffusion`, `Brian's Brain`, `Conway's Advanced`. Others fall back to CPU. Keys match YAML `meta.name`.
 - Gray-Scott uses proper von Neumann 4-neighbor Laplacian via `neighbor_at(dx, dy, prop)` instead of Moore 8-neighbor sum.
 - `GPURuleRunner` orchestrates the full GPU tick: IR→WGSL→compile→dispatch→swap. Uses ping-pong bind groups (zero-cost swap, no buffer copy).
-- `GPUGridRenderer` renders a fullscreen triangle (3 vertices) with a fragment shader that reads directly from the simulation storage buffer. Supports binary (alive/dead) and gradient (reaction-diffusion) color mapping modes.
-- Dual-canvas architecture: WebGPU canvas (cell rendering) underneath Three.js canvas (grid lines, HUD). Three.js `update()` skipped when GPU rendering active.
-- `SimulationController` tries GPU init on preset load. GPU playback ticks directly on GPU (no frame cache needed for live play). CPU fallback preserved for non-GPU browsers and presets without built-in IR.
-- Camera coordination: orthographic camera state from `CameraController` is converted to grid-space uniforms for the WebGPU fragment shader.
+- `GPUGridRenderer` renders a fullscreen triangle (3 vertices) with a fragment shader that reads directly from the simulation storage buffer. Supports binary (alive/dead) and gradient (reaction-diffusion) color mapping modes. Y-flipped UV for correct grid orientation.
+- Dual-canvas architecture: WebGPU canvas (cell rendering, z-index 0) underneath Three.js canvas (grid lines/HUD, z-index 1, alpha:true). InstancedMesh hidden when GPU active.
+- Camera coordination: orthographic camera state (`cam.position + cam.left/bottom`) converted to grid-space uniforms for the WebGPU fragment shader.
+
+Integration & Polish (20 commits):
+- **No CPU compute-ahead in GPU mode.** GPU ticks live. CPU compute-ahead completely disabled when GPU is active or expected (checks `BUILTIN_IR[preset.meta.name]`).
+- **Background GPU cache fill** via separate offscreen `GPURuleRunner` — ticks + readback per frame, stores snapshots in frame cache. Display runner's buffers never touched (zero visual artifacts). Fills ~256 frames in <1s on Chrome.
+- **GPU↔CPU sync**: `syncGridToGPU()` uploads Grid→GPU after edit/reset/seek/clear. `syncGPUToGrid()` reads GPU→Grid on pause so edits see correct base state.
+- **Playback from cache**: GPU `playbackTick` prefers cached frames (preserves edits). Falls back to live GPU tick only when no cache exists.
+- **Seek clamps to cache**: GPU seek only restores cached frames — never blocks with sync compute. Snaps to nearest cached frame if target uncached.
+- **Timeline scrubbing unlocked immediately**: `computedGeneration` set to `timelineDuration` in `captureInitialState` when GPU expected, before async init completes.
+- **Preset reload/grid resize**: GPU renderer torn down and rebuilt on `sim:presetLoaded`. Handles dimension changes cleanly.
+- **Edit→cache refill**: Drawing invalidates frames after the edit point, debounced 150ms restart of `gpuCacheFill()` from the edit frame.
+- **Loop mode**: Restores initial state via `restoreFrame(0)` from cache. Endless mode extends timeline.
+- **GPUContext dedup**: `initPromise` prevents concurrent `initialize()` calls from racing.
+- **Always-visible `[gpu]` logs**: `logGPU()` prints without env var. Color: orange. Documents adapter, init, shader compile, runner, renderer lifecycle.
+- **ControlBar layout fix**: Removed viewport `minHeight: 200px` that pushed ControlBar off-screen during GPU canvas insertion. Uses `overflow-hidden` instead.
 
 ### Phase 4: GPU-Native Rendering
 
