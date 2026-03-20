@@ -27,6 +27,13 @@ import type { IRProgram } from '../ir/types';
 import { parsePython, ParseError } from '../ir/PythonParser';
 import { logGPU } from '../../lib/debugLog';
 
+/** Compiled expression tag pass (post-rule) */
+interface ExpressionPass {
+  name: string;
+  pipeline: GPUComputePipeline;
+  bindGroups: [GPUBindGroup, GPUBindGroup];
+}
+
 export class GPURuleRunner {
   private grid: Grid;
   private preset: PresetConfig;
@@ -42,6 +49,8 @@ export class GPURuleRunner {
   private propertyLayout: PropertyLayout[] = [];
   private envParamNames: string[] = [];
   private wgsl: string = '';
+  /** Compiled expression tag passes (dispatched after the main rule) */
+  private expressionPasses: ExpressionPass[] = [];
 
   constructor(grid: Grid, preset: PresetConfig) {
     this.grid = grid;
@@ -166,19 +175,92 @@ export class GPURuleRunner {
     // 10. Write initial params
     this.updateParams({}, 0, 1.0);
 
-    logGPU(`GPURuleRunner initialized: ${presetName} (${width}×${height}, stride=${this.bufferManager.stride}, ${this.wgsl.length} chars WGSL)`);
+    // 11. Compile expression tags (post-rule passes)
+    this.compileExpressionTags();
+
+    logGPU(`GPURuleRunner initialized: ${presetName} (${width}×${height}, stride=${this.bufferManager.stride}, ${this.wgsl.length} chars WGSL, ${this.expressionPasses.length} expr passes)`);
+  }
+
+  /**
+   * Compile expression tags from the preset into additional compute passes.
+   * Each tag becomes a separate WGSL compute shader dispatched after the main rule.
+   */
+  private compileExpressionTags(): void {
+    const tags = this.preset.expression_tags;
+    if (!tags || tags.length === 0) return;
+
+    const cellProps = (this.preset.cell_properties ?? []);
+    const context = {
+      cellProperties: cellProps.map(p => ({
+        name: p.name,
+        type: 'f32' as const,
+        channels: CHANNELS_PER_TYPE[p.type] ?? 1,
+      })),
+      envParams: this.envParamNames,
+      globalVars: [] as string[],
+      neighborhoodType: 'moore' as const,
+    };
+
+    const readBuf = this.bufferManager.getReadBuffer();
+    const writeBuf = this.bufferManager.getWriteBuffer();
+    const paramsBuf = this.bufferManager.getParamsBuffer();
+
+    for (const tag of tags) {
+      if (tag.enabled === false || tag.phase !== 'post-rule' || !tag.code) continue;
+
+      try {
+        const result = parsePython(tag.code, context);
+        const irProgram = result.program;
+
+        const validation = validateIR(irProgram);
+        if (!validation.valid) {
+          logGPU(`Expression tag "${tag.name}" IR validation failed: ${validation.errors.map(e => e.message).join('; ')}`);
+          continue;
+        }
+
+        const config: WGSLCodegenConfig = {
+          workgroupSize: [8, 8, 1],
+          topology: this.grid.config.topology ?? 'toroidal',
+          propertyLayout: this.propertyLayout,
+          envParams: this.envParamNames,
+          globalParams: [],
+        };
+        const wgsl = generateWGSL(irProgram, config);
+        const pipeline = this.computeDispatcher.createPipeline({
+          wgsl,
+          label: `expr-${tag.name}`,
+          workgroupSize: [8, 8, 1],
+        });
+
+        // Expression passes use the same ping-pong buffers
+        const bg0 = this.computeDispatcher.createBindGroup(pipeline, [
+          { binding: 0, resource: { buffer: readBuf } },
+          { binding: 1, resource: { buffer: writeBuf } },
+          { binding: 2, resource: { buffer: paramsBuf } },
+        ]);
+        const bg1 = this.computeDispatcher.createBindGroup(pipeline, [
+          { binding: 0, resource: { buffer: writeBuf } },
+          { binding: 1, resource: { buffer: readBuf } },
+          { binding: 2, resource: { buffer: paramsBuf } },
+        ]);
+
+        this.expressionPasses.push({ name: tag.name, pipeline, bindGroups: [bg0, bg1] });
+        logGPU(`Expression tag "${tag.name}" compiled to GPU`);
+      } catch (e) {
+        logGPU(`Expression tag "${tag.name}" transpile failed: ${e instanceof Error ? e.message : e}`);
+      }
+    }
   }
 
   /**
    * Execute one simulation tick on the GPU.
-   * Does NOT submit to the queue — call submit() after batching any additional passes.
+   * Dispatches the main rule pass, then all expression tag passes.
    */
   tick(): void {
     if (!this.pipeline || !this.bindGroups) {
       throw new Error('GPURuleRunner not initialized');
     }
 
-    const ctx = GPUContext.get();
     const { width, height } = this.grid.config;
     const depth = this.grid.config.depth ?? 1;
     const workgroups = ComputeDispatcher.calcWorkgroups(
@@ -190,16 +272,27 @@ export class GPURuleRunner {
     this.generation++;
     this.bufferManager.updateParams(this.getEnvParamsObject());
 
-    // Dispatch with current bind group
+    // Main rule pass
     this.computeDispatcher.dispatchAndSubmit(
       this.pipeline,
       this.bindGroups[this.currentBindGroup],
       workgroups,
     );
 
-    // Swap: toggle bind group index
+    // Swap after main rule
     this.currentBindGroup = this.currentBindGroup === 0 ? 1 : 0;
     this.bufferManager.swap();
+
+    // Expression tag passes (each reads current, writes to other, then swaps)
+    for (const pass of this.expressionPasses) {
+      this.computeDispatcher.dispatchAndSubmit(
+        pass.pipeline,
+        pass.bindGroups[this.currentBindGroup],
+        workgroups,
+      );
+      this.currentBindGroup = this.currentBindGroup === 0 ? 1 : 0;
+      this.bufferManager.swap();
+    }
   }
 
   /**

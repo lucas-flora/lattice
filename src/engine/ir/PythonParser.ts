@@ -137,6 +137,15 @@ export function parsePython(source: string, context: PythonParseContext): Python
       return IR.readEnv(name);
     }
 
+    // 5b. Env params with underscore convention: env_feedRate → env.feedRate
+    if (name.startsWith('env_')) {
+      const envName = name.slice(4);
+      if (envParamNames.has(envName)) {
+        trackInput(envName, 'env');
+        return IR.readEnv(envName);
+      }
+    }
+
     // 6. Global vars
     if (globalVarNames.has(name)) {
       trackInput(name, 'global');
@@ -311,10 +320,32 @@ export function parsePython(source: string, context: PythonParseContext): Python
         return emitBuiltinCall(name, args, tok);
       }
 
-      // Property access: self.prop, cell['prop'], env.param, glob.var
+      // Property access: self.prop, cell['prop'], env.param, glob.var, np.where/np.X
       if (check('DOT')) {
         advance();
         const propTok = expect('IDENTIFIER');
+
+        // np.where(cond, ifTrue, ifFalse) → select
+        // np.abs, np.sqrt etc. → built-in function
+        if (name === 'np') {
+          const npFn = propTok.value;
+          if (check('LPAREN')) {
+            advance();
+            const args: IRNode[] = [];
+            if (!check('RPAREN')) {
+              args.push(parseExpression());
+              while (match('COMMA')) args.push(parseExpression());
+            }
+            expect('RPAREN');
+            if (npFn === 'where') {
+              if (args.length !== 3) throw new ParseError(`np.where() takes 3 arguments`, tok.line, tok.column);
+              return IR.select(args[0], args[1], args[2]);
+            }
+            return emitBuiltinCall(npFn, args, tok);
+          }
+          throw new ParseError(`np.${npFn} must be called as a function`, tok.line, tok.column);
+        }
+
         if (name === 'self' || name === 'cell') {
           trackInput(propTok.value, 'cell');
           return IR.readCell(propTok.value);
