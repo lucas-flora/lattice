@@ -1,13 +1,10 @@
 /**
- * Benchmark commands: bench.run, bench.results.
+ * Benchmark commands: bench.run, bench.gpu, bench.cpu, bench.results.
  *
- * bench.run — Execute the benchmark suite (or a single test by name).
- *   Runs each test headlessly via direct Simulation.tick() calls,
- *   submits results to Supabase, and prints a summary table.
- *   Emits bench:progress events on the EventBus for live terminal feedback.
- *
- * bench.results — Query and display recent results from Supabase,
- *   grouped by architecture tag for cross-phase comparison.
+ * bench.run — Run both GPU and CPU benchmarks (GPU first).
+ * bench.gpu — Run GPU benchmarks only.
+ * bench.cpu — Run CPU benchmarks only.
+ * bench.results — Query and display recent results from Supabase.
  */
 
 import { z } from 'zod';
@@ -24,9 +21,6 @@ const ResultsParams = z.object({
   limit: z.number().int().min(1).optional(),
 }).describe('{ limit?: number }');
 
-/**
- * Build an ASCII progress bar: [████████░░░░░░░░] 45%
- */
 function progressBar(current: number, total: number, width: number = 20): string {
   const pct = Math.min(1, current / total);
   const filled = Math.round(pct * width);
@@ -34,9 +28,6 @@ function progressBar(current: number, total: number, width: number = 20): string
   return '█'.repeat(filled) + '░'.repeat(empty) + ` ${Math.round(pct * 100)}%`;
 }
 
-/**
- * Format a results summary as an ASCII table for terminal display.
- */
 function formatSummaryTable(results: BenchmarkResult[]): string {
   const lines: string[] = [];
   const col = (s: string, w: number) => s.length >= w ? s.slice(0, w) : s + ' '.repeat(w - s.length);
@@ -64,9 +55,6 @@ function formatSummaryTable(results: BenchmarkResult[]): string {
   return lines.join('\n');
 }
 
-/**
- * Format queried Supabase results grouped by architecture tag.
- */
 function formatQueryResults(rows: Record<string, unknown>[]): string {
   const byArch = new Map<string, Map<string, Map<string, number>>>();
 
@@ -88,121 +76,134 @@ function formatQueryResults(rows: Record<string, unknown>[]): string {
     const col = (s: string, w: number) => s.length >= w ? s.slice(0, w) : s + ' '.repeat(w - s.length);
     const rCol = (s: string, w: number) => s.length >= w ? s.slice(0, w) : ' '.repeat(w - s.length) + s;
 
-    lines.push('  ' + col('Test', 22) + rCol('Tick(ms)', 10) + rCol('FPS', 10) + rCol('Heap(MB)', 10));
-    lines.push('  ' + '─'.repeat(52));
+    lines.push('  ' + col('Test', 26) + rCol('Tick(ms)', 10) + rCol('FPS', 10) + rCol('Heap(MB)', 10));
+    lines.push('  ' + '─'.repeat(56));
     for (const [test, metrics] of tests) {
       const tick = metrics.get('tick_ms')?.toFixed(1) ?? '-';
       const fps = metrics.get('fps')?.toFixed(1) ?? '-';
       const heap = metrics.get('heap_mb')?.toFixed(0) ?? '-';
-      lines.push('  ' + col(test, 22) + rCol(tick, 10) + rCol(fps, 10) + rCol(heap, 10));
+      lines.push('  ' + col(test, 26) + rCol(tick, 10) + rCol(fps, 10) + rCol(heap, 10));
     }
   }
 
   return lines.join('\n');
 }
 
+/** Resolve test filter and return matching suite configs */
+function resolveSuite(test?: string): { suite: typeof BENCHMARK_SUITE; error?: string } {
+  if (!test) return { suite: BENCHMARK_SUITE };
+  const suite = BENCHMARK_SUITE.filter(t => t.testName === test);
+  if (suite.length === 0) {
+    const names = BENCHMARK_SUITE.map(t => t.testName).join(', ');
+    return { suite: [], error: `Unknown test "${test}". Available: ${names}` };
+  }
+  return { suite };
+}
+
+/** Run CPU benchmarks for the given suite */
+async function runCPU(suite: typeof BENCHMARK_SUITE, eventBus: EventBus, offset: number, total: number): Promise<BenchmarkResult[]> {
+  const results: BenchmarkResult[] = [];
+  for (let idx = 0; idx < suite.length; idx++) {
+    const config = suite[idx];
+    const label = `[${offset + idx + 1}/${total}] ${config.testName}`;
+    eventBus.emit('bench:progress', { message: `${label}  warming up...`, testIndex: offset + idx, totalTests: total });
+
+    const result = await runBenchmark(config, (_tn, tick, tickTotal, phase) => {
+      eventBus.emit('bench:progress', { message: `${label}  ${phase} ${progressBar(tick, tickTotal)}  (${tick}/${tickTotal})`, testIndex: offset + idx, totalTests: total });
+    });
+    results.push(result);
+    eventBus.emit('bench:progress', { message: `${label}  done — ${result.metrics.tick_ms}ms/tick, ${result.metrics.fps} fps`, testIndex: offset + idx, totalTests: total });
+    await submitResults(result);
+  }
+  return results;
+}
+
+/** Run GPU benchmarks for the given suite */
+async function runGPU(suite: typeof BENCHMARK_SUITE, eventBus: EventBus, offset: number, total: number): Promise<BenchmarkResult[]> {
+  const gpuSuite = suite.filter(canRunGPU);
+  const results: BenchmarkResult[] = [];
+  for (let idx = 0; idx < gpuSuite.length; idx++) {
+    const config = gpuSuite[idx];
+    const label = `[${offset + idx + 1}/${total}] ${config.testName}-gpu`;
+    eventBus.emit('bench:progress', { message: `${label}  warming up (GPU)...`, testIndex: offset + idx, totalTests: total });
+
+    const result = await runBenchmarkGPU(config, (_tn, tick, tickTotal, phase) => {
+      eventBus.emit('bench:progress', { message: `${label}  ${phase} ${progressBar(tick, tickTotal)}  (${tick}/${tickTotal})`, testIndex: offset + idx, totalTests: total });
+    });
+    if (result) {
+      results.push(result);
+      eventBus.emit('bench:progress', { message: `${label}  done — ${result.metrics.tick_ms}ms/tick, ${result.metrics.fps} fps`, testIndex: offset + idx, totalTests: total });
+      await submitResults(result);
+    }
+  }
+  return results;
+}
+
+/** Format the Supabase note */
+async function supabaseNote(results: BenchmarkResult[]): Promise<string> {
+  const { supabase: sb } = await import('../../lib/supabaseClient');
+  const tags = [...new Set(results.map(r => r.architectureTag))].join(', ');
+  return sb ? `Results saved to Supabase (tags: ${tags})` : 'Results logged to console (Supabase not configured)';
+}
+
 export function registerBenchCommands(registry: CommandRegistry, eventBus: EventBus): void {
+  // bench.run — both GPU (first) and CPU
   registry.register({
     name: 'bench.run',
-    description: 'Run performance benchmark suite (or a single test by name)',
+    description: 'Run GPU + CPU benchmark suite',
     category: 'bench',
     params: RunParams,
     execute: async (params) => {
       const { test } = params as z.infer<typeof RunParams>;
+      const { suite, error } = resolveSuite(test);
+      if (error) return { success: false, error };
 
-      // Select tests to run
-      let suite = BENCHMARK_SUITE;
-      if (test) {
-        suite = BENCHMARK_SUITE.filter(t => t.testName === test);
-        if (suite.length === 0) {
-          const names = BENCHMARK_SUITE.map(t => t.testName).join(', ');
-          return { success: false, error: `Unknown test "${test}". Available: ${names}` };
-        }
-      }
+      const gpuCount = suite.filter(canRunGPU).length;
+      const total = gpuCount + suite.length;
+      const gpuResults = await runGPU(suite, eventBus, 0, total);
+      const cpuResults = await runCPU(suite, eventBus, gpuCount, total);
+      const results = [...gpuResults, ...cpuResults];
 
-      const results: BenchmarkResult[] = [];
-
-      for (let idx = 0; idx < suite.length; idx++) {
-        const config = suite[idx];
-        const label = `[${idx + 1}/${suite.length}] ${config.testName}`;
-
-        // Emit test start
-        eventBus.emit('bench:progress', {
-          message: `${label}  warming up...`,
-          testIndex: idx,
-          totalTests: suite.length,
-        });
-
-        const result = await runBenchmark(config, (testName, tick, total, phase) => {
-          const bar = progressBar(tick, total);
-          eventBus.emit('bench:progress', {
-            message: `${label}  ${phase} ${bar}  (${tick}/${total})`,
-            testIndex: idx,
-            totalTests: suite.length,
-          });
-        });
-
-        results.push(result);
-
-        // Emit test complete with inline result
-        eventBus.emit('bench:progress', {
-          message: `${label}  done — ${result.metrics.tick_ms}ms/tick, ${result.metrics.fps} fps`,
-          testIndex: idx,
-          totalTests: suite.length,
-        });
-
-        // Submit each test as it completes
-        await submitResults(result);
-      }
-
-      // GPU benchmarks — run matching tests on GPU
-      const gpuSuite = suite.filter(canRunGPU);
-      for (let idx = 0; idx < gpuSuite.length; idx++) {
-        const config = gpuSuite[idx];
-        const label = `[${idx + 1}/${gpuSuite.length}] ${config.testName}-gpu`;
-
-        eventBus.emit('bench:progress', {
-          message: `${label}  warming up (GPU)...`,
-          testIndex: suite.length + idx,
-          totalTests: suite.length + gpuSuite.length,
-        });
-
-        const gpuResult = await runBenchmarkGPU(config, (testName, tick, total, phase) => {
-          const bar = progressBar(tick, total);
-          eventBus.emit('bench:progress', {
-            message: `${label}  ${phase} ${bar}  (${tick}/${total})`,
-            testIndex: suite.length + idx,
-            totalTests: suite.length + gpuSuite.length,
-          });
-        });
-
-        if (gpuResult) {
-          results.push(gpuResult);
-          eventBus.emit('bench:progress', {
-            message: `${label}  done — ${gpuResult.metrics.tick_ms}ms/tick, ${gpuResult.metrics.fps} fps`,
-            testIndex: suite.length + idx,
-            totalTests: suite.length + gpuSuite.length,
-          });
-          await submitResults(gpuResult);
-        }
-      }
-
-      const table = formatSummaryTable(results);
-      const tags = [...new Set(results.map(r => r.architectureTag))].join(', ');
-      const supabaseNote = (await import('../../lib/supabaseClient')).supabase
-        ? `Results saved to Supabase (tags: ${tags})`
-        : 'Results logged to console (Supabase not configured)';
-
-      return {
-        success: true,
-        data: {
-          summary: table + '\n' + supabaseNote,
-          results,
-        },
-      };
+      return { success: true, data: { summary: formatSummaryTable(results) + '\n' + await supabaseNote(results), results } };
     },
   });
 
+  // bench.gpu — GPU only
+  registry.register({
+    name: 'bench.gpu',
+    description: 'Run GPU benchmark suite only',
+    category: 'bench',
+    params: RunParams,
+    execute: async (params) => {
+      const { test } = params as z.infer<typeof RunParams>;
+      const { suite, error } = resolveSuite(test);
+      if (error) return { success: false, error };
+
+      const gpuSuite = suite.filter(canRunGPU);
+      if (gpuSuite.length === 0) return { success: false, error: 'No GPU-compatible tests in suite' };
+
+      const results = await runGPU(suite, eventBus, 0, gpuSuite.length);
+      return { success: true, data: { summary: formatSummaryTable(results) + '\n' + await supabaseNote(results), results } };
+    },
+  });
+
+  // bench.cpu — CPU only
+  registry.register({
+    name: 'bench.cpu',
+    description: 'Run CPU benchmark suite only',
+    category: 'bench',
+    params: RunParams,
+    execute: async (params) => {
+      const { test } = params as z.infer<typeof RunParams>;
+      const { suite, error } = resolveSuite(test);
+      if (error) return { success: false, error };
+
+      const results = await runCPU(suite, eventBus, 0, suite.length);
+      return { success: true, data: { summary: formatSummaryTable(results) + '\n' + await supabaseNote(results), results } };
+    },
+  });
+
+  // bench.results — query Supabase
   registry.register({
     name: 'bench.results',
     description: 'Query and display recent benchmark results from Supabase',
@@ -211,20 +212,9 @@ export function registerBenchCommands(registry: CommandRegistry, eventBus: Event
     execute: async (params) => {
       const { limit } = params as z.infer<typeof ResultsParams>;
       const rows = await queryResults(limit ?? 200);
-
-      if (rows === null) {
-        return { success: false, error: 'Supabase not configured — cannot query results' };
-      }
-
-      if (rows.length === 0) {
-        return { success: true, data: { summary: 'No benchmark results found.' } };
-      }
-
-      const formatted = formatQueryResults(rows);
-      return {
-        success: true,
-        data: { summary: formatted, rowCount: rows.length },
-      };
+      if (rows === null) return { success: false, error: 'Supabase not configured — cannot query results' };
+      if (rows.length === 0) return { success: true, data: { summary: 'No benchmark results found.' } };
+      return { success: true, data: { summary: formatQueryResults(rows), rowCount: rows.length } };
     },
   });
 }

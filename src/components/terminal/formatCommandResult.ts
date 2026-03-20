@@ -92,6 +92,8 @@ const FORMATTERS: Record<string, Formatter> = {
   'param.set': formatParamGetSet,
   'sim.status': formatKeyValue,
   'bench.run': formatBenchSummary,
+  'bench.gpu': formatBenchSummary,
+  'bench.cpu': formatBenchSummary,
   'bench.results': formatBenchSummary,
   'gpu.test': formatBenchSummary,
   'gpu.info': formatBenchSummary,

@@ -97,6 +97,9 @@ const PARAM_MAPPINGS: Record<string, string[]> = {
   'state.list': ['?simRootId'],
   'state.delete': ['id'],
   'ir.show': ['?preset'],
+  'bench.run': ['?test'],
+  'bench.gpu': ['?test'],
+  'bench.cpu': ['?test'],
 };
 
 /**
@@ -156,6 +159,9 @@ const ARG_HINTS: Record<string, string> = {
   'state.list': '[simRootId]',
   'state.delete': '<id>',
   'ir.show': '[conway|fade|gray-scott]',
+  'bench.run': '[test-name]',
+  'bench.gpu': '[test-name]',
+  'bench.cpu': '[test-name]',
 };
 
 /**
