@@ -329,6 +329,25 @@ export function SimulationViewport({ viewportId = 'viewport-1' }: SimulationView
       const newSim = simController.getSimulation();
       if (newSim && latticeRenderer) {
         latticeRenderer.setSimulation(newSim.grid, newSim.preset);
+
+        // Tear down old GPU renderer — dimensions/buffers changed.
+        // It will be rebuilt when gpu:ruleRunnerReady fires.
+        if (gpuGridRenderer) {
+          gpuGridRenderer.destroy();
+          gpuGridRenderer = null;
+        }
+        if (gpuCanvas && container?.contains(gpuCanvas)) {
+          container.removeChild(gpuCanvas);
+          gpuCanvas = null;
+        }
+
+        // Hide InstancedMesh if GPU is expected for this preset
+        const is3DNew = newSim.preset.grid.dimensionality === '3d';
+        if (!is3DNew && GPUContext.isAvailable() && BUILTIN_IR[newSim.preset.meta.name]) {
+          latticeRenderer.setGPURenderingActive(true);
+        } else {
+          latticeRenderer.setGPURenderingActive(false);
+        }
         const newIs3D = newSim.preset.grid.dimensionality === '3d';
 
         if (newIs3D) {
@@ -489,9 +508,7 @@ export function SimulationViewport({ viewportId = 'viewport-1' }: SimulationView
 
     // Also listen for the event when GPU runner finishes async init
     const onGPURuleRunnerReady = () => {
-      if (!gpuGridRenderer) {
-        trySetupGPURenderer();
-      }
+      trySetupGPURenderer();
     };
     eventBus.on('gpu:ruleRunnerReady', onGPURuleRunnerReady);
 
