@@ -1295,15 +1295,9 @@ export class SimulationController {
 
   private playbackTick(): void {
     if (!this.simulation) return;
-    logDbg('play', `playbackTick() — playbackGen=${this.playbackGeneration}, computedGen=${this.computedGeneration}, needsAsync=${this.simulation.needsAsyncTick()}, gpu=${!!this.gpuRuleRunner}`);
+    logDbg('play', `playbackTick() — playbackGen=${this.playbackGeneration}, computedGen=${this.computedGeneration}, gpu=${!!this.gpuRuleRunner}`);
 
-    // Async rules (Python, expressions, scripts) use async playback
-    if (this.simulation.needsAsyncTick()) {
-      void this.playbackTickAsync();
-      return;
-    }
-
-    // GPU playback: use cached frames when available, tick live when not
+    // GPU path takes priority — handles rule + expression tags on GPU
     if (this.gpuRuleRunner) {
       const nextGen = this.playbackGeneration + 1;
       if (nextGen >= this.timelineDuration) {
@@ -1337,6 +1331,12 @@ export class SimulationController {
           liveCellCount: -1,
         });
       }
+      return;
+    }
+
+    // Async rules (Python via Pyodide, expressions, scripts) — CPU fallback
+    if (this.simulation.needsAsyncTick()) {
+      void this.playbackTickAsync();
       return;
     }
 

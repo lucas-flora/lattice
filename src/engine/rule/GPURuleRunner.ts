@@ -51,6 +51,8 @@ export class GPURuleRunner {
   private wgsl: string = '';
   /** Compiled expression tag passes (dispatched after the main rule) */
   private expressionPasses: ExpressionPass[] = [];
+  /** Shared bind group layout for all compute pipelines */
+  private bindGroupLayout: GPUBindGroupLayout | null = null;
 
   constructor(grid: Grid, preset: PresetConfig) {
     this.grid = grid;
@@ -67,15 +69,14 @@ export class GPURuleRunner {
   async initialize(): Promise<void> {
     const presetName = this.preset.meta.name;
 
-    // 1. Build property descriptors from preset
+    // 1. Build property descriptors from the Grid (includes all inherent properties
+    //    like age, alpha, colorR etc. — not just preset.cell_properties)
     const properties: GPUPropertyDescriptor[] = [];
-    const cellProps = this.preset.cell_properties ?? [];
-    for (const prop of cellProps) {
-      const channels = CHANNELS_PER_TYPE[prop.type] ?? 1;
-      const defaultVal = Array.isArray(prop.default)
-        ? prop.default.map(Number)
-        : [Number(prop.default ?? 0)];
-      properties.push({ name: prop.name, channels, type: 'f32', defaultValue: defaultVal });
+    const cellCount = this.grid.cellCount;
+    for (const propName of this.grid.getPropertyNames()) {
+      const buf = this.grid.getCurrentBuffer(propName);
+      const channels = buf.length / cellCount;
+      properties.push({ name: propName, channels, type: 'f32', defaultValue: new Array(channels).fill(0) });
     }
 
     // 2. Initialize GPU buffers
@@ -142,30 +143,29 @@ export class GPURuleRunner {
     };
     this.wgsl = generateWGSL(irProgram, config);
 
-    // 7. Compile shader + create pipeline
-    this.pipeline = this.computeDispatcher.createPipeline({
-      wgsl: this.wgsl,
-      label: `${presetName}-gpu-rule`,
-      workgroupSize: [8, 8, 1],
+    // 7. Create explicit bind group layout shared by all compute pipelines.
+    //    This prevents the GPU driver from optimizing away unused bindings
+    //    in expression tag shaders (which may not reference all buffers).
+    const ctx = GPUContext.get();
+    this.bindGroupLayout = ctx.device.createBindGroupLayout({
+      label: `${presetName}-bgl`,
+      entries: [
+        { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
+        { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+        { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
+      ],
     });
 
-    // 8. Create two bind groups for ping-pong
+    // 8. Compile shader + create pipeline with explicit layout
+    this.pipeline = this.createPipelineWithLayout(this.wgsl, `${presetName}-gpu-rule`);
+
+    // 9. Create two bind groups for ping-pong
     const readBuf = this.bufferManager.getReadBuffer();
     const writeBuf = this.bufferManager.getWriteBuffer();
     const paramsBuf = this.bufferManager.getParamsBuffer();
 
-    // Bind group 0: read from A, write to B
-    const bg0 = this.computeDispatcher.createBindGroup(this.pipeline, [
-      { binding: 0, resource: { buffer: readBuf } },
-      { binding: 1, resource: { buffer: writeBuf } },
-      { binding: 2, resource: { buffer: paramsBuf } },
-    ]);
-    // Bind group 1: read from B, write to A
-    const bg1 = this.computeDispatcher.createBindGroup(this.pipeline, [
-      { binding: 0, resource: { buffer: writeBuf } },
-      { binding: 1, resource: { buffer: readBuf } },
-      { binding: 2, resource: { buffer: paramsBuf } },
-    ]);
+    const bg0 = this.createBindGroup(readBuf, writeBuf, paramsBuf);
+    const bg1 = this.createBindGroup(writeBuf, readBuf, paramsBuf);
     this.bindGroups = [bg0, bg1];
     this.currentBindGroup = 0;
 
@@ -179,6 +179,36 @@ export class GPURuleRunner {
     this.compileExpressionTags();
 
     logGPU(`GPURuleRunner initialized: ${presetName} (${width}×${height}, stride=${this.bufferManager.stride}, ${this.wgsl.length} chars WGSL, ${this.expressionPasses.length} expr passes)`);
+  }
+
+  /** Create a compute pipeline using the shared bind group layout */
+  private createPipelineWithLayout(wgsl: string, label: string): GPUComputePipeline {
+    const ctx = GPUContext.get();
+    const module = this.shaderCompiler.compile(wgsl, label);
+    const pipelineLayout = ctx.device.createPipelineLayout({
+      label: `${label}-layout`,
+      bindGroupLayouts: [this.bindGroupLayout!],
+    });
+    const pipeline = ctx.device.createComputePipeline({
+      label,
+      layout: pipelineLayout,
+      compute: { module, entryPoint: 'main' },
+    });
+    logGPU(`Pipeline created: ${label}`);
+    return pipeline;
+  }
+
+  /** Create a bind group using the shared layout */
+  private createBindGroup(readBuf: GPUBuffer, writeBuf: GPUBuffer, paramsBuf: GPUBuffer): GPUBindGroup {
+    const ctx = GPUContext.get();
+    return ctx.device.createBindGroup({
+      layout: this.bindGroupLayout!,
+      entries: [
+        { binding: 0, resource: { buffer: readBuf } },
+        { binding: 1, resource: { buffer: writeBuf } },
+        { binding: 2, resource: { buffer: paramsBuf } },
+      ],
+    });
   }
 
   /**
@@ -226,23 +256,11 @@ export class GPURuleRunner {
           globalParams: [],
         };
         const wgsl = generateWGSL(irProgram, config);
-        const pipeline = this.computeDispatcher.createPipeline({
-          wgsl,
-          label: `expr-${tag.name}`,
-          workgroupSize: [8, 8, 1],
-        });
+        const pipeline = this.createPipelineWithLayout(wgsl, `expr-${tag.name}`);
 
         // Expression passes use the same ping-pong buffers
-        const bg0 = this.computeDispatcher.createBindGroup(pipeline, [
-          { binding: 0, resource: { buffer: readBuf } },
-          { binding: 1, resource: { buffer: writeBuf } },
-          { binding: 2, resource: { buffer: paramsBuf } },
-        ]);
-        const bg1 = this.computeDispatcher.createBindGroup(pipeline, [
-          { binding: 0, resource: { buffer: writeBuf } },
-          { binding: 1, resource: { buffer: readBuf } },
-          { binding: 2, resource: { buffer: paramsBuf } },
-        ]);
+        const bg0 = this.createBindGroup(readBuf, writeBuf, paramsBuf);
+        const bg1 = this.createBindGroup(writeBuf, readBuf, paramsBuf);
 
         this.expressionPasses.push({ name: tag.name, pipeline, bindGroups: [bg0, bg1] });
         logGPU(`Expression tag "${tag.name}" compiled to GPU`);
