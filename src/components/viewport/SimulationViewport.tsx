@@ -591,8 +591,7 @@ export function SimulationViewport({ viewportId = 'viewport-1' }: SimulationView
   return (
     <div
       ref={containerRef}
-      className="relative w-full h-full cursor-crosshair"
-      style={{ minHeight: '200px' }}
+      className="relative w-full h-full cursor-crosshair overflow-hidden"
       data-testid={`simulation-viewport-${viewportId}`}
     >
       {/* Viewport label — only shown in split view */}
