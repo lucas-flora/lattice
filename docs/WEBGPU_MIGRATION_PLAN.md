@@ -164,9 +164,11 @@ CREATE TABLE perf_benchmarks (
 - Supabase project: `lattice` (`jcrmmezzyybuhcdnqcew`, us-east-1)
 - `perf_benchmarks` table live with open RLS
 - Benchmark harness: async with periodic yields, live terminal progress bar via EventBus
-- CLI commands: `bench.run [test]`, `bench.results`
+- CLI commands: `bench run [test]`, `bench gpu [test]`, `bench cpu [test]`, `bench results`
 - `next.config.ts` injects `NEXT_PUBLIC_GIT_COMMIT` at build time
-- Architecture tag: `baseline-cpu` for all pre-WebGPU measurements
+- Architecture tags: `baseline-cpu` for CPU, `phase-3-gpu-sim` for GPU
+- `bench run` executes GPU tests first, then CPU, side by side in one table
+- GPU benchmark uses `device.queue.onSubmittedWorkDone()` for accurate GPU execution time
 
 ### Phase 1: GPU Infrastructure
 

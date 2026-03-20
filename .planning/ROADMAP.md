@@ -3,6 +3,7 @@
 ## Milestones
 
 - ✅ **v1.0 Universal Simulation Substrate** — Phases 1-10 (shipped 2026-03-10)
+- 🔄 **WebGPU Migration** — Phases 0-4 complete, Phase 5-6 remaining (branch: `feature/webgpu-migration`)
 
 ## Phases
 
@@ -38,3 +39,28 @@ Full details: `.planning/milestones/v1.0-ROADMAP.md`
 | 8. AI Surface | v1.0 | Complete | 2026-03-10 |
 | 9. Advanced Rendering | v1.0 | Complete | 2026-03-10 |
 | 10. Polish | v1.0 | Complete | 2026-03-10 |
+
+---
+
+<details>
+<summary>🔄 WebGPU Migration (Phases 0-6) — IN PROGRESS</summary>
+
+- [x] Phase 0: Performance Baseline — Benchmark harness, Supabase recording, `bench.run`/`bench.results` CLI
+- [x] Phase 1: GPU Infrastructure — `GPUContext`, `BufferManager`, `ShaderCompiler`, `ComputeDispatcher`
+- [x] Phase 2: IR + WGSL Codegen — Typed IR, `IRBuilder`, `WGSLCodegen`, `PythonCodegen`, `validate`, `neighbor_at`
+- [x] Phase 3+4: GPU Simulation + Rendering — `GPURuleRunner`, `GPUGridRenderer`, dual-canvas, playback integration
+- [ ] Phase 5: Python Transpiler — PythonParser → IR for user-authored rules on GPU
+- [ ] Phase 6: Cleanup — Remove legacy CPU execution paths, update presets to `webgpu` type
+
+Full details: `docs/WEBGPU_MIGRATION_PLAN.md`
+
+</details>
+
+| Phase | Milestone | Status | Completed |
+|-------|-----------|--------|-----------|
+| 0. Performance Baseline | WebGPU | Complete | 2026-03-18 |
+| 1. GPU Infrastructure | WebGPU | Complete | 2026-03-18 |
+| 2. IR + WGSL Codegen | WebGPU | Complete | 2026-03-19 |
+| 3+4. GPU Sim + Rendering | WebGPU | Complete | 2026-03-20 |
+| 5. Python Transpiler | WebGPU | Planned | — |
+| 6. Cleanup | WebGPU | Planned | — |
