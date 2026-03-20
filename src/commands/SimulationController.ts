@@ -192,8 +192,7 @@ export class SimulationController {
       logGPU(`Rule runner active for "${presetName}"`);
       this.eventBus.emit('gpu:ruleRunnerReady', {});
 
-      // GPU can tick to any frame — set computedGeneration to timeline end
-      // so the Timeline UI allows scrubbing the full range immediately
+      // GPU can tick to any frame — unlock full timeline scrubbing immediately
       this.computedGeneration = this.timelineDuration;
       this.eventBus.emit('sim:computeProgress', { computedGeneration: this.computedGeneration });
 
@@ -932,8 +931,12 @@ export class SimulationController {
       this.timelineDuration = cacheTarget;
       this.computeAheadTarget = cacheTarget;
       // Skip compute-ahead if GPU will handle this preset (runner may still be initializing)
-      if (this.gpuRuleRunner) return;
-      if (GPUContext.isAvailable() && this.simulation && BUILTIN_IR[this.simulation.preset.meta.name]) return;
+      if (this.gpuRuleRunner || (GPUContext.isAvailable() && this.simulation && BUILTIN_IR[this.simulation.preset.meta.name])) {
+        // Unlock timeline scrubbing immediately — GPU can seek to any frame
+        this.computedGeneration = cacheTarget;
+        this.eventBus.emit('sim:computeProgress', { computedGeneration: cacheTarget });
+        return;
+      }
 
       // If async tick is needed but Pyodide isn't ready yet, defer compute-ahead
       if (this.needsAsyncTick() && this.pyodideBridge && this.pyodideBridge.getStatus() !== 'ready') {
