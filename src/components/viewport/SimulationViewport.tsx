@@ -435,7 +435,9 @@ export function SimulationViewport({ viewportId = 'viewport-1' }: SimulationView
     let gpuCanvas: HTMLCanvasElement | null = null;
 
     function trySetupGPURenderer() {
-      if (!simController || !container || !sim) return;
+      // Always read the CURRENT simulation (not stale closure `sim`)
+      const currentSim = simController?.getSimulation();
+      if (!simController || !container || !currentSim) return;
       const gpuRunner = simController.getGPURuleRunner();
       if (!gpuRunner || is3D || !GPUContext.isAvailable() || !GPUContext.tryGet()) {
         logGPU(`Renderer setup skipped (runner=${!!gpuRunner}, is3D=${is3D}, webgpu=${GPUContext.isAvailable()})`);
@@ -472,7 +474,7 @@ export function SimulationViewport({ viewportId = 'viewport-1' }: SimulationView
         const vProp = layout.find(p => p.name === 'v');
 
         // Check if expression tags write to color/alpha properties
-        const exprTags = sim.preset.expression_tags ?? [];
+        const exprTags = currentSim.preset.expression_tags ?? [];
         const exprOutputs = exprTags.flatMap(t => t.outputs ?? []);
         const writesColor = exprOutputs.some(o => o.includes('colorR') || o.includes('colorG') || o.includes('colorB'));
         const writesAlpha = exprOutputs.some(o => o.includes('alpha'));
@@ -499,6 +501,7 @@ export function SimulationViewport({ viewportId = 'viewport-1' }: SimulationView
         } else {
           colorMapping = { mode: 'binary', primaryOffset: primaryProp?.offset ?? 0, ...defaults };
         }
+        logGPU(`Color mode: ${colorMapping.mode} (exprTags=${exprTags.length}, writesColor=${writesColor}, writesAlpha=${writesAlpha}, preset=${currentSim.preset.meta.name})`);
 
         gpuGridRenderer.setSimulation(
           gpuRunner.getReadBuffer(),
