@@ -25,7 +25,7 @@ export interface ColorMappingConfig {
   primaryOffset: number;
   /** For gradient mode: which property to visualize */
   gradientOffset: number;
-  /** For direct mode: offsets of colorR, colorG, colorB, alpha in the buffer (-1 = not available) */
+  /** For direct mode: offsets of colorR, colorG, colorB, alpha in the buffer */
   colorROffset: number;
   colorGOffset: number;
   colorBOffset: number;
@@ -34,7 +34,7 @@ export interface ColorMappingConfig {
   aliveColor: [number, number, number];
 }
 
-// Render params uniform: 28 floats = 112 bytes, padded to 128 (multiple of 16)
+// Render params: 32 floats/u32s = 128 bytes (aligned to 16)
 const RENDER_PARAMS_SIZE = 128;
 
 const VERTEX_SHADER = /* wgsl */`
@@ -60,29 +60,38 @@ const FRAGMENT_SHADER = /* wgsl */`
 @group(0) @binding(1) var<uniform> rp: RenderParams;
 
 struct RenderParams {
-  gridWidth: u32,
-  gridHeight: u32,
-  stride: u32,
-  primaryOffset: u32,
-  canvasWidth: f32,
-  canvasHeight: f32,
-  viewOffsetX: f32,
-  viewOffsetY: f32,
-  viewScale: f32,
-  deadR: f32, deadG: f32, deadB: f32,
-  aliveR: f32, aliveG: f32, aliveB: f32,
-  mappingMode: u32,  // 0=binary, 1=gradient, 2=direct (colorR/G/B + alpha)
-  gradientOffset: u32,
-  colorROffset: u32,
-  colorGOffset: u32,
-  colorBOffset: u32,
-  alphaOffset: u32,
-  bgR: f32, bgG: f32, bgB: f32,
-  _pad0: f32,
-  _pad1: f32,
-  _pad2: f32,
-  _pad3: f32,
-  _pad4: f32,
+  gridWidth: u32,       // 0
+  gridHeight: u32,      // 1
+  stride: u32,          // 2
+  primaryOffset: u32,   // 3
+  canvasWidth: f32,     // 4
+  canvasHeight: f32,    // 5
+  viewOffsetX: f32,     // 6
+  viewOffsetY: f32,     // 7
+  viewScale: f32,       // 8
+  deadR: f32,           // 9
+  deadG: f32,           // 10
+  deadB: f32,           // 11
+  aliveR: f32,          // 12
+  aliveG: f32,          // 13
+  aliveB: f32,          // 14
+  mappingMode: u32,     // 15: 0=binary, 1=gradient, 2=direct
+  gradientOffset: u32,  // 16
+  colorROffset: u32,    // 17
+  colorGOffset: u32,    // 18
+  colorBOffset: u32,    // 19
+  alphaOffset: u32,     // 20
+  bgR: f32,             // 21
+  bgG: f32,             // 22
+  bgB: f32,             // 23
+  _pad0: u32,           // 24
+  _pad1: u32,           // 25
+  _pad2: u32,           // 26
+  _pad3: u32,           // 27
+  _pad4: u32,           // 28
+  _pad5: u32,           // 29
+  _pad6: u32,           // 30
+  _pad7: u32,           // 31
 }
 
 @fragment

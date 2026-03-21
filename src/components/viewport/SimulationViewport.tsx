@@ -464,53 +464,40 @@ export function SimulationViewport({ viewportId = 'viewport-1' }: SimulationView
         const layout = gpuRunner.getPropertyLayout();
         const primaryProp = layout[0];
 
-        // Determine color mapping based on available properties
-        const presetName = sim.preset.meta.name;
+        // Determine color mapping based on preset properties and expression tags
         const colorR = layout.find(p => p.name === 'colorR');
         const colorG = layout.find(p => p.name === 'colorG');
         const colorB = layout.find(p => p.name === 'colorB');
         const alpha = layout.find(p => p.name === 'alpha');
-        const hasDirectColor = colorR && colorG && colorB;
+        const vProp = layout.find(p => p.name === 'v');
+
+        // Check if expression tags write to color/alpha properties
+        const exprTags = sim.preset.expression_tags ?? [];
+        const exprOutputs = exprTags.flatMap(t => t.outputs ?? []);
+        const writesColor = exprOutputs.some(o => o.includes('colorR') || o.includes('colorG') || o.includes('colorB'));
+        const writesAlpha = exprOutputs.some(o => o.includes('alpha'));
+        const useDirectColor = (writesColor || writesAlpha) && colorR && colorG && colorB;
+
+        // Detect gradient mode (reaction-diffusion systems with u/v concentrations)
+        const isGradient = vProp && !layout.find(p => p.name === 'alive');
+
+        const defaults = {
+          gradientOffset: vProp?.offset ?? 0,
+          colorROffset: colorR?.offset ?? 0,
+          colorGOffset: colorG?.offset ?? 0,
+          colorBOffset: colorB?.offset ?? 0,
+          alphaOffset: alpha?.offset ?? 0,
+          deadColor: [0, 0, 0] as [number, number, number],
+          aliveColor: [0.29, 0.87, 0.5] as [number, number, number],
+        };
 
         let colorMapping: ColorMappingConfig;
-        if (presetName === 'Gray-Scott Reaction-Diffusion') {
-          const vProp = layout.find(p => p.name === 'v');
-          colorMapping = {
-            mode: 'gradient',
-            primaryOffset: primaryProp?.offset ?? 0,
-            gradientOffset: vProp?.offset ?? 1,
-            colorROffset: colorR?.offset ?? 0,
-            colorGOffset: colorG?.offset ?? 0,
-            colorBOffset: colorB?.offset ?? 0,
-            alphaOffset: alpha?.offset ?? 0,
-            deadColor: [0, 0, 0],
-            aliveColor: [0.3, 0.85, 0.3],
-          };
-        } else if (hasDirectColor) {
-          // Preset has colorR/G/B properties — use direct color mode
-          colorMapping = {
-            mode: 'direct',
-            primaryOffset: primaryProp?.offset ?? 0,
-            gradientOffset: 0,
-            colorROffset: colorR.offset,
-            colorGOffset: colorG.offset,
-            colorBOffset: colorB.offset,
-            alphaOffset: alpha?.offset ?? 0,
-            deadColor: [0, 0, 0],
-            aliveColor: [0.29, 0.87, 0.5],
-          };
+        if (isGradient) {
+          colorMapping = { mode: 'gradient', primaryOffset: primaryProp?.offset ?? 0, ...defaults };
+        } else if (useDirectColor) {
+          colorMapping = { mode: 'direct', primaryOffset: primaryProp?.offset ?? 0, ...defaults };
         } else {
-          colorMapping = {
-            mode: 'binary',
-            primaryOffset: primaryProp?.offset ?? 0,
-            gradientOffset: 0,
-            colorROffset: 0,
-            colorGOffset: 0,
-            colorBOffset: 0,
-            alphaOffset: 0,
-            deadColor: [0, 0, 0],
-            aliveColor: [0.29, 0.87, 0.5],
-          };
+          colorMapping = { mode: 'binary', primaryOffset: primaryProp?.offset ?? 0, ...defaults };
         }
 
         gpuGridRenderer.setSimulation(
