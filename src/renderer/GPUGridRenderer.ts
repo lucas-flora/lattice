@@ -20,17 +20,22 @@ export interface GPUCameraState {
 
 /** How to map cell data to colors */
 export interface ColorMappingConfig {
-  mode: 'binary' | 'gradient';
+  mode: 'binary' | 'gradient' | 'direct';
   /** Property offset for the primary value (alive, u, v, etc.) */
   primaryOffset: number;
   /** For gradient mode: which property to visualize */
   gradientOffset: number;
+  /** For direct mode: offsets of colorR, colorG, colorB, alpha in the buffer (-1 = not available) */
+  colorROffset: number;
+  colorGOffset: number;
+  colorBOffset: number;
+  alphaOffset: number;
   deadColor: [number, number, number];
   aliveColor: [number, number, number];
 }
 
-// Render params uniform: 20 floats = 80 bytes, padded to 96 (multiple of 16)
-const RENDER_PARAMS_SIZE = 96;
+// Render params uniform: 28 floats = 112 bytes, padded to 128 (multiple of 16)
+const RENDER_PARAMS_SIZE = 128;
 
 const VERTEX_SHADER = /* wgsl */`
 struct VertexOutput {
@@ -66,13 +71,18 @@ struct RenderParams {
   viewScale: f32,
   deadR: f32, deadG: f32, deadB: f32,
   aliveR: f32, aliveG: f32, aliveB: f32,
-  mappingMode: u32,  // 0=binary, 1=gradient
+  mappingMode: u32,  // 0=binary, 1=gradient, 2=direct (colorR/G/B + alpha)
   gradientOffset: u32,
-  _pad0: u32,
-  _pad1: u32,
-  _pad2: u32,
+  colorROffset: u32,
+  colorGOffset: u32,
+  colorBOffset: u32,
+  alphaOffset: u32,
   bgR: f32, bgG: f32, bgB: f32,
+  _pad0: f32,
+  _pad1: f32,
+  _pad2: f32,
   _pad3: f32,
+  _pad4: f32,
 }
 
 @fragment
@@ -92,12 +102,27 @@ fn fs(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
   let idx = u32(gy) * rp.gridWidth + u32(gx);
   let primary = cells[idx * rp.stride + rp.primaryOffset];
 
-  var r: f32; var g: f32; var b: f32;
+  var r: f32; var g: f32; var b: f32; var a: f32 = 1.0;
 
-  if (rp.mappingMode == 1u) {
+  if (rp.mappingMode == 2u) {
+    // Direct mode: read colorR/G/B and alpha from buffer
+    let cr = cells[idx * rp.stride + rp.colorROffset];
+    let cg = cells[idx * rp.stride + rp.colorGOffset];
+    let cb = cells[idx * rp.stride + rp.colorBOffset];
+    let ca = cells[idx * rp.stride + rp.alphaOffset];
+    // Use direct color if any channel is set, else fall back to alive mapping
+    let hasColor = (cr + cg + cb) > 0.001;
+    if (hasColor) {
+      r = cr; g = cg; b = cb;
+    } else {
+      r = mix(rp.deadR, rp.aliveR, primary);
+      g = mix(rp.deadG, rp.aliveG, primary);
+      b = mix(rp.deadB, rp.aliveB, primary);
+    }
+    a = ca;
+  } else if (rp.mappingMode == 1u) {
     // Gradient mode: map value to color ramp
     let v = cells[idx * rp.stride + rp.gradientOffset];
-    // Blue→white→red gradient
     r = smoothstep(0.2, 0.6, v);
     g = 1.0 - abs(v - 0.35) * 2.5;
     b = 1.0 - smoothstep(0.0, 0.4, v);
@@ -108,6 +133,11 @@ fn fs(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
     g = mix(rp.deadG, rp.aliveG, primary);
     b = mix(rp.deadB, rp.aliveB, primary);
   }
+
+  // Apply alpha (premultiplied blend toward background)
+  r = mix(rp.bgR, r, a);
+  g = mix(rp.bgG, g, a);
+  b = mix(rp.bgB, b, a);
 
   return vec4<f32>(r, g, b, 1.0);
 }
@@ -230,12 +260,16 @@ export class GPUGridRenderer {
     f32View[12] = this.colorMapping.aliveColor[0];
     f32View[13] = this.colorMapping.aliveColor[1];
     f32View[14] = this.colorMapping.aliveColor[2];
-    u32View[15] = this.colorMapping.mode === 'gradient' ? 1 : 0;
+    u32View[15] = this.colorMapping.mode === 'gradient' ? 1 : this.colorMapping.mode === 'direct' ? 2 : 0;
     u32View[16] = this.colorMapping.gradientOffset;
+    u32View[17] = this.colorMapping.colorROffset;
+    u32View[18] = this.colorMapping.colorGOffset;
+    u32View[19] = this.colorMapping.colorBOffset;
+    u32View[20] = this.colorMapping.alphaOffset;
     // Background color (dark zinc)
-    f32View[20] = 0.07;  // ~zinc-900
-    f32View[21] = 0.07;
-    f32View[22] = 0.08;
+    f32View[21] = 0.07;  // ~zinc-900
+    f32View[22] = 0.07;
+    f32View[23] = 0.08;
 
     this.device.queue.writeBuffer(this.renderParamsBuffer, 0, data);
 

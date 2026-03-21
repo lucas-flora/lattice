@@ -464,25 +464,52 @@ export function SimulationViewport({ viewportId = 'viewport-1' }: SimulationView
         const layout = gpuRunner.getPropertyLayout();
         const primaryProp = layout[0];
 
-        // Determine color mapping based on preset
+        // Determine color mapping based on available properties
         const presetName = sim.preset.meta.name;
+        const colorR = layout.find(p => p.name === 'colorR');
+        const colorG = layout.find(p => p.name === 'colorG');
+        const colorB = layout.find(p => p.name === 'colorB');
+        const alpha = layout.find(p => p.name === 'alpha');
+        const hasDirectColor = colorR && colorG && colorB;
+
         let colorMapping: ColorMappingConfig;
-        if (presetName === 'gray-scott') {
+        if (presetName === 'Gray-Scott Reaction-Diffusion') {
           const vProp = layout.find(p => p.name === 'v');
           colorMapping = {
             mode: 'gradient',
             primaryOffset: primaryProp?.offset ?? 0,
             gradientOffset: vProp?.offset ?? 1,
+            colorROffset: colorR?.offset ?? 0,
+            colorGOffset: colorG?.offset ?? 0,
+            colorBOffset: colorB?.offset ?? 0,
+            alphaOffset: alpha?.offset ?? 0,
             deadColor: [0, 0, 0],
             aliveColor: [0.3, 0.85, 0.3],
+          };
+        } else if (hasDirectColor) {
+          // Preset has colorR/G/B properties — use direct color mode
+          colorMapping = {
+            mode: 'direct',
+            primaryOffset: primaryProp?.offset ?? 0,
+            gradientOffset: 0,
+            colorROffset: colorR.offset,
+            colorGOffset: colorG.offset,
+            colorBOffset: colorB.offset,
+            alphaOffset: alpha?.offset ?? 0,
+            deadColor: [0, 0, 0],
+            aliveColor: [0.29, 0.87, 0.5],
           };
         } else {
           colorMapping = {
             mode: 'binary',
             primaryOffset: primaryProp?.offset ?? 0,
             gradientOffset: 0,
+            colorROffset: 0,
+            colorGOffset: 0,
+            colorBOffset: 0,
+            alphaOffset: 0,
             deadColor: [0, 0, 0],
-            aliveColor: [0.29, 0.87, 0.5], // green-400
+            aliveColor: [0.29, 0.87, 0.5],
           };
         }
 
