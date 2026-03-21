@@ -152,8 +152,16 @@ export function generateWGSL(program: IRProgram, config: WGSLCodegenConfig): str
         }
         return `prop_${node.property}`;
 
-      case 'binop':
-        return `(${emitExpr(node.left)} ${node.op} ${emitExpr(node.right)})`;
+      case 'binop': {
+        let l = emitExpr(node.left);
+        let r = emitExpr(node.right);
+        // Division of u32 values: cast to f32 for float division (not integer truncation)
+        if (node.op === '/' && node.left.type === 'u32' && node.right.type === 'u32') {
+          l = `f32(${l})`;
+          r = `f32(${r})`;
+        }
+        return `(${l} ${node.op} ${r})`;
+      }
 
       case 'unary':
         if (node.op === '!') return `!(${emitExpr(node.operand)})`;
@@ -215,7 +223,11 @@ export function generateWGSL(program: IRProgram, config: WGSLCodegenConfig): str
       case 'write_property': {
         const offset = offsets.get(stmt.property);
         if (offset !== undefined) {
-          out.push(`${indent}setCell(idx, ${offset}u, ${emitExpr(stmt.value)});`);
+          // setCell expects f32 — auto-cast if the value is u32 or bool
+          let valExpr = emitExpr(stmt.value);
+          if (stmt.value.type === 'u32') valExpr = `f32(${valExpr})`;
+          else if (stmt.value.type === 'bool') valExpr = `select(0.0, 1.0, ${valExpr})`;
+          out.push(`${indent}setCell(idx, ${offset}u, ${valExpr});`);
         }
         break;
       }
