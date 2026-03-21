@@ -254,6 +254,7 @@ export class GPURuleRunner {
           propertyLayout: this.propertyLayout,
           envParams: this.envParamNames,
           globalParams: [],
+          copyAllProperties: true, // Expression tags only write some props — copy the rest
         };
         const wgsl = generateWGSL(irProgram, config);
         const pipeline = this.createPipelineWithLayout(wgsl, `expr-${tag.name}`);

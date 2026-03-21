@@ -25,6 +25,9 @@ export interface WGSLCodegenConfig {
   envParams: string[];
   /** Names of global params */
   globalParams: string[];
+  /** If true, copy all properties from cellsIn→cellsOut before executing statements.
+   *  Required for expression tag passes that only write a subset of properties. */
+  copyAllProperties?: boolean;
 }
 
 /**
@@ -108,6 +111,18 @@ export function generateWGSL(program: IRProgram, config: WGSLCodegenConfig): str
   lines.push('  if (x >= params.width || y >= params.height) { return; }');
   lines.push('  let idx = y * params.width + x;');
   lines.push('');
+
+  // ── Copy all properties (expression tag passes need this to preserve unmodified props) ──
+  if (config.copyAllProperties) {
+    lines.push('  // Copy all properties from input to output');
+    for (const p of config.propertyLayout) {
+      for (let ch = 0; ch < p.channels; ch++) {
+        const off = p.offset + ch;
+        lines.push(`  cellsOut[idx * params.stride + ${off}u] = cellsIn[idx * params.stride + ${off}u];`);
+      }
+    }
+    lines.push('');
+  }
 
   // ── Read inputs ──
   for (const input of program.inputs) {
