@@ -74,9 +74,9 @@ rule:
     self.density = new_d
     self.pressure = clamp(pressure + env_dt * (-div_v * 0.5), -10.0, 10.0)
     d = clamp(new_d, 0.0, 2.0) * 0.5
-    spd = clamp(sqrt(new_vx * new_vx + new_vy * new_vy) * 2.0, 0.0, 1.0)
-    self.colorR = spd * 0.4
-    self.colorG = d * 0.8 + spd * 0.3
+    spd = clamp(sqrt(new_vx * new_vx + new_vy * new_vy) * 3.0, 0.0, 1.0)
+    self.colorR = d * spd * 0.6
+    self.colorG = d * (0.7 + spd * 0.3)
     self.colorB = d
 
 visual_mappings:
