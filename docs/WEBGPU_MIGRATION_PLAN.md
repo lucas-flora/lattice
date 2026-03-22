@@ -426,27 +426,18 @@ src/engine/ir/
 
 **Goal**: Remove all legacy CPU execution paths. Update presets. Ship it.
 
-**Delete:**
-- `src/engine/scripting/PyodideBridge.ts`
-- `src/engine/scripting/pyodide.worker.ts`
-- `src/engine/scripting/expressionHarness.ts`
-- `src/engine/scripting/scriptHarness.ts`
-- `src/engine/scripting/pythonHarness.ts`
-- `src/engine/scripting/gridTransfer.ts`
-- `src/engine/rule/RuleRunner.ts` (TS per-cell path)
-- `src/engine/rule/RuleCompiler.ts` (`new Function` path)
-- `src/engine/rule/PythonRuleRunner.ts`
-- `src/engine/rule/WasmRuleRunner.ts`
-- `src/wasm/` directory (Rust WASM rules)
+**Phase 6 Status: COMPLETE** (2026-03-22)
 
-**Update:**
-- All 8 built-in presets: `rule.type` → `webgpu`
-- `PresetConfig` schema: add `webgpu` rule type, deprecate `python` and `typescript` types
-- Node editor: "Show Code" tab displays Python (IR → PythonCodegen) + WGSL (IR → WGSLCodegen)
-- `ARCHITECTURE.md` and `pipeline.md` rewritten for new architecture
-- Error UX: clear messages when Python transpilation fails
-
-**Re-run full benchmark suite**: Compare against Phase 0 baseline. Document improvement ratios.
+Implementation notes:
+- **BUILTIN_IR deleted** — no hand-built IR programs. All 9 presets compile through generic Python transpiler → IR → WGSL pipeline.
+- **3,572 lines of legacy code deleted**: RuleRunner, RuleCompiler, PythonRuleRunner, WasmRuleRunner, PyodideBridge, pyodide.worker, expressionHarness, scriptHarness, pythonHarness, gridTransfer, src/wasm/ directory.
+- **Simulation.ts refactored** to GPU-only: owns generation counter directly, no runner dependency. Grid metadata + tag registry only.
+- **SimulationController.ts** stripped of ~600 lines of Pyodide init, CPU compute-ahead, async playback.
+- **PythonParser extended**: `neighbor_at(dx, dy, prop)` for directional reads, `neighbor_count(prop, value)` for conditional counting, negative literal support.
+- **All 9 presets rewritten as Python** (transpilable subset): Conway's GoL, Conway's Advanced, Brian's Brain, Gray-Scott, Navier-Stokes, Langton's Ant, Rule 110, Link Testbed, Seeds (new).
+- **Data-driven rendering**: colors from `visual_mappings` YAML (no hardcoded green). Mode detected from mapping format (min/max → gradient, "0"/"1" → binary, colorR/G/B writes → direct).
+- **Seeds preset** written from scratch as genericness proof — loads and runs on GPU with zero special-casing.
+- **Preset schema** updated: `webgpu` is canonical rule.type, `python`/`typescript`/`wasm` kept as backward-compat aliases.
 
 ---
 
