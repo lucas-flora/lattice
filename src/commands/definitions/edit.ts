@@ -83,10 +83,11 @@ export function registerEditCommands(
         return { success: false, error: 'No simulation loaded' };
       }
 
-      // Auto-pause if running
+      // Auto-pause and wait for GPU→CPU readback to complete
       if (controller.isPlaying()) {
         controller.pause();
       }
+      await controller.awaitGPUSync();
 
       const firstProp = sim.preset.cell_properties?.[0]?.name
         ?? sim.typeRegistry.getPropertyUnion()[0].name;
@@ -127,10 +128,11 @@ export function registerEditCommands(
         return { success: false, error: 'No simulation loaded' };
       }
 
-      // Auto-pause if running
+      // Auto-pause and wait for GPU→CPU readback to complete
       if (controller.isPlaying()) {
         controller.pause();
       }
+      await controller.awaitGPUSync();
 
       const firstProp = sim.preset.cell_properties?.[0]?.name
         ?? sim.typeRegistry.getPropertyUnion()[0].name;

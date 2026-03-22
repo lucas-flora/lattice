@@ -115,6 +115,8 @@ export class SimulationController {
 
   /** Guard: prevents interaction during GPU→CPU readback on pause */
   protected gpuSyncInFlight: boolean = false;
+  /** Resolvers waiting for GPU sync to complete */
+  private gpuSyncWaiters: (() => void)[] = [];
 
   /** Memory budget for the frame cache in bytes (default 512MB) */
   private static readonly CACHE_MEMORY_BUDGET = 512 * 1024 * 1024;
@@ -194,6 +196,15 @@ export class SimulationController {
   /** Get the GPU rule runner (for renderer access) */
   getGPURuleRunner(): GPURuleRunner | null {
     return this.gpuRuleRunner;
+  }
+
+  /**
+   * Wait for any in-flight GPU→CPU readback to complete.
+   * Call before editing the CPU grid to ensure it has current GPU state.
+   */
+  async awaitGPUSync(): Promise<void> {
+    if (!this.gpuSyncInFlight) return;
+    return new Promise(resolve => this.gpuSyncWaiters.push(resolve));
   }
 
   /**
@@ -522,6 +533,9 @@ export class SimulationController {
       this.gpuSyncInFlight = true;
       void this.syncGPUToGrid().finally(() => {
         this.gpuSyncInFlight = false;
+        // Resolve any pending edit waiters
+        for (const resolve of this.gpuSyncWaiters) resolve();
+        this.gpuSyncWaiters = [];
       });
     }
 
