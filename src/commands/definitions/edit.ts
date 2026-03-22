@@ -88,7 +88,12 @@ export function registerEditCommands(
         controller.pause();
       }
 
-      const firstProp = sim.preset.cell_properties?.[0]?.name
+      // Determine draw target: use the visual-mapped color property if available,
+      // otherwise the first declared cell property. This ensures drawing is visible
+      // in all rendering modes (binary reads primary, gradient reads the mapped prop).
+      const colorMapping = sim.preset.visual_mappings?.find(m => m.channel === 'color');
+      const drawProp = colorMapping?.property
+        ?? sim.preset.cell_properties?.[0]?.name
         ?? sim.typeRegistry.getPropertyUnion()[0].name;
       const brushSize = useUiStore.getState().brushSize;
       const halfBrush = Math.floor(brushSize / 2);
@@ -101,13 +106,9 @@ export function registerEditCommands(
           const cy = y + dy;
           if (cx >= 0 && cx < sim.grid.config.width && cy >= 0 && cy < sim.grid.config.height) {
             const index = sim.grid.coordToIndex(cx, cy, 0);
-            // Write directly to GPU buffer for immediate visual feedback
-            gpuRunner?.writeCellDirect(firstProp, index, 1);
-            // Ensure the cell is visible in all rendering modes:
-            // Direct mode needs alpha > 0 to not blend to background
+            gpuRunner?.writeCellDirect(drawProp, index, 1);
             gpuRunner?.writeCellDirect('alpha', index, 1);
-            // Also write to CPU grid for undo/redo and cache
-            history.editCell(firstProp, index, 1);
+            history.editCell(drawProp, index, 1);
             sim.setCellDirect('alpha', index, 1);
           }
         }
@@ -139,7 +140,9 @@ export function registerEditCommands(
         controller.pause();
       }
 
-      const firstProp = sim.preset.cell_properties?.[0]?.name
+      const colorMapping = sim.preset.visual_mappings?.find(m => m.channel === 'color');
+      const drawProp = colorMapping?.property
+        ?? sim.preset.cell_properties?.[0]?.name
         ?? sim.typeRegistry.getPropertyUnion()[0].name;
       const brushSize = useUiStore.getState().brushSize;
       const halfBrush = Math.floor(brushSize / 2);
@@ -152,11 +155,9 @@ export function registerEditCommands(
           const cy = y + dy;
           if (cx >= 0 && cx < sim.grid.config.width && cy >= 0 && cy < sim.grid.config.height) {
             const index = sim.grid.coordToIndex(cx, cy, 0);
-            // Write directly to GPU buffer for immediate visual feedback
-            gpuRunner?.writeCellDirect(firstProp, index, 0);
+            gpuRunner?.writeCellDirect(drawProp, index, 0);
             gpuRunner?.writeCellDirect('alpha', index, 0);
-            // Also write to CPU grid for undo/redo and cache
-            history.editCell(firstProp, index, 0);
+            history.editCell(drawProp, index, 0);
             sim.setCellDirect('alpha', index, 0);
           }
         }
