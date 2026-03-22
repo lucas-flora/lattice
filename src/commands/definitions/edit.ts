@@ -103,14 +103,17 @@ export function registerEditCommands(
             const index = sim.grid.coordToIndex(cx, cy, 0);
             // Write directly to GPU buffer for immediate visual feedback
             gpuRunner?.writeCellDirect(firstProp, index, 1);
+            // Ensure the cell is visible in all rendering modes:
+            // Direct mode needs alpha > 0 to not blend to background
+            gpuRunner?.writeCellDirect('alpha', index, 1);
             // Also write to CPU grid for undo/redo and cache
             history.editCell(firstProp, index, 1);
+            sim.setCellDirect('alpha', index, 1);
           }
         }
       }
       history.commitCommand();
 
-      // Sync CPU→GPU state lazily after readback completes (for cache/undo)
       controller.onGridEdited();
 
       eventBus.emit('edit:draw', { x, y });
@@ -151,14 +154,15 @@ export function registerEditCommands(
             const index = sim.grid.coordToIndex(cx, cy, 0);
             // Write directly to GPU buffer for immediate visual feedback
             gpuRunner?.writeCellDirect(firstProp, index, 0);
+            gpuRunner?.writeCellDirect('alpha', index, 0);
             // Also write to CPU grid for undo/redo and cache
             history.editCell(firstProp, index, 0);
+            sim.setCellDirect('alpha', index, 0);
           }
         }
       }
       history.commitCommand();
 
-      // Sync CPU→GPU state lazily after readback completes (for cache/undo)
       controller.onGridEdited();
 
       eventBus.emit('edit:erase', { x, y });
