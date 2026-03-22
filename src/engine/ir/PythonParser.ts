@@ -52,6 +52,7 @@ const BUILTIN_FNS = new Set([
   'min', 'max', 'clamp', 'smoothstep', 'pow',
   'fract', 'sign', 'step', 'mix',
   'int', 'float',
+  'neighbor_at', 'neighbor_count',
 ]);
 
 export function parsePython(source: string, context: PythonParseContext): PythonParseResult {
@@ -404,6 +405,45 @@ export function parsePython(source: string, context: PythonParseContext): Python
     if (name === 'float') {
       if (args.length !== 1) throw new ParseError(`float() takes exactly 1 argument`, tok.line, tok.column);
       return IR.toF32(args[0]);
+    }
+
+    // Neighbor functions
+    if (name === 'neighbor_at') {
+      // neighbor_at(dx, dy, prop) — read a specific neighbor's property
+      if (args.length !== 3) throw new ParseError(`neighbor_at(dx, dy, prop) takes 3 arguments`, tok.line, tok.column);
+      const dxNode = args[0];
+      const dyNode = args[1];
+      const propNode = args[2];
+      // dx and dy must be numeric literals (or negated literals), prop must be a cell read
+      const getLiteralValue = (node: IRNode): number | null => {
+        if (node.kind === 'literal') return node.value;
+        if (node.kind === 'unary' && node.op === '-' && node.operand.kind === 'literal') return -node.operand.value;
+        return null;
+      };
+      const dxVal = getLiteralValue(dxNode);
+      const dyVal = getLiteralValue(dyNode);
+      if (dxVal === null) throw new ParseError(`neighbor_at: dx must be a numeric literal`, tok.line, tok.column);
+      if (dyVal === null) throw new ParseError(`neighbor_at: dy must be a numeric literal`, tok.line, tok.column);
+      if (propNode.kind !== 'read_property' || propNode.scope !== 'cell') {
+        throw new ParseError(`neighbor_at: third argument must be a cell property name`, tok.line, tok.column);
+      }
+      neighborhoodAccess = true;
+      trackInput(propNode.property, 'cell');
+      return IR.neighborAt(dxVal, dyVal, propNode.property);
+    }
+
+    if (name === 'neighbor_count') {
+      // neighbor_count(prop, value) — count neighbors where prop == value
+      if (args.length !== 2) throw new ParseError(`neighbor_count(prop, value) takes 2 arguments`, tok.line, tok.column);
+      const propNode = args[0];
+      const valueNode = args[1];
+      if (propNode.kind !== 'read_property' || propNode.scope !== 'cell') {
+        throw new ParseError(`neighbor_count: first argument must be a cell property name`, tok.line, tok.column);
+      }
+      if (valueNode.kind !== 'literal') throw new ParseError(`neighbor_count: second argument must be a numeric literal`, tok.line, tok.column);
+      neighborhoodAccess = true;
+      trackInput(propNode.property, 'cell');
+      return IR.neighborCount(propNode.property, '==', valueNode.value);
     }
 
     // Math functions

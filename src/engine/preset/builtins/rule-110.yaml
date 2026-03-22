@@ -1,6 +1,4 @@
-# Built-in preset: TypeScript compute body (JS/WASM fast path).
-# User-authored custom rules will use Python via Pyodide — both paths coexist.
-# See docs/ARCHITECTURE.md for the scripting system design.
+# Rule 110 Elementary Cellular Automaton — GPU-native via Python transpiler → IR → WGSL.
 
 schema_version: "1"
 
@@ -21,15 +19,22 @@ cell_properties:
     default: 0
     role: "input_output"
 
+params:
+  - name: "ruleNumber"
+    label: "Rule Number"
+    type: "int"
+    default: 110
+    min: 0
+    max: 255
+    step: 1
+
 rule:
-  type: "typescript"
+  type: "webgpu"
   compute: |
-    const c = ctx.cell.state ? 1 : 0;
-    const left = ctx.neighbors.length > 0 ? (ctx.neighbors[0].state ? 1 : 0) : 0;
-    const right = ctx.neighbors.length > 1 ? (ctx.neighbors[1].state ? 1 : 0) : 0;
-    const pattern = (left << 2) | (c << 1) | right;
-    const rule110 = 0b01101110;
-    return { state: (rule110 >> pattern) & 1 };
+    left = neighbor_at(-1, 0, state)
+    right = neighbor_at(1, 0, state)
+    pattern = left * 4.0 + state * 2.0 + right
+    self.state = floor(env_ruleNumber / pow(2.0, pattern)) % 2.0
 
 visual_mappings:
   - property: "state"
@@ -42,5 +47,5 @@ ai_context:
   description: "Elementary cellular automaton Rule 110"
   hints:
     - "Each cell looks at itself and its two neighbors"
-    - "The 3-bit pattern indexes into the binary representation of 110"
+    - "The 3-bit pattern indexes into the binary representation of the rule number"
     - "Rule 110 is Turing-complete"

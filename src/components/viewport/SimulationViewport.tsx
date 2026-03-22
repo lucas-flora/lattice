@@ -26,7 +26,6 @@ import { useUiStore } from '@/store/uiStore';
 import { useSimStore } from '@/store/simStore';
 import { HUD } from '@/components/hud/HUD';
 import { GPUContext } from '@/engine/gpu/GPUContext';
-import { BUILTIN_IR } from '@/engine/ir/builtinIR';
 import { logGPU } from '@/lib/debugLog';
 
 /** Props for multi-viewport support */
@@ -142,7 +141,7 @@ export function SimulationViewport({ viewportId = 'viewport-1' }: SimulationView
 
     // If GPU rendering is likely (built-in IR exists), hide InstancedMesh immediately
     // to prevent the old grid flashing before the GPU renderer takes over
-    if (!is3D && GPUContext.isAvailable() && (BUILTIN_IR[sim.preset.meta.name] || sim.preset.rule.compute)) {
+    if (!is3D && GPUContext.isAvailable() && (sim.preset.rule.compute)) {
       latticeRenderer.setGPURenderingActive(true);
     }
 
@@ -343,7 +342,7 @@ export function SimulationViewport({ viewportId = 'viewport-1' }: SimulationView
 
         // Hide InstancedMesh if GPU is expected for this preset
         const is3DNew = newSim.preset.grid.dimensionality === '3d';
-        if (!is3DNew && GPUContext.isAvailable() && (BUILTIN_IR[newSim.preset.meta.name] || newSim.preset.rule.compute)) {
+        if (!is3DNew && GPUContext.isAvailable() && newSim.preset.rule.compute) {
           latticeRenderer.setGPURenderingActive(true);
         } else {
           latticeRenderer.setGPURenderingActive(false);

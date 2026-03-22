@@ -1,13 +1,12 @@
 /**
  * GPURuleRunner: executes simulation rules as GPU compute shaders.
  *
- * Sits alongside the existing RuleRunner/WasmRuleRunner/PythonRuleRunner.
- * Uses the Phase 1 GPU infrastructure (GPUContext, BufferManager, ShaderCompiler,
- * ComputeDispatcher) and Phase 2 IR pipeline (IRBuilder, WGSLCodegen).
+ * All rules compile through the generic pipeline:
+ *   YAML rule.compute (Python subset) → PythonParser → IR → WGSLCodegen → GPU compute shader
  *
  * Lifecycle:
  *   1. construct with grid + preset + GPU context
- *   2. initialize() — build IR, compile shader, upload initial state
+ *   2. initialize() — transpile rule, compile shader, upload initial state
  *   3. tick() — dispatch compute, swap buffers
  *   4. destroy() — release GPU resources
  */
@@ -20,7 +19,6 @@ import { ShaderCompiler } from '../gpu/ShaderCompiler';
 import { ComputeDispatcher } from '../gpu/ComputeDispatcher';
 import { GPUContext } from '../gpu/GPUContext';
 import type { PropertyLayout, GPUPropertyDescriptor } from '../gpu/types';
-import { BUILTIN_IR } from '../ir/builtinIR';
 import { validateIR } from '../ir/validate';
 import { generateWGSL, type WGSLCodegenConfig } from '../ir/WGSLCodegen';
 import type { IRProgram } from '../ir/types';
@@ -88,43 +86,29 @@ export class GPURuleRunner {
     // 3. Build env param names (order matters — maps to uniform buffer slots)
     this.envParamNames = (this.preset.params ?? []).map(p => p.name);
 
-    // 4. Build IR program — try built-in first, then transpile from compute body
-    let irProgram: IRProgram | null = null;
+    // 4. Transpile rule compute body (Python subset) → IR
+    // Use the full property layout (includes inherent props like age, alpha, colorR/G/B)
+    const context = {
+      cellProperties: this.propertyLayout
+        .filter(p => p.name !== '_cellType')
+        .map(p => ({
+          name: p.name,
+          type: 'f32' as const,
+          channels: p.channels,
+        })),
+      envParams: this.envParamNames,
+      globalVars: [] as string[],
+      neighborhoodType: 'moore' as const,
+    };
 
-    // 4a. Try hand-built IR (optimization for known presets)
-    const irBuilder = BUILTIN_IR[presetName];
-    if (irBuilder) {
-      irProgram = irBuilder(this.preset);
-    }
-
-    // 4b. Try transpiling the compute body as Python
-    if (!irProgram && this.preset.rule.compute) {
-      try {
-        const cellProps = (this.preset.cell_properties ?? []);
-        const context = {
-          cellProperties: cellProps.map(p => ({
-            name: p.name,
-            type: 'f32' as const,
-            channels: CHANNELS_PER_TYPE[p.type] ?? 1,
-          })),
-          envParams: this.envParamNames,
-          globalVars: [] as string[],
-          neighborhoodType: 'moore' as const,
-        };
-        const result = parsePython(this.preset.rule.compute, context);
-        irProgram = result.program;
-        logGPU(`Python transpiled to IR for "${presetName}" (${irProgram.statements.length} statements)`);
-      } catch (e) {
-        if (e instanceof ParseError) {
-          logGPU(`Python transpilation failed for "${presetName}": ${e.message}`);
-        } else {
-          throw e;
-        }
-      }
-    }
-
-    if (!irProgram) {
-      throw new Error(`No IR available for preset "${presetName}" — no built-in IR and transpilation failed`);
+    let irProgram: IRProgram;
+    try {
+      const result = parsePython(this.preset.rule.compute, context);
+      irProgram = result.program;
+      logGPU(`Transpiled "${presetName}" → IR (${irProgram.statements.length} statements)`);
+    } catch (e) {
+      const msg = e instanceof ParseError ? e.message : String(e);
+      throw new Error(`Transpilation failed for "${presetName}": ${msg}`);
     }
 
     // 5. Validate IR
@@ -219,13 +203,14 @@ export class GPURuleRunner {
     const tags = this.preset.expression_tags;
     if (!tags || tags.length === 0) return;
 
-    const cellProps = (this.preset.cell_properties ?? []);
     const context = {
-      cellProperties: cellProps.map(p => ({
-        name: p.name,
-        type: 'f32' as const,
-        channels: CHANNELS_PER_TYPE[p.type] ?? 1,
-      })),
+      cellProperties: this.propertyLayout
+        .filter(p => p.name !== '_cellType')
+        .map(p => ({
+          name: p.name,
+          type: 'f32' as const,
+          channels: p.channels,
+        })),
       envParams: this.envParamNames,
       globalVars: [] as string[],
       neighborhoodType: 'moore' as const,

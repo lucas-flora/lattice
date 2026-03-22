@@ -16,7 +16,6 @@ import { supabase } from './supabaseClient';
 import type { BenchmarkConfig } from './benchmarkSuite';
 import { GPURuleRunner } from '../engine/rule/GPURuleRunner';
 import { GPUContext } from '../engine/gpu/GPUContext';
-import { BUILTIN_IR } from '../engine/ir/builtinIR';
 
 /** Architecture tag for CPU measurements */
 const CPU_TAG = 'baseline-cpu';
@@ -233,8 +232,7 @@ export async function runBenchmark(
 export function canRunGPU(config: BenchmarkConfig): boolean {
   if (!GPUContext.isAvailable()) return false;
   const presetConfig = loadBuiltinPresetClient(config.presetName as BuiltinPresetNameClient);
-  const irBuilder = BUILTIN_IR[presetConfig.meta.name];
-  return !!irBuilder && !!irBuilder(presetConfig);
+  return !!presetConfig.rule.compute;
 }
 
 /**

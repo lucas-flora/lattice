@@ -4,7 +4,8 @@
  * Provides YAML strings inlined as template literals instead of reading from fs.
  * This module is safe for browser/Next.js client-side use.
  *
- * Maintains the same BUILTIN_PRESET_NAMES and PresetConfig interface as builtinPresets.ts.
+ * All presets use rule.type: "webgpu" — rules are Python-subset code that
+ * transpiles to IR → WGSL and runs as GPU compute shaders.
  */
 
 import { loadPresetOrThrow } from './loader';
@@ -66,17 +67,13 @@ params:
     max: 8
     step: 1
 rule:
-  type: "typescript"
+  type: "webgpu"
   compute: |
-    const alive = ctx.cell.alive;
-    const sMin = ctx.params.surviveMin ?? 2;
-    const sMax = ctx.params.surviveMax ?? 3;
-    const birth = ctx.params.birthCount ?? 3;
-    const liveNeighbors = ctx.neighbors.filter(n => n.alive === 1).length;
-    if (alive === 1) {
-      return { alive: (liveNeighbors >= sMin && liveNeighbors <= sMax) ? 1 : 0 };
-    }
-    return { alive: liveNeighbors === birth ? 1 : 0 };
+    n = neighbor_sum_alive
+    if (alive > 0.5 and n >= env_surviveMin and n <= env_surviveMax) or n == env_birthCount:
+        self.alive = 1.0
+    else:
+        self.alive = 0.0
 visual_mappings:
   - property: "alive"
     channel: "color"
@@ -117,18 +114,15 @@ params:
     max: 200
     step: 5
 rule:
-  type: "typescript"
+  type: "webgpu"
   compute: |
-    const alive = ctx.cell.alive;
-    const age = ctx.cell.age;
-    const liveNeighbors = ctx.neighbors.filter(n => n.alive === 1).length;
-    let newAlive;
-    if (alive === 1) {
-      newAlive = (liveNeighbors === 2 || liveNeighbors === 3) ? 1 : 0;
-    } else {
-      newAlive = liveNeighbors === 3 ? 1 : 0;
-    }
-    return { alive: newAlive, age: newAlive > 0 ? age + 1 : 0 };
+    n = neighbor_sum_alive
+    if n == 3 or (alive > 0.5 and n >= 2 and n < 4):
+        self.alive = 1.0
+        self.age = age + 1.0
+    else:
+        self.alive = 0.0
+        self.age = 0.0
 expression_tags:
   - name: "fade-on-age"
     owner: { type: "cell-type", id: "default" }
@@ -186,14 +180,12 @@ params:
     max: 255
     step: 1
 rule:
-  type: "typescript"
+  type: "webgpu"
   compute: |
-    const c = ctx.cell.state ? 1 : 0;
-    const left = ctx.neighbors.length > 0 ? (ctx.neighbors[0].state ? 1 : 0) : 0;
-    const right = ctx.neighbors.length > 1 ? (ctx.neighbors[1].state ? 1 : 0) : 0;
-    const pattern = (left << 2) | (c << 1) | right;
-    const ruleNum = ctx.params.ruleNumber ?? 110;
-    return { state: (ruleNum >> pattern) & 1 };
+    left = neighbor_at(-1, 0, state)
+    right = neighbor_at(1, 0, state)
+    pattern = left * 4.0 + state * 2.0 + right
+    self.state = floor(env_ruleNumber / pow(2.0, pattern)) % 2.0
 visual_mappings:
   - property: "state"
     channel: "color"
@@ -227,41 +219,40 @@ cell_properties:
     default: 0
     role: "input_output"
 rule:
-  type: "typescript"
+  type: "webgpu"
   compute: |
-    const hasAnt = ctx.cell.ant === 1;
-    if (!hasAnt) {
-      let newColor = ctx.cell.color;
-      let newAnt = 0;
-      let newDir = 0;
-      for (const n of ctx.neighbors) {
-        if (n.ant !== 1) continue;
-        const nDir = n.ant_dir;
-        const nColor = n.color;
-        let nextDir;
-        if (nColor === 0) { nextDir = (nDir + 1) % 4; }
-        else { nextDir = (nDir + 3) % 4; }
-        const dx = [0, 1, 0, -1];
-        const dy = [-1, 0, 1, 0];
-        const targetX = (ctx.x - dx[nextDir] + ctx.grid.width) % ctx.grid.width;
-        const targetY = (ctx.y - dy[nextDir] + ctx.grid.height) % ctx.grid.height;
-        if (targetX === ctx.x && targetY === ctx.y) {
-          return { color: ctx.cell.color, ant: 1, ant_dir: nextDir };
-        }
-      }
-      return { color: newColor, ant: 0, ant_dir: 0 };
-    }
-    const color = ctx.cell.color;
-    const dir = ctx.cell.ant_dir;
-    let nextDir;
-    if (color === 0) { nextDir = (dir + 1) % 4; }
-    else { nextDir = (dir + 3) % 4; }
-    const newColor = color === 0 ? 1 : 0;
-    const dx = [0, 1, 0, -1];
-    const dy = [-1, 0, 1, 0];
-    const targetX = (ctx.x + dx[nextDir] + ctx.grid.width) % ctx.grid.width;
-    const targetY = (ctx.y + dy[nextDir] + ctx.grid.height) % ctx.grid.height;
-    return { color: newColor, ant: 0, ant_dir: 0 };
+    new_color = color
+    new_ant = 0.0
+    new_dir = 0.0
+    if ant > 0.5:
+        new_color = 1.0 - color
+    na = neighbor_at(0, -1, ant)
+    if na > 0.5:
+        nd = (neighbor_at(0, -1, ant_dir) + 1.0 + 2.0 * neighbor_at(0, -1, color)) % 4.0
+        if nd > 1.5 and nd < 2.5:
+            new_ant = 1.0
+            new_dir = nd
+    nb = neighbor_at(1, 0, ant)
+    if nb > 0.5:
+        nd = (neighbor_at(1, 0, ant_dir) + 1.0 + 2.0 * neighbor_at(1, 0, color)) % 4.0
+        if nd > 2.5 and nd < 3.5:
+            new_ant = 1.0
+            new_dir = nd
+    nc = neighbor_at(0, 1, ant)
+    if nc > 0.5:
+        nd = (neighbor_at(0, 1, ant_dir) + 1.0 + 2.0 * neighbor_at(0, 1, color)) % 4.0
+        if nd < 0.5:
+            new_ant = 1.0
+            new_dir = nd
+    nl = neighbor_at(-1, 0, ant)
+    if nl > 0.5:
+        nd = (neighbor_at(-1, 0, ant_dir) + 1.0 + 2.0 * neighbor_at(-1, 0, color)) % 4.0
+        if nd > 0.5 and nd < 1.5:
+            new_ant = 1.0
+            new_dir = nd
+    self.color = new_color
+    self.ant = new_ant
+    self.ant_dir = new_dir
 visual_mappings:
   - property: "color"
     channel: "color"
@@ -291,13 +282,18 @@ cell_properties:
     default: 0
     role: "input_output"
 rule:
-  type: "typescript"
+  type: "webgpu"
   compute: |
-    const state = ctx.cell.state;
-    if (state === 1) { return { state: 2 }; }
-    if (state === 2) { return { state: 0 }; }
-    const onNeighbors = ctx.neighbors.filter(n => n.state === 1).length;
-    return { state: onNeighbors === 2 ? 1 : 0 };
+    n = neighbor_count(state, 1)
+    if state > 0.5 and state < 1.5:
+        self.state = 2.0
+    elif state > 1.5:
+        self.state = 0.0
+    else:
+        if n == 2:
+            self.state = 1.0
+        else:
+            self.state = 0.0
 visual_mappings:
   - property: "state"
     channel: "color"
@@ -364,19 +360,13 @@ params:
     max: 2.0
     step: 0.1
 rule:
-  type: "typescript"
+  type: "webgpu"
   compute: |
-    const Du = ctx.params.Du ?? 0.2097; const Dv = ctx.params.Dv ?? 0.105;
-    const F = ctx.params.F ?? 0.037; const k = ctx.params.k ?? 0.06; const dt = ctx.params.dt ?? 1.0;
-    const u = ctx.cell.u; const v = ctx.cell.v;
-    let lapU = 0; let lapV = 0;
-    const nc = ctx.neighbors.length;
-    for (const n of ctx.neighbors) { lapU += n.u - u; lapV += n.v - v; }
-    if (nc > 0) { lapU = lapU * (4.0 / nc); lapV = lapV * (4.0 / nc); }
-    const uvv = u * v * v;
-    const newU = u + dt * (Du * lapU - uvv + F * (1.0 - u));
-    const newV = v + dt * (Dv * lapV + uvv - (F + k) * v);
-    return { u: Math.max(0, Math.min(1, newU)), v: Math.max(0, Math.min(1, newV)) };
+    lap_u = neighbor_at(0, -1, u) + neighbor_at(0, 1, u) + neighbor_at(-1, 0, u) + neighbor_at(1, 0, u) - 4.0 * u
+    lap_v = neighbor_at(0, -1, v) + neighbor_at(0, 1, v) + neighbor_at(-1, 0, v) + neighbor_at(1, 0, v) - 4.0 * v
+    uvv = u * v * v
+    self.u = clamp(u + env_dt * (env_Du * lap_u - uvv + env_F * (1.0 - u)), 0.0, 1.0)
+    self.v = clamp(v + env_dt * (env_Dv * lap_v + uvv - (env_F + env_k) * v), 0.0, 1.0)
 visual_mappings:
   - property: "v"
     channel: "color"
@@ -436,36 +426,22 @@ params:
     max: 1.0
     step: 0.01
 rule:
-  type: "typescript"
+  type: "webgpu"
   compute: |
-    const viscosity = ctx.params.viscosity ?? 0.1; const diffusion = ctx.params.diffusion ?? 0.0001; const dt = ctx.params.dt ?? 0.1;
-    const vx = ctx.cell.vx; const vy = ctx.cell.vy;
-    const density = ctx.cell.density; const pressure = ctx.cell.pressure;
-    let lapVx = 0; let lapVy = 0; let lapDensity = 0;
-    let dpdx = 0; let dpdy = 0; let divV = 0;
-    const nc = ctx.neighbors.length;
-    for (const n of ctx.neighbors) {
-      lapVx += n.vx - vx; lapVy += n.vy - vy; lapDensity += n.density - density;
-      dpdx += n.pressure - pressure; dpdy += n.pressure - pressure;
-      divV += n.vx + n.vy;
-    }
-    if (nc > 0) {
-      const scale = 4.0 / nc;
-      lapVx *= scale; lapVy *= scale; lapDensity *= scale;
-      dpdx *= scale / 2.0; dpdy *= scale / 2.0;
-      divV = divV * scale - 4.0 * (vx + vy);
-    }
-    let newVx = vx + dt * (viscosity * lapVx - dpdx);
-    let newVy = vy + dt * (viscosity * lapVy - dpdy);
-    const newDensity = Math.max(0, density + dt * (diffusion * lapDensity - density * divV * 0.01));
-    const newPressure = pressure + dt * (-divV * 0.5);
-    newVx *= 0.999; newVy *= 0.999;
-    return {
-      vx: Math.max(-10, Math.min(10, newVx)),
-      vy: Math.max(-10, Math.min(10, newVy)),
-      density: Math.min(10, newDensity),
-      pressure: Math.max(-10, Math.min(10, newPressure))
-    };
+    lap_vx = neighbor_at(0,-1,vx) + neighbor_at(0,1,vx) + neighbor_at(-1,0,vx) + neighbor_at(1,0,vx) - 4.0 * vx
+    lap_vy = neighbor_at(0,-1,vy) + neighbor_at(0,1,vy) + neighbor_at(-1,0,vy) + neighbor_at(1,0,vy) - 4.0 * vy
+    lap_d = neighbor_at(0,-1,density) + neighbor_at(0,1,density) + neighbor_at(-1,0,density) + neighbor_at(1,0,density) - 4.0 * density
+    dpdx = (neighbor_at(1,0,pressure) - neighbor_at(-1,0,pressure)) * 0.5
+    dpdy = (neighbor_at(0,1,pressure) - neighbor_at(0,-1,pressure)) * 0.5
+    n_vx = neighbor_at(0,-1,vx) + neighbor_at(0,1,vx) + neighbor_at(-1,0,vx) + neighbor_at(1,0,vx)
+    n_vy = neighbor_at(0,-1,vy) + neighbor_at(0,1,vy) + neighbor_at(-1,0,vy) + neighbor_at(1,0,vy)
+    div_v = (n_vx - 4.0 * vx) + (n_vy - 4.0 * vy)
+    new_vx = clamp((vx + env_dt * (env_viscosity * lap_vx - dpdx)) * 0.999, -10.0, 10.0)
+    new_vy = clamp((vy + env_dt * (env_viscosity * lap_vy - dpdy)) * 0.999, -10.0, 10.0)
+    self.vx = new_vx
+    self.vy = new_vy
+    self.density = clamp(density + env_dt * (env_diffusion * lap_d - density * div_v * 0.01), 0.0, 10.0)
+    self.pressure = clamp(pressure + env_dt * (-div_v * 0.5), -10.0, 10.0)
 visual_mappings:
   - property: "density"
     channel: "color"
@@ -534,21 +510,15 @@ parameter_links:
     targetRange: [1, 0]
     easing: "smoothstep"
 rule:
-  type: "typescript"
+  type: "webgpu"
   compute: |
-    const alive = ctx.cell.alive;
-    const age = ctx.cell.age;
-    const sMin = ctx.params.surviveMin ?? 2;
-    const sMax = ctx.params.surviveMax ?? 3;
-    const birth = ctx.params.birthCount ?? 3;
-    const liveNeighbors = ctx.neighbors.filter(n => n.alive === 1).length;
-    let newAlive;
-    if (alive === 1) {
-      newAlive = (liveNeighbors >= sMin && liveNeighbors <= sMax) ? 1 : 0;
-    } else {
-      newAlive = liveNeighbors === birth ? 1 : 0;
-    }
-    return { alive: newAlive, age: newAlive > 0 ? age + 1 : 0, alpha: ctx.cell.alpha };
+    n = neighbor_sum_alive
+    if (alive > 0.5 and n >= env_surviveMin and n <= env_surviveMax) or (alive < 0.5 and n == env_birthCount):
+        self.alive = 1.0
+        self.age = age + 1.0
+    else:
+        self.alive = 0.0
+        self.age = 0.0
 visual_mappings:
   - property: "alive"
     channel: "color"

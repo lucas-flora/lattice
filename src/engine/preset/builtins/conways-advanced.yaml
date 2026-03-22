@@ -1,5 +1,5 @@
-# Conway's GoL with tag-driven visual effects.
-# Demonstrates expression tags for age-based fading, position-based color, and death-by-age.
+# Conway's Advanced — GoL with tag-driven visual effects.
+# GPU-native via Python transpiler → IR → WGSL.
 
 schema_version: "1"
 
@@ -38,18 +38,15 @@ params:
     step: 5
 
 rule:
-  type: "typescript"
+  type: "webgpu"
   compute: |
-    const alive = ctx.cell.alive;
-    const age = ctx.cell.age;
-    const liveNeighbors = ctx.neighbors.filter(n => n.alive === 1).length;
-    let newAlive;
-    if (alive === 1) {
-      newAlive = (liveNeighbors === 2 || liveNeighbors === 3) ? 1 : 0;
-    } else {
-      newAlive = liveNeighbors === 3 ? 1 : 0;
-    }
-    return { alive: newAlive, age: newAlive > 0 ? age + 1 : 0 };
+    n = neighbor_sum_alive
+    if n == 3 or (alive > 0.5 and n >= 2 and n < 4):
+        self.alive = 1.0
+        self.age = age + 1.0
+    else:
+        self.alive = 0.0
+        self.age = 0.0
 
 expression_tags:
   - name: "fade-on-age"

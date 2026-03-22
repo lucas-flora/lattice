@@ -24,7 +24,6 @@ import { sceneStoreActions, useSceneStore } from '../store/sceneStore';
 import { logMin, logDbg, logGPU } from '../lib/debugLog';
 import { GPURuleRunner } from '../engine/rule/GPURuleRunner';
 import { GPUContext } from '../engine/gpu/GPUContext';
-import { BUILTIN_IR } from '../engine/ir/builtinIR';
 
 export interface ParamDef {
   name: string;
@@ -165,11 +164,8 @@ export class SimulationController {
     try {
       if (!GPUContext.isAvailable()) return;
 
-      // Check if this preset can run on GPU: either has built-in IR or a compute body to transpile
-      const irBuilder = BUILTIN_IR[presetName];
-      const hasBuiltinIR = irBuilder && irBuilder(this.simulation.preset);
-      const hasComputeBody = !!this.simulation.preset.rule.compute;
-      if (!hasBuiltinIR && !hasComputeBody) return;
+      // All presets with a compute body can run on GPU via the transpiler
+      if (!this.simulation.preset.rule.compute) return;
 
       // Wait for GPU context if not yet initialized
       let ctx = GPUContext.tryGet();
@@ -841,7 +837,7 @@ export class SimulationController {
     this.computeAheadTarget = targetGeneration;
     // GPU ticks live, no compute-ahead (check both runner and expected GPU capability)
     if (this.gpuRuleRunner) return;
-    if (GPUContext.isAvailable() && this.simulation && (BUILTIN_IR[this.simulation.preset.meta.name] || this.simulation.preset.rule.compute)) return;
+    if (GPUContext.isAvailable() && this.simulation?.preset.rule.compute) return;
     logMin('compute', `computeAhead(${targetGeneration}) — computedGen=${this.computedGeneration}, timerRunning=${!!this.computeAheadTimer}, needsAsync=${this.needsAsyncTick()}`);
     if (this.computeAheadTimer) return; // Already running
     this.runComputeAheadChunk();
@@ -1009,7 +1005,7 @@ export class SimulationController {
       this.timelineDuration = cacheTarget;
       this.computeAheadTarget = cacheTarget;
       // Skip compute-ahead if GPU will handle this preset (runner may still be initializing)
-      if (this.gpuRuleRunner || (GPUContext.isAvailable() && this.simulation && (BUILTIN_IR[this.simulation.preset.meta.name] || this.simulation.preset.rule.compute))) {
+      if (this.gpuRuleRunner || (GPUContext.isAvailable() && this.simulation?.preset.rule.compute)) {
         // Unlock timeline scrubbing immediately — GPU can seek to any frame
         this.computedGeneration = cacheTarget;
         this.eventBus.emit('sim:computeProgress', { computedGeneration: cacheTarget });
