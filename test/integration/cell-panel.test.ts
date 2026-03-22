@@ -51,13 +51,14 @@ describe('Cell Panel Integration', () => {
 
     const { cellProperties } = useSimStore.getState();
     expect(cellProperties.length).toBeGreaterThan(0);
-    expect(cellProperties[0].name).toBe('alive');
-    expect(cellProperties[0].type).toBe('bool');
+    const aliveProp = cellProperties.find((p) => p.name === 'alive');
+    expect(aliveProp).toBeDefined();
+    expect(aliveProp!.type).toBe('bool');
   });
 
   it('TestCellPanel_PresetSwitch_UpdatesCellProperties', async () => {
     await registry.execute('preset.load', { name: 'conways-gol' });
-    expect(useSimStore.getState().cellProperties[0].name).toBe('alive');
+    expect(useSimStore.getState().cellProperties.some((p) => p.name === 'alive')).toBe(true);
 
     await registry.execute('preset.load', { name: 'brians-brain' });
     const props = useSimStore.getState().cellProperties;

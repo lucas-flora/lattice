@@ -109,31 +109,31 @@ function grayScott(_preset: PresetConfig): IRProgram {
 /**
  * Brian's Brain — three-state cellular automaton.
  *
- * States: 0=dead, 1=alive, 2=dying
- * Rules: dead→alive if exactly 2 alive neighbors; alive→dying; dying→dead
+ * States: 0=off, 1=on, 2=dying
+ * Rules: off→on if exactly 2 on neighbors; on→dying; dying→off
  */
 function briansBrain(_preset: PresetConfig): IRProgram {
   return IR.program([
-    IR.declareVar('state', 'f32', IR.readCell('alive')),
-    IR.declareVar('n', 'f32', IR.neighborCount('alive', '==', 1)),
-    // dead (0) → alive (1) if exactly 2 alive neighbors
-    // alive (1) → dying (2)
-    // dying (2) → dead (0)
-    IR.declareVar('is_dead', 'bool', IR.lt(IR.varRef('state'), IR.f32(0.5))),
-    IR.declareVar('is_alive', 'bool',
+    IR.declareVar('s', 'f32', IR.readCell('state')),
+    IR.declareVar('n', 'f32', IR.neighborCount('state', '==', 1)),
+    // off (0) → on (1) if exactly 2 on neighbors
+    // on (1) → dying (2)
+    // dying (2) → off (0)
+    IR.declareVar('is_off', 'bool', IR.lt(IR.varRef('s'), IR.f32(0.5))),
+    IR.declareVar('is_on', 'bool',
       IR.and(
-        IR.gt(IR.varRef('state'), IR.f32(0.5)),
-        IR.lt(IR.varRef('state'), IR.f32(1.5)),
+        IR.gt(IR.varRef('s'), IR.f32(0.5)),
+        IR.lt(IR.varRef('s'), IR.f32(1.5)),
       )),
     IR.declareVar('new_state', 'f32',
-      IR.select(IR.boolRef('is_dead'),
+      IR.select(IR.boolRef('is_off'),
         IR.select(IR.eq(IR.varRef('n'), IR.f32(2)), IR.f32(1), IR.f32(0)),
-        IR.select(IR.boolRef('is_alive'), IR.f32(2), IR.f32(0)),
+        IR.select(IR.boolRef('is_on'), IR.f32(2), IR.f32(0)),
       )),
-    IR.writeProperty('alive', IR.varRef('new_state')),
+    IR.writeProperty('state', IR.varRef('new_state')),
   ], {
-    inputs: [{ property: 'alive', scope: 'cell', type: 'f32' }],
-    outputs: [{ property: 'alive', scope: 'cell', type: 'f32' }],
+    inputs: [{ property: 'state', scope: 'cell', type: 'f32' }],
+    outputs: [{ property: 'state', scope: 'cell', type: 'f32' }],
     neighborhoodAccess: true,
     metadata: { sourceType: 'builtin' },
   });

@@ -132,21 +132,21 @@ rule:
 expression_tags:
   - name: "fade-on-age"
     owner: { type: "cell-type", id: "default" }
-    code: "self.alpha = max(0.1, 1.0 - self.age / env_fadeDuration)"
+    code: "self.alpha = max(0.1, 1.0 - self.age / env_fadeDuration) * self.alive"
     phase: "post-rule"
     source: "code"
     outputs: ["cell.alpha"]
-    inputs: ["cell.age"]
+    inputs: ["cell.age", "cell.alive"]
   - name: "position-color"
     owner: { type: "cell-type", id: "default" }
     code: |
-      self.colorR = x / width
-      self.colorG = max(0.0, 1.0 - self.age / 100.0)
-      self.colorB = y / height
+      self.colorR = float(x) / float(width) * self.alive
+      self.colorG = max(0.0, 1.0 - self.age / 100.0) * self.alive
+      self.colorB = float(y) / float(height) * self.alive
     phase: "post-rule"
     source: "code"
     outputs: ["cell.colorR", "cell.colorG", "cell.colorB"]
-    inputs: ["cell.age"]
+    inputs: ["cell.age", "cell.alive"]
   - name: "death-by-age"
     owner: { type: "cell-type", id: "default" }
     code: "self.alive = np.where(self.age > env_maxAge, 0.0, self.alive)"

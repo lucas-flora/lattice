@@ -818,7 +818,8 @@ export class SimulationController {
    */
   getLiveCellCount(): number {
     if (!this.simulation) return 0;
-    const firstProp = this.simulation.typeRegistry.getPropertyUnion()[0].name;
+    const firstProp = this.simulation.preset.cell_properties?.[0]?.name
+      ?? this.simulation.typeRegistry.getPropertyUnion()[0].name;
     const buffer = this.simulation.grid.getCurrentBuffer(firstProp);
     let count = 0;
     for (let i = 0; i < buffer.length; i++) {

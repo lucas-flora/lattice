@@ -36,7 +36,7 @@ describe('CellTypeRegistry', () => {
 
     const resolved = registry.resolveProperties('cell');
     const names = resolved.map((p) => p.name);
-    expect(names).toContain('alive');
+    expect(names).not.toContain('alive'); // alive is a sim-level property, not inherent
     expect(names).toContain('age');
     expect(names).toContain('alpha');
     expect(names).toContain('_cellType');
@@ -70,32 +70,32 @@ describe('CellTypeRegistry', () => {
     const types = registry.getTypes();
     expect(types[0].id).toBe('default');
 
-    // Union should include inherent props + GoL's alive
+    // Union should include inherent props + GoL's sim-level alive
     const union = registry.getPropertyUnion();
     const names = union.map((p) => p.name);
-    expect(names).toContain('alive');
+    expect(names).toContain('alive'); // declared by preset, not inherent
     expect(names).toContain('age');
     expect(names).toContain('alpha');
     expect(names).toContain('_cellType');
   });
 
-  it('TestCellTypeRegistry_FromPreset_MergesAliveProperty', () => {
-    // GoL's preset defines `alive` with specific defaults — those should win over inherent
+  it('TestCellTypeRegistry_FromPreset_AliveIsSimLevel', () => {
+    // GoL's preset declares `alive` as a sim-level property (not inherent)
     const preset = loadBuiltinPreset('conways-gol');
     const registry = CellTypeRegistry.fromPreset(preset);
 
     const union = registry.getPropertyUnion();
     const aliveProp = union.find((p) => p.name === 'alive');
     expect(aliveProp).toBeDefined();
-    // The preset's alive is bool with default 0, role input_output — same as inherent
-    // but the key point is the preset definition wins
     expect(aliveProp!.type).toBe('bool');
     expect(aliveProp!.default).toBe(0);
+    // alive is NOT inherent — it comes from the preset's cell_properties
+    expect(registry.isInherent('alive')).toBe(false);
   });
 
   it('TestCellTypeRegistry_IsInherent', () => {
     const registry = new CellTypeRegistry();
-    expect(registry.isInherent('alive')).toBe(true);
+    expect(registry.isInherent('alive')).toBe(false); // alive is sim-level, not inherent
     expect(registry.isInherent('age')).toBe(true);
     expect(registry.isInherent('alpha')).toBe(true);
     expect(registry.isInherent('_cellType')).toBe(true);
@@ -144,7 +144,7 @@ describe('CellTypeRegistry', () => {
     // Should have inherent + inherited (energy) + own (speed)
     expect(names).toContain('energy');
     expect(names).toContain('speed');
-    expect(names).toContain('alive');
+    expect(names).toContain('age'); // inherent
   });
 
   it('TestCellTypeRegistry_DefaultColor', () => {
@@ -161,15 +161,13 @@ describe('CellTypeRegistry', () => {
   });
 
   it('TestCellTypeRegistry_FromPreset_GrayScott_NoAlive', () => {
-    // Gray-Scott has u, v, no alive — hasInherentAge should be false at engine level
+    // Gray-Scott has u, v, no alive — alive is not inherent, so not in union
     const preset = loadBuiltinPreset('gray-scott');
     const registry = CellTypeRegistry.fromPreset(preset);
 
     const union = registry.getPropertyUnion();
     const names = union.map((p) => p.name);
-    // Inherent alive is still in the union (always injected)
-    expect(names).toContain('alive');
-    // But preset's own properties also present
+    expect(names).not.toContain('alive'); // alive is sim-level, Gray-Scott doesn't declare it
     expect(names).toContain('u');
     expect(names).toContain('v');
   });
@@ -201,7 +199,7 @@ cell_types:
         default: 0.5
 rule:
   type: "typescript"
-  compute: "return { alive: 0 };"
+  compute: "return {};"
 `;
     const preset = loadPresetOrThrow(yaml);
     const registry = CellTypeRegistry.fromPreset(preset);
@@ -211,7 +209,8 @@ rule:
     const names = union.map((p) => p.name);
     expect(names).toContain('hunger');
     expect(names).toContain('speed');
-    expect(names).toContain('alive');
+    expect(names).not.toContain('alive'); // alive is sim-level, not declared here
+    expect(names).toContain('age'); // inherent
   });
 });
 
