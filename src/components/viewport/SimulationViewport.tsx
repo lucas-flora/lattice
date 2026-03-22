@@ -463,8 +463,11 @@ export function SimulationViewport({ viewportId = 'viewport-1' }: SimulationView
         latticeRenderer.setGPURenderingActive(true);
         gpuGridRenderer = new GPUGridRenderer(gpuCanvas);
         const layout = gpuRunner.getPropertyLayout();
-        // Use the preset's first declared cell property as primary (e.g. alive, state, u)
-        const presetPrimaryName = currentSim.preset.cell_properties?.[0]?.name;
+        // Primary property = what the renderer displays. Use visual_mappings color
+        // property as the single source of truth, falling back to first cell property.
+        const visualColorProp = currentSim.preset.visual_mappings?.find(m => m.channel === 'color')?.property;
+        const presetPrimaryName = visualColorProp
+          ?? currentSim.preset.cell_properties?.[0]?.name;
         const primaryProp = (presetPrimaryName && layout.find(p => p.name === presetPrimaryName)) || layout[0];
 
         // Determine color mapping based on preset properties and expression tags
