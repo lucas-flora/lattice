@@ -134,6 +134,15 @@ export class SimulationController {
   /** GPU rule runner — when set, simulation ticks run on the GPU */
   protected gpuRuleRunner: GPURuleRunner | null = null;
 
+  /** Guard: prevents interaction during GPU→CPU readback on pause */
+  protected gpuSyncInFlight: boolean = false;
+
+  /** Memory budget for the frame cache in bytes (default 512MB) */
+  private static readonly CACHE_MEMORY_BUDGET = 512 * 1024 * 1024;
+
+  /** Grid byte threshold above which GPU cache fill is skipped (64MB per frame) */
+  private static readonly GPU_CACHE_FILL_THRESHOLD = 64 * 1024 * 1024;
+
   constructor(eventBus: EventBus, tickIntervalMs: number = 100) {
     this.eventBus = eventBus;
     this.tickIntervalMs = tickIntervalMs;
@@ -244,6 +253,15 @@ export class SimulationController {
   private async gpuCacheFill(): Promise<void> {
     if (!this.gpuRuleRunner || !this.simulation) return;
     if (this.playing) return;
+
+    // Skip cache fill for large grids — readback + double runner memory is prohibitive.
+    // The GPU live-tick path handles playback without cache.
+    const grid = this.simulation.grid;
+    const perFrameBytes = grid.cellCount * grid.getPropertyNames().length * 4;
+    if (perFrameBytes > SimulationController.GPU_CACHE_FILL_THRESHOLD) {
+      logGPU(`Cache fill skipped: per-frame ${(perFrameBytes / 1024 / 1024).toFixed(1)}MB exceeds ${(SimulationController.GPU_CACHE_FILL_THRESHOLD / 1024 / 1024).toFixed(0)}MB threshold`);
+      return;
+    }
 
     const epoch = ++this.gpuCacheFillEpoch;
     const target = this.timelineDuration;
@@ -599,7 +617,10 @@ export class SimulationController {
 
     // GPU mode: sync display state back to CPU Grid so edits see correct base
     if (this.gpuRuleRunner) {
-      void this.syncGPUToGrid();
+      this.gpuSyncInFlight = true;
+      void this.syncGPUToGrid().finally(() => {
+        this.gpuSyncInFlight = false;
+      });
     }
 
     this.eventBus.emit('sim:pause', {});
@@ -610,7 +631,7 @@ export class SimulationController {
    * For Python rules, use stepAsync() instead.
    */
   step(): void {
-    if (!this.simulation) return;
+    if (!this.simulation || this.gpuSyncInFlight) return;
     logDbg('play', `step() — needsAsync=${this.needsAsyncTick()}, playbackGen=${this.playbackGeneration}, computedGen=${this.computedGeneration}`);
     if (this.simulation.needsAsyncTick()) {
       void this.stepAsync();
@@ -637,7 +658,7 @@ export class SimulationController {
    * Async step for Python rules.
    */
   async stepAsync(): Promise<void> {
-    if (!this.simulation) return;
+    if (!this.simulation || this.gpuSyncInFlight) return;
     logDbg('play', `stepAsync() — playbackGen=${this.playbackGeneration}, computedGen=${this.computedGeneration}`);
 
     const nextGen = this.playbackGeneration + 1;
@@ -920,10 +941,19 @@ export class SimulationController {
     if (!this.simulation) return;
     logMin('ctrl', `captureInitialState(${cacheTarget}) — needsAsync=${this.needsAsyncTick()}, bridgeStatus=${this.pyodideBridge?.getStatus()}, simGen=${this.simulation.getGeneration()}`);
     this.initialSnapshot = new Map();
+    let perFrameBytes = 0;
     for (const propName of this.simulation.grid.getPropertyNames()) {
       const buf = this.simulation.grid.getCurrentBuffer(propName);
       this.initialSnapshot.set(propName, new Float32Array(buf));
+      perFrameBytes += buf.byteLength;
     }
+
+    // Dynamic cache size: cap total cache memory at the budget
+    if (perFrameBytes > 0) {
+      this.maxCacheSize = Math.max(10, Math.floor(SimulationController.CACHE_MEMORY_BUDGET / perFrameBytes));
+      logDbg('compute', `Cache size: ${this.maxCacheSize} frames (${(perFrameBytes / 1024 / 1024).toFixed(1)}MB/frame, budget=${(SimulationController.CACHE_MEMORY_BUDGET / 1024 / 1024).toFixed(0)}MB)`);
+    }
+
     // Also cache frame 0
     this.cacheCurrentFrame();
     // Sync to scene graph for persistence
@@ -1298,18 +1328,31 @@ export class SimulationController {
     if (!this.simulation) return;
     logDbg('play', `playbackTick() — playbackGen=${this.playbackGeneration}, computedGen=${this.computedGeneration}, gpu=${!!this.gpuRuleRunner}`);
 
-    // GPU path takes priority — handles rule + expression tags on GPU
+    // GPU path takes priority — always live-tick for performance.
+    // Restoring from cache requires a full CPU→GPU upload per frame which is
+    // prohibitively slow for large grids. Cache is only used for seek/step-back.
     if (this.gpuRuleRunner) {
+      if (this.gpuSyncInFlight) return; // Wait for readback to finish
       const nextGen = this.playbackGeneration + 1;
       if (nextGen >= this.timelineDuration) {
         switch (this.playbackMode) {
           case 'once':
             this.pause();
             return;
-          case 'loop':
+          case 'loop': {
+            // Reset GPU runner to initial state
             this.playbackGeneration = 0;
-            this.restoreFrame(0);
+            if (this.initialSnapshot) {
+              for (const [propName, buf] of this.initialSnapshot) {
+                this.simulation.grid.getCurrentBuffer(propName).set(buf);
+              }
+              this.syncGridToGPU();
+            }
+            this.gpuRuleRunner.setGeneration(0);
+            this.simulation.runner.setGeneration(0);
+            this.eventBus.emit('sim:tick', { generation: 0, liveCellCount: -1 });
             return;
+          }
           case 'endless': {
             const newDuration = smartExtendDuration(this.timelineDuration);
             this.timelineDuration = newDuration;
@@ -1318,20 +1361,14 @@ export class SimulationController {
           }
         }
       }
-      // Prefer cached frame (preserves edits and deterministic replay)
-      if (this.frameCache.has(nextGen)) {
-        this.playbackGeneration = nextGen;
-        this.restoreFrame(nextGen);
-      } else {
-        // No cache — tick GPU live
-        this.gpuRuleRunner.tick();
-        this.playbackGeneration = this.gpuRuleRunner.getGeneration();
-        this.simulation.runner.setGeneration(this.playbackGeneration);
-        this.eventBus.emit('sim:tick', {
-          generation: this.playbackGeneration,
-          liveCellCount: -1,
-        });
-      }
+      // Always live-tick on GPU — no cache roundtrip
+      this.gpuRuleRunner.tick();
+      this.playbackGeneration = this.gpuRuleRunner.getGeneration();
+      this.simulation.runner.setGeneration(this.playbackGeneration);
+      this.eventBus.emit('sim:tick', {
+        generation: this.playbackGeneration,
+        liveCellCount: -1,
+      });
       return;
     }
 
