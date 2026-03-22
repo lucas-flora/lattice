@@ -72,9 +72,16 @@ export class Simulation {
       this.grid.addProperty(prop.name, channels, prop.default);
     }
 
-    // Create the rule runner (synchronous path -- always uses TS fallback)
-    this.runner = new RuleRunner(this.grid, preset, undefined, this.typeRegistry);
-    this.runner.setParamsProvider(() => this.getParamsObject());
+    // Create the CPU rule runner (no-op for webgpu/python presets — GPU handles execution)
+    try {
+      this.runner = new RuleRunner(this.grid, preset, undefined, this.typeRegistry);
+      this.runner.setParamsProvider(() => this.getParamsObject());
+    } catch {
+      // Python/webgpu rules can't compile as JS — create a passthrough runner
+      const noopPreset = { ...preset, rule: { ...preset.rule, compute: 'return {};' } };
+      this.runner = new RuleRunner(this.grid, noopPreset, undefined, this.typeRegistry);
+      this.runner.setParamsProvider(() => this.getParamsObject());
+    }
 
     // Load global variables from preset
     if (preset.global_variables) {
