@@ -179,6 +179,17 @@ export class BufferManager {
   }
 
   /**
+   * Write a single float value to the read buffer at a specific byte offset.
+   * Used for immediate cell edits without full buffer re-upload.
+   */
+  writeCellValue(byteOffset: number, value: number): void {
+    const buf = this.getReadBuffer();
+    const ctx = GPUContext.get();
+    const data = new Float32Array([value]);
+    ctx.device.queue.writeBuffer(buf, byteOffset, data.buffer, 0, 4);
+  }
+
+  /**
    * Read data back from the read buffer to CPU.
    * Uses a staging buffer + mapAsync for async GPU→CPU transfer.
    * This is slow — use sparingly (debugging, benchmarks, frame cache).

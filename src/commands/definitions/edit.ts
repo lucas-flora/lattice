@@ -83,16 +83,16 @@ export function registerEditCommands(
         return { success: false, error: 'No simulation loaded' };
       }
 
-      // Auto-pause and wait for GPU→CPU readback to complete
+      // Auto-pause if running (don't await sync — write directly to GPU)
       if (controller.isPlaying()) {
         controller.pause();
       }
-      await controller.awaitGPUSync();
 
       const firstProp = sim.preset.cell_properties?.[0]?.name
         ?? sim.typeRegistry.getPropertyUnion()[0].name;
       const brushSize = useUiStore.getState().brushSize;
       const halfBrush = Math.floor(brushSize / 2);
+      const gpuRunner = controller.getGPURuleRunner();
 
       history.beginCommand('Draw cell');
       for (let dy = -halfBrush; dy <= halfBrush; dy++) {
@@ -101,13 +101,16 @@ export function registerEditCommands(
           const cy = y + dy;
           if (cx >= 0 && cx < sim.grid.config.width && cy >= 0 && cy < sim.grid.config.height) {
             const index = sim.grid.coordToIndex(cx, cy, 0);
+            // Write directly to GPU buffer for immediate visual feedback
+            gpuRunner?.writeCellDirect(firstProp, index, 1);
+            // Also write to CPU grid for undo/redo and cache
             history.editCell(firstProp, index, 1);
           }
         }
       }
       history.commitCommand();
 
-      // Invalidate cache and restart compute-ahead with the edited grid
+      // Sync CPU→GPU state lazily after readback completes (for cache/undo)
       controller.onGridEdited();
 
       eventBus.emit('edit:draw', { x, y });
@@ -128,16 +131,16 @@ export function registerEditCommands(
         return { success: false, error: 'No simulation loaded' };
       }
 
-      // Auto-pause and wait for GPU→CPU readback to complete
+      // Auto-pause if running (don't await sync — write directly to GPU)
       if (controller.isPlaying()) {
         controller.pause();
       }
-      await controller.awaitGPUSync();
 
       const firstProp = sim.preset.cell_properties?.[0]?.name
         ?? sim.typeRegistry.getPropertyUnion()[0].name;
       const brushSize = useUiStore.getState().brushSize;
       const halfBrush = Math.floor(brushSize / 2);
+      const gpuRunner = controller.getGPURuleRunner();
 
       history.beginCommand('Erase cell');
       for (let dy = -halfBrush; dy <= halfBrush; dy++) {
@@ -146,13 +149,16 @@ export function registerEditCommands(
           const cy = y + dy;
           if (cx >= 0 && cx < sim.grid.config.width && cy >= 0 && cy < sim.grid.config.height) {
             const index = sim.grid.coordToIndex(cx, cy, 0);
+            // Write directly to GPU buffer for immediate visual feedback
+            gpuRunner?.writeCellDirect(firstProp, index, 0);
+            // Also write to CPU grid for undo/redo and cache
             history.editCell(firstProp, index, 0);
           }
         }
       }
       history.commitCommand();
 
-      // Invalidate cache and restart compute-ahead with the edited grid
+      // Sync CPU→GPU state lazily after readback completes (for cache/undo)
       controller.onGridEdited();
 
       eventBus.emit('edit:erase', { x, y });

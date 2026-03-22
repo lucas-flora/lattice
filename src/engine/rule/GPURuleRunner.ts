@@ -368,6 +368,18 @@ export class GPURuleRunner {
   }
 
   /**
+   * Write a single cell's property value directly to the GPU buffer.
+   * Immediate — no readback needed. Used for live cell editing.
+   */
+  writeCellDirect(propertyName: string, cellIndex: number, value: number): void {
+    const prop = this.propertyLayout.find(p => p.name === propertyName);
+    if (!prop) return;
+    const stride = this.bufferManager.stride;
+    const byteOffset = (cellIndex * stride + prop.offset) * 4; // Float32 = 4 bytes
+    this.bufferManager.writeCellValue(byteOffset, value);
+  }
+
+  /**
    * Pack the Grid's per-property buffers into interleaved GPU format and upload.
    */
   uploadFromGrid(): void {
