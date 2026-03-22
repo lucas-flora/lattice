@@ -633,6 +633,21 @@ export class SimulationController {
   step(): void {
     if (!this.simulation || this.gpuSyncInFlight) return;
     logDbg('play', `step() — needsAsync=${this.needsAsyncTick()}, playbackGen=${this.playbackGeneration}, computedGen=${this.computedGeneration}`);
+
+    // GPU mode: tick GPU directly (no cache roundtrip)
+    if (this.gpuRuleRunner) {
+      const nextGen = this.playbackGeneration + 1;
+      if (nextGen >= this.timelineDuration) {
+        this.timelineDuration = nextGen + 1;
+        this.eventBus.emit('sim:timelineExtend', { duration: this.timelineDuration });
+      }
+      this.gpuRuleRunner.tick();
+      this.playbackGeneration = this.gpuRuleRunner.getGeneration();
+      this.simulation.runner.setGeneration(this.playbackGeneration);
+      this.eventBus.emit('sim:tick', { generation: this.playbackGeneration, liveCellCount: -1 });
+      return;
+    }
+
     if (this.simulation.needsAsyncTick()) {
       void this.stepAsync();
       return;
@@ -679,9 +694,18 @@ export class SimulationController {
    * Reverse one generation by restoring the previous cached frame.
    */
   stepBack(): void {
-    if (!this.simulation || this.playbackGeneration <= 0) return;
+    if (!this.simulation || this.gpuSyncInFlight || this.playbackGeneration <= 0) return;
 
-    this.playbackGeneration--;
+    const targetGen = this.playbackGeneration - 1;
+
+    // GPU mode: seek backward via GPU recompute (no cache needed)
+    if (this.gpuRuleRunner) {
+      this.seek(targetGen);
+      this.eventBus.emit('sim:stepBack', { generation: targetGen });
+      return;
+    }
+
+    this.playbackGeneration = targetGen;
     if (this.frameCache.has(this.playbackGeneration)) {
       this.restoreFrame(this.playbackGeneration);
     } else {
@@ -758,19 +782,40 @@ export class SimulationController {
     }
     logDbg('play', `seek(${targetGen}) — playbackGen=${this.playbackGeneration}, computedGen=${this.computedGeneration}`);
 
-    // GPU mode: only seek to cached frames — never block with sync compute
+    // GPU mode: seek by restoring nearest cached state and GPU-ticking forward.
+    // GPU ticking is <1ms/frame so even large seeks are near-instant.
     if (this.gpuRuleRunner) {
       if (this.frameCache.has(targetGen)) {
         this.playbackGeneration = targetGen;
         this.restoreFrame(targetGen);
       } else {
-        // Find nearest cached frame
+        // Find nearest cached frame at or before target
         let nearest = targetGen;
         while (nearest > 0 && !this.frameCache.has(nearest)) nearest--;
-        if (this.frameCache.has(nearest)) {
-          this.playbackGeneration = nearest;
-          this.restoreFrame(nearest);
+
+        // Restore the nearest point (cached frame or initial state)
+        if (nearest === 0 && !this.frameCache.has(0) && this.initialSnapshot) {
+          // Restore from initial snapshot directly
+          for (const [propName, buf] of this.initialSnapshot) {
+            this.simulation.grid.getCurrentBuffer(propName).set(buf);
+          }
+          this.syncGridToGPU();
+          this.gpuRuleRunner.setGeneration(0);
+        } else if (this.frameCache.has(nearest)) {
+          this.applySnapshot(this.frameCache.get(nearest)!);
+          this.syncGridToGPU();
+          this.gpuRuleRunner.setGeneration(nearest);
         }
+
+        // GPU-tick forward to target (no readback, no cache — just compute)
+        const ticksNeeded = targetGen - nearest;
+        for (let i = 0; i < ticksNeeded; i++) {
+          this.gpuRuleRunner.tick();
+        }
+
+        this.playbackGeneration = targetGen;
+        this.simulation.runner.setGeneration(targetGen);
+        this.eventBus.emit('sim:tick', { generation: targetGen, liveCellCount: -1 });
       }
       return;
     }
