@@ -17,7 +17,7 @@ import { useRef, useEffect, useCallback } from 'react';
 import { LatticeRenderer } from '@/renderer/LatticeRenderer';
 import { CameraController } from '@/renderer/CameraController';
 import { OrbitCameraController } from '@/renderer/OrbitCameraController';
-import { GPUGridRenderer, type GPUCameraState, type ColorMappingConfig } from '@/renderer/GPUGridRenderer';
+import { GPUGridRenderer, parseVisualMappingColors, type GPUCameraState, type ColorMappingConfig } from '@/renderer/GPUGridRenderer';
 import { getController } from '@/components/AppShell';
 import { eventBus } from '@/engine/core/EventBus';
 import { commandRegistry } from '@/commands/CommandRegistry';
@@ -470,40 +470,41 @@ export function SimulationViewport({ viewportId = 'viewport-1' }: SimulationView
           ?? currentSim.preset.cell_properties?.[0]?.name;
         const primaryProp = (presetPrimaryName && layout.find(p => p.name === presetPrimaryName)) || layout[0];
 
-        // Determine color mapping based on preset properties and expression tags
+        // Determine color mapping from visual_mappings — the single source of truth
         const colorR = layout.find(p => p.name === 'colorR');
         const colorG = layout.find(p => p.name === 'colorG');
         const colorB = layout.find(p => p.name === 'colorB');
         const alpha = layout.find(p => p.name === 'alpha');
-        const vProp = layout.find(p => p.name === 'v');
 
-        // Check if expression tags write to color/alpha properties
+        // Check if expression tags write to color/alpha properties → direct mode
         const exprTags = currentSim.preset.expression_tags ?? [];
         const exprOutputs = exprTags.flatMap(t => t.outputs ?? []);
         const writesColor = exprOutputs.some(o => o.includes('colorR') || o.includes('colorG') || o.includes('colorB'));
         const writesAlpha = exprOutputs.some(o => o.includes('alpha'));
         const useDirectColor = (writesColor || writesAlpha) && colorR && colorG && colorB;
 
-        // Detect gradient mode (reaction-diffusion systems with u/v concentrations)
-        const isGradient = vProp && !layout.find(p => p.name === 'alive');
+        // Parse visual_mappings to determine rendering mode and colors
+        const colorVm = currentSim.preset.visual_mappings?.find(m => m.channel === 'color');
+        const parsed = parseVisualMappingColors(colorVm?.mapping as Record<string, unknown> | undefined);
 
-        const defaults = {
-          gradientOffset: vProp?.offset ?? 0,
+        let colorMapping: ColorMappingConfig;
+        const baseConfig = {
+          primaryOffset: primaryProp?.offset ?? 0,
+          gradientOffset: primaryProp?.offset ?? 0,
           colorROffset: colorR?.offset ?? 0,
           colorGOffset: colorG?.offset ?? 0,
           colorBOffset: colorB?.offset ?? 0,
           alphaOffset: alpha?.offset ?? 0,
-          deadColor: [0, 0, 0] as [number, number, number],
-          aliveColor: [0.29, 0.87, 0.5] as [number, number, number],
+          deadColor: parsed.deadColor,
+          aliveColor: parsed.aliveColor,
         };
 
-        let colorMapping: ColorMappingConfig;
-        if (isGradient) {
-          colorMapping = { mode: 'gradient', primaryOffset: primaryProp?.offset ?? 0, ...defaults };
-        } else if (useDirectColor) {
-          colorMapping = { mode: 'direct', primaryOffset: primaryProp?.offset ?? 0, ...defaults };
+        if (useDirectColor) {
+          colorMapping = { mode: 'direct', ...baseConfig };
+        } else if (parsed.mode === 'gradient') {
+          colorMapping = { mode: 'gradient', ...baseConfig };
         } else {
-          colorMapping = { mode: 'binary', primaryOffset: primaryProp?.offset ?? 0, ...defaults };
+          colorMapping = { mode: 'binary', ...baseConfig };
         }
         logGPU(`Color mode: ${colorMapping.mode} (exprTags=${exprTags.length}, writesColor=${writesColor}, writesAlpha=${writesAlpha}, preset=${currentSim.preset.meta.name})`);
 

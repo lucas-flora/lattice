@@ -9,6 +9,43 @@
 import { GPUContext } from '@/engine/gpu/GPUContext';
 import type { PropertyLayout } from '@/engine/gpu/types';
 
+/** Parse a hex color string (#rrggbb) to [r, g, b] in 0-1 range */
+function hexToRgb01(hex: string): [number, number, number] {
+  const h = hex.replace('#', '');
+  return [
+    parseInt(h.slice(0, 2), 16) / 255,
+    parseInt(h.slice(2, 4), 16) / 255,
+    parseInt(h.slice(4, 6), 16) / 255,
+  ];
+}
+
+/** Parse a visual_mapping color entry to determine rendering mode and colors */
+export function parseVisualMappingColors(mapping?: Record<string, unknown>): {
+  mode: 'binary' | 'gradient';
+  deadColor: [number, number, number];
+  aliveColor: [number, number, number];
+} {
+  if (!mapping) return { mode: 'binary', deadColor: [0, 0, 0], aliveColor: [0, 1, 0] };
+
+  // Continuous gradient: has min/max keys
+  if ('min' in mapping && 'max' in mapping) {
+    return {
+      mode: 'gradient',
+      deadColor: hexToRgb01(String(mapping.min)),
+      aliveColor: hexToRgb01(String(mapping.max)),
+    };
+  }
+
+  // Discrete binary: has "0"/"1" keys
+  const deadHex = mapping['0'] as string | undefined;
+  const aliveHex = mapping['1'] as string | undefined;
+  return {
+    mode: 'binary',
+    deadColor: deadHex ? hexToRgb01(deadHex) : [0, 0, 0],
+    aliveColor: aliveHex ? hexToRgb01(aliveHex) : [0, 1, 0],
+  };
+}
+
 /** Camera state in grid-space units */
 export interface GPUCameraState {
   offsetX: number;
@@ -130,12 +167,11 @@ fn fs(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
     }
     a = ca;
   } else if (rp.mappingMode == 1u) {
-    // Gradient mode: map value to color ramp
-    let v = cells[idx * rp.stride + rp.gradientOffset];
-    r = smoothstep(0.2, 0.6, v);
-    g = 1.0 - abs(v - 0.35) * 2.5;
-    b = 1.0 - smoothstep(0.0, 0.4, v);
-    g = max(g, 0.0);
+    // Gradient mode: linear interpolation between dead/alive (min/max) colors
+    let v = clamp(cells[idx * rp.stride + rp.gradientOffset], 0.0, 1.0);
+    r = mix(rp.deadR, rp.aliveR, v);
+    g = mix(rp.deadG, rp.aliveG, v);
+    b = mix(rp.deadB, rp.aliveB, v);
   } else {
     // Binary mode: lerp between dead/alive colors
     r = mix(rp.deadR, rp.aliveR, primary);
