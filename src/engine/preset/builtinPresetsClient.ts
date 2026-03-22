@@ -287,13 +287,25 @@ rule:
     n = neighbor_count(state, 1)
     if state > 0.5 and state < 1.5:
         self.state = 2.0
+        self.colorR = 0.0
+        self.colorG = 0.4
+        self.colorB = 1.0
     elif state > 1.5:
         self.state = 0.0
+        self.colorR = 0.0
+        self.colorG = 0.0
+        self.colorB = 0.0
     else:
         if n == 2:
             self.state = 1.0
+            self.colorR = 1.0
+            self.colorG = 1.0
+            self.colorB = 1.0
         else:
             self.state = 0.0
+            self.colorR = 0.0
+            self.colorG = 0.0
+            self.colorB = 0.0
 visual_mappings:
   - property: "state"
     channel: "color"
@@ -440,8 +452,13 @@ rule:
     new_vy = clamp((vy + env_dt * (env_viscosity * lap_vy - dpdy)) * 0.999, -10.0, 10.0)
     self.vx = new_vx
     self.vy = new_vy
-    self.density = clamp(density + env_dt * (env_diffusion * lap_d - density * div_v * 0.01), 0.0, 10.0)
+    new_d = clamp(density + env_dt * (env_diffusion * lap_d - density * div_v * 0.01), 0.0, 10.0)
+    self.density = new_d
     self.pressure = clamp(pressure + env_dt * (-div_v * 0.5), -10.0, 10.0)
+    t = clamp(new_d * 0.1, 0.0, 1.0)
+    self.colorR = t * 0.0
+    self.colorG = t * 0.8
+    self.colorB = 0.2 + t * 0.8
 visual_mappings:
   - property: "density"
     channel: "color"

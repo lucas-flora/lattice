@@ -476,11 +476,14 @@ export function SimulationViewport({ viewportId = 'viewport-1' }: SimulationView
         const colorB = layout.find(p => p.name === 'colorB');
         const alpha = layout.find(p => p.name === 'alpha');
 
-        // Check if expression tags write to color/alpha properties → direct mode
+        // Check if rule or expression tags write to colorR/G/B → direct mode
         const exprTags = currentSim.preset.expression_tags ?? [];
         const exprOutputs = exprTags.flatMap(t => t.outputs ?? []);
-        const writesColor = exprOutputs.some(o => o.includes('colorR') || o.includes('colorG') || o.includes('colorB'));
-        const writesAlpha = exprOutputs.some(o => o.includes('alpha'));
+        const ruleBody = currentSim.preset.rule.compute ?? '';
+        const writesColor = exprOutputs.some(o => o.includes('colorR') || o.includes('colorG') || o.includes('colorB'))
+          || ruleBody.includes('self.colorR') || ruleBody.includes('self.colorG') || ruleBody.includes('self.colorB');
+        const writesAlpha = exprOutputs.some(o => o.includes('alpha'))
+          || ruleBody.includes('self.alpha');
         const useDirectColor = (writesColor || writesAlpha) && colorR && colorG && colorB;
 
         // Parse visual_mappings to determine rendering mode and colors
