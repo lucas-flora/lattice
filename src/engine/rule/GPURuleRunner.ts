@@ -124,6 +124,7 @@ export class GPURuleRunner {
       propertyLayout: this.propertyLayout,
       envParams: this.envParamNames,
       globalParams: [],
+      copyAllProperties: true, // Copy through unwritten props (alpha, age, etc.) to prevent ping-pong stale data
     };
     this.wgsl = generateWGSL(irProgram, config);
 
