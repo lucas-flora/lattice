@@ -228,28 +228,28 @@ rule:
         new_color = 1.0 - color
     na = neighbor_at(0, -1, ant)
     if na > 0.5:
-        nd = (neighbor_at(0, -1, ant_dir) + 1.0 + 2.0 * neighbor_at(0, -1, color)) % 4.0
-        if nd > 1.5 and nd < 2.5:
+        d0 = (neighbor_at(0, -1, ant_dir) + 1.0 + 2.0 * neighbor_at(0, -1, color)) % 4.0
+        if d0 > 1.5 and d0 < 2.5:
             new_ant = 1.0
-            new_dir = nd
+            new_dir = d0
     nb = neighbor_at(1, 0, ant)
     if nb > 0.5:
-        nd = (neighbor_at(1, 0, ant_dir) + 1.0 + 2.0 * neighbor_at(1, 0, color)) % 4.0
-        if nd > 2.5 and nd < 3.5:
+        d1 = (neighbor_at(1, 0, ant_dir) + 1.0 + 2.0 * neighbor_at(1, 0, color)) % 4.0
+        if d1 > 2.5 and d1 < 3.5:
             new_ant = 1.0
-            new_dir = nd
+            new_dir = d1
     nc = neighbor_at(0, 1, ant)
     if nc > 0.5:
-        nd = (neighbor_at(0, 1, ant_dir) + 1.0 + 2.0 * neighbor_at(0, 1, color)) % 4.0
-        if nd < 0.5:
+        d2 = (neighbor_at(0, 1, ant_dir) + 1.0 + 2.0 * neighbor_at(0, 1, color)) % 4.0
+        if d2 < 0.5:
             new_ant = 1.0
-            new_dir = nd
+            new_dir = d2
     nl = neighbor_at(-1, 0, ant)
     if nl > 0.5:
-        nd = (neighbor_at(-1, 0, ant_dir) + 1.0 + 2.0 * neighbor_at(-1, 0, color)) % 4.0
-        if nd > 0.5 and nd < 1.5:
+        d3 = (neighbor_at(-1, 0, ant_dir) + 1.0 + 2.0 * neighbor_at(-1, 0, color)) % 4.0
+        if d3 > 0.5 and d3 < 1.5:
             new_ant = 1.0
-            new_dir = nd
+            new_dir = d3
     self.color = new_color
     self.ant = new_ant
     self.ant_dir = new_dir

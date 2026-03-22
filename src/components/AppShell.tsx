@@ -67,7 +67,7 @@ function initializeSimulation(controller: SimulationController): void {
   const w = sim.preset.grid.width;
   const h = sim.preset.grid.height ?? 1;
 
-  if (presetName === 'Gray-Scott') {
+  if (presetName.startsWith('Gray-Scott')) {
     const uBuf = sim.grid.getCurrentBuffer('u');
     const vBuf = sim.grid.getCurrentBuffer('v');
     uBuf.fill(1.0);
@@ -87,7 +87,7 @@ function initializeSimulation(controller: SimulationController): void {
     return;
   }
 
-  if (presetName === 'Navier-Stokes') {
+  if (presetName.startsWith('Navier-Stokes')) {
     const densityBuf = sim.grid.getCurrentBuffer('density');
     densityBuf.fill(0.0);
     const cx = Math.floor(w / 2);

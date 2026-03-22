@@ -232,9 +232,16 @@ export class SimulationController {
    */
   private async syncGPUToGrid(): Promise<void> {
     if (!this.gpuRuleRunner || !this.simulation) return;
-    const data = await this.gpuRuleRunner.readBack();
-    this.gpuRuleRunner.applyToGrid(data);
-    this.simulation.runner.setGeneration(this.gpuRuleRunner.getGeneration());
+    try {
+      const runner = this.gpuRuleRunner;
+      const data = await runner.readBack();
+      // Runner may have been destroyed during async readback (e.g., grid resize)
+      if (!this.gpuRuleRunner || this.gpuRuleRunner !== runner) return;
+      runner.applyToGrid(data);
+      this.simulation?.runner.setGeneration(runner.getGeneration());
+    } catch {
+      // Readback failed (runner destroyed during resize) — safe to ignore
+    }
   }
 
   /** Epoch for GPU cache fill — incremented to cancel in-flight fills */
