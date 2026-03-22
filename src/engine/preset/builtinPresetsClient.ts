@@ -21,6 +21,7 @@ export const BUILTIN_PRESET_NAMES_CLIENT = [
   'gray-scott',
   'navier-stokes',
   'link-testbed',
+  'seeds',
 ] as const;
 
 export type BuiltinPresetNameClient = (typeof BUILTIN_PRESET_NAMES_CLIENT)[number];
@@ -543,6 +544,38 @@ visual_mappings:
     mapping:
       "0": "#000000"
       "1": "#00ff00"
+`,
+  'seeds': `
+schema_version: "1"
+meta:
+  name: "Seeds"
+  author: "Brian Silverman"
+  description: "Explosive 2-state automaton. Cells are born with exactly 2 neighbors but never survive."
+  tags: ["2d", "explosive", "binary"]
+grid:
+  dimensionality: "2d"
+  width: 256
+  height: 256
+  topology: "toroidal"
+cell_properties:
+  - name: "alive"
+    type: "bool"
+    default: 0
+    role: "input_output"
+rule:
+  type: "webgpu"
+  compute: |
+    n = neighbor_sum_alive
+    if alive < 0.5 and n > 1.5 and n < 2.5:
+        self.alive = 1.0
+    else:
+        self.alive = 0.0
+visual_mappings:
+  - property: "alive"
+    channel: "color"
+    mapping:
+      "0": "#0a0a1a"
+      "1": "#ff6633"
 `,
 };
 

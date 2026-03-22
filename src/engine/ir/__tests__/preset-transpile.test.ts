@@ -19,6 +19,7 @@ const PRESETS = [
   'langtons-ant',
   'rule-110',
   'link-testbed',
+  'seeds',
 ] as const;
 
 describe('Preset transpilation (Phase 6 validation)', () => {

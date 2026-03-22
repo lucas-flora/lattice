@@ -1,0 +1,47 @@
+# Seeds — a simple 2-state cellular automaton.
+# Rule B2/S (birth on exactly 2 neighbors, no survival).
+# Creates explosive growth patterns from sparse initial conditions.
+# Written from scratch to prove the generic transpiler pipeline.
+
+schema_version: "1"
+
+meta:
+  name: "Seeds"
+  author: "Brian Silverman"
+  description: "Explosive 2-state automaton. Cells are born with exactly 2 neighbors but never survive."
+  tags: ["2d", "explosive", "binary"]
+
+grid:
+  dimensionality: "2d"
+  width: 256
+  height: 256
+  topology: "toroidal"
+
+cell_properties:
+  - name: "alive"
+    type: "bool"
+    default: 0
+    role: "input_output"
+
+rule:
+  type: "webgpu"
+  compute: |
+    n = neighbor_sum_alive
+    if alive < 0.5 and n > 1.5 and n < 2.5:
+        self.alive = 1.0
+    else:
+        self.alive = 0.0
+
+visual_mappings:
+  - property: "alive"
+    channel: "color"
+    mapping:
+      "0": "#0a0a1a"
+      "1": "#ff6633"
+
+ai_context:
+  description: "Seeds automaton — B2/S rule creates explosive expanding patterns"
+  hints:
+    - "Dead cells with exactly 2 alive neighbors are born"
+    - "All alive cells die every tick (no survival)"
+    - "Creates chaotic, expanding, firework-like patterns"
