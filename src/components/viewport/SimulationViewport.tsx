@@ -545,10 +545,12 @@ export function SimulationViewport({ viewportId = 'viewport-1' }: SimulationView
         gpuGridRenderer.updateReadBuffer(gpuRunner.getReadBuffer());
         const cam = cameraController.camera;
         const camState: GPUCameraState = {
-          // Left edge in world coords
-          offsetX: cam.position.x + cam.left,
-          // Bottom edge in world coords (pixelY is flipped in shader)
-          offsetY: cam.position.y + cam.bottom,
+          // Left edge in grid coords. Three.js centers cells at integers
+          // (cell 0 at x=0, grid line at x=-0.5) while the GPU shader places
+          // cell 0 at gridX [0,1). The +0.5 aligns the two coordinate systems.
+          offsetX: cam.position.x + cam.left + 0.5,
+          // Bottom edge in grid coords (pixelY is flipped in shader)
+          offsetY: cam.position.y + cam.bottom + 0.5,
           // Pixels per world unit
           scale: (gpuCanvas?.width ?? width) / (cam.right - cam.left),
           canvasWidth: gpuCanvas?.width ?? width,
