@@ -1,10 +1,8 @@
 /**
- * Scripting module: Pyodide integration for Python rules, expressions, and scripts.
+ * Scripting module: global variable store and scripting types.
  *
- * Provides the PyodideBridge (main-thread API), grid transfer helpers,
- * worker message types, and scripting engines.
+ * GPU-native: Python rules compile via PythonParser → IR → WGSL.
+ * Pyodide/Web Worker infrastructure has been removed.
  */
-export { PyodideBridge } from './PyodideBridge';
-export { extractGridBuffers, applyResultBuffers } from './gridTransfer';
 export { GlobalVariableStore } from './GlobalVariableStore';
-export type { PyodideStatus, PyodideInMessage, PyodideOutMessage, GlobalVariableDef, GlobalScriptDef } from './types';
+export type { GlobalVariableDef, GlobalScriptDef } from './types';

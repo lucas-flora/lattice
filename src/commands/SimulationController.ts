@@ -14,7 +14,6 @@ import { CommandHistory } from '../engine/rule/CommandHistory';
 import { loadBuiltinPresetClient, type BuiltinPresetNameClient } from '../engine/preset/builtinPresetsClient';
 import type { EventBus } from '../engine/core/EventBus';
 import type { PresetConfig } from '../engine/preset/types';
-import { PyodideBridge } from '../engine/scripting/PyodideBridge';
 import { expressionStoreActions } from '../store/expressionStore';
 import type { ExpressionTagRegistry } from '../engine/expression/ExpressionTagRegistry';
 import type { SceneGraph } from '../engine/scene/SceneGraph';
@@ -43,12 +42,6 @@ interface TickSnapshot {
   liveCellCount: number;
 }
 
-/** How many frames to compute per async chunk during compute-ahead */
-const COMPUTE_CHUNK_SIZE = 50;
-
-/** Smaller chunk during playback to avoid blocking playback ticks */
-const PLAYBACK_CHUNK_SIZE = 10;
-
 /** Round a duration to a "nice" number for smart auto-extend */
 function smartExtendDuration(current: number): number {
   const doubled = current * 2;
@@ -74,7 +67,6 @@ export interface ControllerStateSnapshot {
   computedGeneration: number;
   initialSnapshot: Map<string, Float32Array> | null;
   computeAheadTarget: number;
-  pyodideBridge: PyodideBridge | null;
   playbackGeneration: number;
   playbackMode: PlaybackMode;
   timelineDuration: number;
@@ -103,23 +95,11 @@ export class SimulationController {
   protected computeAheadTimer: ReturnType<typeof setTimeout> | null = null;
   protected computeAheadTarget: number = 0;
 
-  /** Deferred compute-ahead listener (waiting for pyodide:ready) */
-  protected deferredComputeAheadListener: (() => void) | null = null;
-
   /** Debounce timer for restarting compute-ahead after grid edits */
   protected editDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
-  /** Guard: prevents concurrent async computation from piling up */
-  protected asyncComputeInFlight: boolean = false;
-
-  /** Guard: prevents concurrent async playback ticks */
-  protected asyncPlaybackInFlight: boolean = false;
-
   /** Epoch counter: incremented on preset/resize changes to cancel in-flight async work */
   protected computeEpoch: number = 0;
-
-  /** Optional PyodideBridge for Python rule support */
-  protected pyodideBridge: PyodideBridge | null = null;
 
   /** Current playback generation (may lag behind computedGeneration) */
   protected playbackGeneration: number = 0;
@@ -238,7 +218,7 @@ export class SimulationController {
       // Runner may have been destroyed during async readback (e.g., grid resize)
       if (!this.gpuRuleRunner || this.gpuRuleRunner !== runner) return;
       runner.applyToGrid(data);
-      this.simulation?.runner.setGeneration(runner.getGeneration());
+      this.simulation?.setGeneration(runner.getGeneration());
     } catch {
       // Readback failed (runner destroyed during resize) — safe to ignore
     }
@@ -368,8 +348,6 @@ export class SimulationController {
     if (this.editDebounceTimer) { clearTimeout(this.editDebounceTimer); this.editDebounceTimer = null; }
     this.pause();
     this.stopComputeAhead();
-    this.asyncComputeInFlight = false;
-    this.asyncPlaybackInFlight = false;
     this.clearScriptingState();
 
     const config: PresetConfig = loadBuiltinPresetClient(name as BuiltinPresetNameClient);
@@ -380,14 +358,10 @@ export class SimulationController {
     this.computedGeneration = 0;
     this.playbackGeneration = 0;
 
-    // Create Pyodide bridge BEFORE emitting presetLoaded, so that
-    // onPresetLoaded → captureInitialState sees needsAsyncTick()=true
-    // and defers compute-ahead until Pyodide is ready (with tickAsync).
     this.userParamDefs = [];
-    this.autoLoadPyodideIfNeeded();
-    // Try GPU acceleration (async, non-blocking — emit happens immediately, GPU init finishes in background)
+    // GPU acceleration (async, non-blocking — emit happens immediately, GPU init finishes in background)
     void this.tryInitGPURuleRunner();
-    logMin('ctrl', `loadPreset: bridge=${!!this.pyodideBridge}, bridgeStatus=${this.pyodideBridge?.getStatus()}, needsAsync=${this.needsAsyncTick()}, postRuleTags=${this.simulation.tagRegistry.hasPostRuleTags()}`);
+    logMin('ctrl', `loadPreset: postRuleTags=${this.simulation.tagRegistry.hasPostRuleTags()}`);
     this.emitPresetLoaded(config);
     this.emitParamDefs();
     this.syncTagStore();
@@ -396,7 +370,6 @@ export class SimulationController {
 
   /**
    * Load a preset from an already-parsed PresetConfig.
-   * For Python presets, use loadPresetConfigAsync() instead.
    */
   loadPresetConfig(config: PresetConfig): void {
     logMin('ctrl', `loadPresetConfig("${config.meta.name}") — playing=${this.playing}, computedGen=${this.computedGeneration}`);
@@ -404,8 +377,6 @@ export class SimulationController {
     if (this.editDebounceTimer) { clearTimeout(this.editDebounceTimer); this.editDebounceTimer = null; }
     this.pause();
     this.stopComputeAhead();
-    this.asyncComputeInFlight = false;
-    this.asyncPlaybackInFlight = false;
     this.clearScriptingState();
 
     this.simulation = new Simulation(config);
@@ -416,9 +387,7 @@ export class SimulationController {
     this.playbackGeneration = 0;
 
     this.userParamDefs = [];
-    this.autoLoadPyodideIfNeeded();
     void this.tryInitGPURuleRunner();
-    logMin('ctrl', `loadPresetConfig: bridge=${!!this.pyodideBridge}, needsAsync=${this.needsAsyncTick()}`);
     this.emitPresetLoaded(config);
     this.emitParamDefs();
     this.syncTagStore();
@@ -426,42 +395,10 @@ export class SimulationController {
   }
 
   /**
-   * Load a Python preset asynchronously. Creates PyodideBridge and
-   * initializes the Python runtime before creating the Simulation.
-   */
-  async loadPresetConfigAsync(config: PresetConfig, bridge: PyodideBridge): Promise<void> {
-    if (this.editDebounceTimer) { clearTimeout(this.editDebounceTimer); this.editDebounceTimer = null; }
-    this.pause();
-    this.clearScriptingState();
-
-    this.pyodideBridge = bridge;
-    this.simulation = await Simulation.create(config, bridge);
-    this.commandHistory = new CommandHistory(this.simulation);
-    this.activePresetName = config.meta.name;
-    this.frameCache.clear();
-    this.computedGeneration = 0;
-    this.playbackGeneration = 0;
-    this.userParamDefs = [];
-
-    this.emitPresetLoaded(config);
-    this.emitParamDefs();
-    this.syncTagStore();
-  }
-
-  /**
-   * Check whether the current simulation uses a Python rule.
-   */
-  isUsingPython(): boolean {
-    return this.simulation?.isUsingPython() ?? false;
-  }
-
-  /**
-   * Check whether the tick pipeline requires async execution.
+   * GPU-only pipeline: async tick is never needed.
    */
   needsAsyncTick(): boolean {
-    const result = this.simulation?.needsAsyncTick() ?? false;
-    logDbg('sim', `needsAsyncTick() → ${result} (bridge=${!!this.simulation?.pyodideBridge}, postRule=${this.simulation?.tagRegistry.hasPostRuleTags()}, scripts=${this.simulation?.tagRegistry.getAll().some(t => t.enabled && t.source === 'script')})`);
-    return result;
+    return false;
   }
 
   /**
@@ -542,48 +479,11 @@ export class SimulationController {
   }
 
   /**
-   * Get the PyodideBridge instance.
+   * Legacy no-op. PyodideBridge is removed — GPU pipeline handles everything.
+   * Kept as public API stub because external command definitions call it.
    */
-  getPyodideBridge() {
-    return this.pyodideBridge;
-  }
-
-  /**
-   * Auto-create PyodideBridge if the loaded preset has post-rule expression or script tags.
-   * This ensures needsAsyncTick() returns true so the compute path uses tickAsync().
-   */
-  private autoLoadPyodideIfNeeded(): void {
-    if (!this.simulation) return;
-    const hasPostRule = this.simulation.tagRegistry.hasPostRuleTags();
-    const hasScripts = this.simulation.tagRegistry.getAll().some(
-      t => t.enabled && t.source === 'script',
-    );
-    logMin('pyodide', `autoLoadPyodideIfNeeded: hasPostRule=${hasPostRule}, hasScripts=${hasScripts}, bridgeExists=${!!this.pyodideBridge}`);
-    if (hasPostRule || hasScripts) {
-      const bridge = this.ensurePyodideBridge();
-      // Start loading Pyodide immediately so it's ready when compute-ahead starts
-      if (bridge) {
-        logMin('pyodide', `ensureReady() called — status=${bridge.getStatus()}`);
-        void bridge.ensureReady().then(() => {
-          logMin('pyodide', 'Pyodide ready!');
-        });
-      }
-    }
-  }
-
-  /**
-   * Lazily ensure a PyodideBridge is available and attached to the simulation.
-   * Returns the bridge or null if no simulation.
-   */
-  ensurePyodideBridge(): PyodideBridge | null {
-    if (!this.simulation) return null;
-    if (!this.pyodideBridge) {
-      this.pyodideBridge = new PyodideBridge();
-    }
-    if (!this.simulation.pyodideBridge) {
-      this.simulation.pyodideBridge = this.pyodideBridge;
-    }
-    return this.pyodideBridge;
+  ensurePyodideBridge(): null {
+    return null;
   }
 
   /**
@@ -592,7 +492,7 @@ export class SimulationController {
    * the playback loop at display FPS.
    */
   play(): void {
-    logMin('play', `play() — already=${this.playing}, needsAsync=${this.needsAsyncTick()}, computedGen=${this.computedGeneration}, playbackGen=${this.playbackGeneration}`);
+    logMin('play', `play() — already=${this.playing}, computedGen=${this.computedGeneration}, playbackGen=${this.playbackGeneration}`);
     if (this.playing || !this.simulation) return;
     this.playing = true;
     this.gpuCacheFillEpoch++; // Cancel any in-flight GPU cache fill
@@ -616,7 +516,6 @@ export class SimulationController {
     this.playing = false;
 
     this.stopPlaybackLoop();
-    this.asyncPlaybackInFlight = false;
 
     // GPU mode: sync display state back to CPU Grid so edits see correct base
     if (this.gpuRuleRunner) {
@@ -630,93 +529,34 @@ export class SimulationController {
   }
 
   /**
-   * Run a single tick (step forward one generation).
-   * For Python rules, use stepAsync() instead.
+   * Run a single tick (step forward one generation) via GPU.
    */
   step(): void {
     if (!this.simulation || this.gpuSyncInFlight) return;
-    logDbg('play', `step() — needsAsync=${this.needsAsyncTick()}, playbackGen=${this.playbackGeneration}, computedGen=${this.computedGeneration}`);
+    logDbg('play', `step() — playbackGen=${this.playbackGeneration}, computedGen=${this.computedGeneration}`);
 
-    // GPU mode: tick GPU directly (no cache roundtrip)
-    if (this.gpuRuleRunner) {
-      const nextGen = this.playbackGeneration + 1;
-      if (nextGen >= this.timelineDuration) {
-        this.timelineDuration = nextGen + 1;
-        this.eventBus.emit('sim:timelineExtend', { duration: this.timelineDuration });
-      }
-      this.gpuRuleRunner.tick();
-      this.playbackGeneration = this.gpuRuleRunner.getGeneration();
-      this.simulation.runner.setGeneration(this.playbackGeneration);
-      this.eventBus.emit('sim:tick', { generation: this.playbackGeneration, liveCellCount: -1 });
-      return;
-    }
-
-    if (this.simulation.needsAsyncTick()) {
-      void this.stepAsync();
-      return;
-    }
+    if (!this.gpuRuleRunner) return;
 
     const nextGen = this.playbackGeneration + 1;
-
-    // Stepping past timeline end: extend by exactly 1 frame
     if (nextGen >= this.timelineDuration) {
       this.timelineDuration = nextGen + 1;
       this.eventBus.emit('sim:timelineExtend', { duration: this.timelineDuration });
     }
-
-    // Ensure the next frame is computed
-    if (nextGen > this.computedGeneration) {
-      this.computeFrames(1);
-    }
-    this.playbackGeneration = nextGen;
-    this.restoreFrame(this.playbackGeneration);
+    this.gpuRuleRunner.tick();
+    this.playbackGeneration = this.gpuRuleRunner.getGeneration();
+    this.simulation.setGeneration(this.playbackGeneration);
+    this.eventBus.emit('sim:tick', { generation: this.playbackGeneration, liveCellCount: -1 });
   }
 
   /**
-   * Async step for Python rules.
-   */
-  async stepAsync(): Promise<void> {
-    if (!this.simulation || this.gpuSyncInFlight) return;
-    logDbg('play', `stepAsync() — playbackGen=${this.playbackGeneration}, computedGen=${this.computedGeneration}`);
-
-    const nextGen = this.playbackGeneration + 1;
-
-    if (nextGen >= this.timelineDuration) {
-      this.timelineDuration = nextGen + 1;
-      this.eventBus.emit('sim:timelineExtend', { duration: this.timelineDuration });
-    }
-
-    if (nextGen > this.computedGeneration) {
-      await this.computeFramesAsync(1);
-    }
-    this.playbackGeneration = nextGen;
-    this.restoreFrame(this.playbackGeneration);
-  }
-
-  /**
-   * Reverse one generation by restoring the previous cached frame.
+   * Reverse one generation via GPU seek.
    */
   stepBack(): void {
     if (!this.simulation || this.gpuSyncInFlight || this.playbackGeneration <= 0) return;
 
     const targetGen = this.playbackGeneration - 1;
-
-    // GPU mode: seek backward via GPU recompute (no cache needed)
-    if (this.gpuRuleRunner) {
-      this.seek(targetGen);
-      this.eventBus.emit('sim:stepBack', { generation: targetGen });
-      return;
-    }
-
-    this.playbackGeneration = targetGen;
-    if (this.frameCache.has(this.playbackGeneration)) {
-      this.restoreFrame(this.playbackGeneration);
-    } else {
-      // Frame not in cache — need to recompute from initial state
-      this.recomputeTo(this.playbackGeneration);
-      this.restoreFrame(this.playbackGeneration);
-    }
-    this.eventBus.emit('sim:stepBack', { generation: this.playbackGeneration });
+    this.seek(targetGen);
+    this.eventBus.emit('sim:stepBack', { generation: targetGen });
   }
 
   /**
@@ -744,7 +584,7 @@ export class SimulationController {
     this.frameCache.clear();
     this.computedGeneration = 0;
     this.playbackGeneration = 0;
-    this.simulation.runner.setGeneration(0);
+    this.simulation.setGeneration(0);
     this.syncGridToGPU();
     this.eventBus.emit('sim:clear', {});
     this.eventBus.emit('sim:tick', { generation: 0, liveCellCount: 0 });
@@ -785,55 +625,42 @@ export class SimulationController {
     }
     logDbg('play', `seek(${targetGen}) — playbackGen=${this.playbackGeneration}, computedGen=${this.computedGeneration}`);
 
-    // GPU mode: seek by restoring nearest cached state and GPU-ticking forward.
+    if (!this.gpuRuleRunner) return;
+
+    // GPU seek: restore nearest cached state and GPU-tick forward.
     // GPU ticking is <1ms/frame so even large seeks are near-instant.
-    if (this.gpuRuleRunner) {
-      if (this.frameCache.has(targetGen)) {
-        this.playbackGeneration = targetGen;
-        this.restoreFrame(targetGen);
-      } else {
-        // Find nearest cached frame at or before target
-        let nearest = targetGen;
-        while (nearest > 0 && !this.frameCache.has(nearest)) nearest--;
+    if (this.frameCache.has(targetGen)) {
+      this.playbackGeneration = targetGen;
+      this.restoreFrame(targetGen);
+    } else {
+      // Find nearest cached frame at or before target
+      let nearest = targetGen;
+      while (nearest > 0 && !this.frameCache.has(nearest)) nearest--;
 
-        // Restore the nearest point (cached frame or initial state)
-        if (nearest === 0 && !this.frameCache.has(0) && this.initialSnapshot) {
-          // Restore from initial snapshot directly
-          for (const [propName, buf] of this.initialSnapshot) {
-            this.simulation.grid.getCurrentBuffer(propName).set(buf);
-          }
-          this.syncGridToGPU();
-          this.gpuRuleRunner.setGeneration(0);
-        } else if (this.frameCache.has(nearest)) {
-          this.applySnapshot(this.frameCache.get(nearest)!);
-          this.syncGridToGPU();
-          this.gpuRuleRunner.setGeneration(nearest);
+      // Restore the nearest point (cached frame or initial state)
+      if (nearest === 0 && !this.frameCache.has(0) && this.initialSnapshot) {
+        // Restore from initial snapshot directly
+        for (const [propName, buf] of this.initialSnapshot) {
+          this.simulation.grid.getCurrentBuffer(propName).set(buf);
         }
-
-        // GPU-tick forward to target (no readback, no cache — just compute)
-        const ticksNeeded = targetGen - nearest;
-        for (let i = 0; i < ticksNeeded; i++) {
-          this.gpuRuleRunner.tick();
-        }
-
-        this.playbackGeneration = targetGen;
-        this.simulation.runner.setGeneration(targetGen);
-        this.eventBus.emit('sim:tick', { generation: targetGen, liveCellCount: -1 });
+        this.syncGridToGPU();
+        this.gpuRuleRunner.setGeneration(0);
+      } else if (this.frameCache.has(nearest)) {
+        this.applySnapshot(this.frameCache.get(nearest)!);
+        this.syncGridToGPU();
+        this.gpuRuleRunner.setGeneration(nearest);
       }
-      return;
-    }
 
-    // CPU mode: compute to target if not cached (may block)
-    if (!this.frameCache.has(targetGen)) {
-      if (targetGen > this.computedGeneration) {
-        this.computeFrames(targetGen - this.computedGeneration);
-      } else {
-        this.recomputeTo(targetGen);
+      // GPU-tick forward to target (no readback, no cache — just compute)
+      const ticksNeeded = targetGen - nearest;
+      for (let i = 0; i < ticksNeeded; i++) {
+        this.gpuRuleRunner.tick();
       }
-    }
 
-    this.playbackGeneration = targetGen;
-    this.restoreFrame(targetGen);
+      this.playbackGeneration = targetGen;
+      this.simulation.setGeneration(targetGen);
+      this.eventBus.emit('sim:tick', { generation: targetGen, liveCellCount: -1 });
+    }
   }
 
   /**
@@ -842,12 +669,7 @@ export class SimulationController {
    */
   computeAhead(targetGeneration: number): void {
     this.computeAheadTarget = targetGeneration;
-    // GPU ticks live, no compute-ahead (check both runner and expected GPU capability)
-    if (this.gpuRuleRunner) return;
-    if (GPUContext.isAvailable() && this.simulation?.preset.rule.compute) return;
-    logMin('compute', `computeAhead(${targetGeneration}) — computedGen=${this.computedGeneration}, timerRunning=${!!this.computeAheadTimer}, needsAsync=${this.needsAsyncTick()}`);
-    if (this.computeAheadTimer) return; // Already running
-    this.runComputeAheadChunk();
+    // GPU ticks live — no CPU compute-ahead needed
   }
 
   /**
@@ -873,10 +695,8 @@ export class SimulationController {
     this.computedGeneration = 0;
     this.playbackGeneration = 0;
     this.syncGridToGPU();
-    if (!this.gpuRuleRunner) {
-      this.cacheCurrentFrame();
-      if (this.computeAheadTarget > 0) this.computeAhead(this.computeAheadTarget);
-    } else {
+    this.cacheCurrentFrame();
+    if (this.gpuRuleRunner) {
       void this.gpuCacheFill();
     }
     this.eventBus.emit('sim:reset', {});
@@ -987,7 +807,7 @@ export class SimulationController {
    */
   captureInitialState(cacheTarget?: number): void {
     if (!this.simulation) return;
-    logMin('ctrl', `captureInitialState(${cacheTarget}) — needsAsync=${this.needsAsyncTick()}, bridgeStatus=${this.pyodideBridge?.getStatus()}, simGen=${this.simulation.getGeneration()}`);
+    logMin('ctrl', `captureInitialState(${cacheTarget}) — simGen=${this.simulation.getGeneration()}`);
     this.initialSnapshot = new Map();
     let perFrameBytes = 0;
     for (const propName of this.simulation.grid.getPropertyNames()) {
@@ -1007,38 +827,12 @@ export class SimulationController {
     // Sync to scene graph for persistence
     this.syncInitialStateToScene();
 
-    // Start compute-ahead (CPU mode only — GPU ticks live, no pre-compute needed)
+    // GPU ticks live — unlock timeline scrubbing immediately
     if (cacheTarget && cacheTarget > 0) {
       this.timelineDuration = cacheTarget;
       this.computeAheadTarget = cacheTarget;
-      // Skip compute-ahead if GPU will handle this preset (runner may still be initializing)
-      if (this.gpuRuleRunner || (GPUContext.isAvailable() && this.simulation?.preset.rule.compute)) {
-        // Unlock timeline scrubbing immediately — GPU can seek to any frame
-        this.computedGeneration = cacheTarget;
-        this.eventBus.emit('sim:computeProgress', { computedGeneration: cacheTarget });
-        return;
-      }
-
-      // If async tick is needed but Pyodide isn't ready yet, defer compute-ahead
-      if (this.needsAsyncTick() && this.pyodideBridge && this.pyodideBridge.getStatus() !== 'ready') {
-        this.computeAheadTarget = cacheTarget;
-        // Cancel any previous deferred listener
-        if (this.deferredComputeAheadListener) {
-          this.eventBus.off('pyodide:ready', this.deferredComputeAheadListener);
-        }
-        const captureEpoch = this.computeEpoch;
-        const onReady = () => {
-          this.eventBus.off('pyodide:ready', onReady);
-          this.deferredComputeAheadListener = null;
-          // If a preset load or resize happened since we deferred, bail out
-          if (this.computeEpoch !== captureEpoch) return;
-          this.computeAhead(cacheTarget);
-        };
-        this.deferredComputeAheadListener = onReady;
-        this.eventBus.on('pyodide:ready', onReady);
-      } else {
-        this.computeAhead(cacheTarget);
-      }
+      this.computedGeneration = cacheTarget;
+      this.eventBus.emit('sim:computeProgress', { computedGeneration: cacheTarget });
     }
   }
 
@@ -1059,7 +853,7 @@ export class SimulationController {
           const gridBuf = this.simulation.grid.getCurrentBuffer(propName);
           gridBuf.set(new Float32Array(data));
         }
-        this.simulation.runner.setGeneration(0);
+        this.simulation.setGeneration(0);
         return;
       }
     }
@@ -1074,7 +868,7 @@ export class SimulationController {
       const currentBuf = this.simulation.grid.getCurrentBuffer(propName);
       currentBuf.set(buffer);
     }
-    this.simulation.runner.setGeneration(0);
+    this.simulation.setGeneration(0);
   }
 
   /** Find the initial-state node with isInitial:true in the scene store */
@@ -1186,151 +980,22 @@ export class SimulationController {
   }
 
   /**
-   * Compute N frames ahead from the current computed frontier.
-   * GPU path: just tick (no cache — GPU renders live from buffers).
-   * CPU path: tick + cache for timeline scrubbing.
+   * Compute N frames ahead on the GPU.
    */
   private computeFrames(count: number): void {
-    if (!this.simulation) return;
-    logDbg('compute', `computeFrames(${count}) — simGen=${this.simulation.getGeneration()}, computedGen=${this.computedGeneration}, gpu=${!!this.gpuRuleRunner}`);
+    if (!this.simulation || !this.gpuRuleRunner) return;
+    logDbg('compute', `computeFrames(${count}) — simGen=${this.simulation.getGeneration()}, computedGen=${this.computedGeneration}`);
 
-    if (this.gpuRuleRunner) {
-      // GPU path: tick on GPU, don't cache (readback is async).
-      // Frame caching for GPU is handled by computeFramesGPU().
-      for (let i = 0; i < count; i++) {
-        this.gpuRuleRunner.tick();
-        const gpuGen = this.gpuRuleRunner.getGeneration();
-        this.simulation.runner.setGeneration(gpuGen);
-        this.computedGeneration = gpuGen;
-      }
-    } else {
-      // CPU path (unchanged)
-      if (this.simulation.getGeneration() !== this.computedGeneration) {
-        this.advanceSimTo(this.computedGeneration);
-      }
-
-      for (let i = 0; i < count; i++) {
-        this.cacheCurrentFrame();
-        this.simulation.tick();
-        this.computedGeneration = this.simulation.getGeneration();
-      }
-      this.cacheCurrentFrame();
+    for (let i = 0; i < count; i++) {
+      this.gpuRuleRunner.tick();
+      const gpuGen = this.gpuRuleRunner.getGeneration();
+      this.simulation.setGeneration(gpuGen);
+      this.computedGeneration = gpuGen;
     }
     logDbg('compute', `computeFrames done — computedGen=${this.computedGeneration}`);
 
     // Emit progress
     this.eventBus.emit('sim:computeProgress', { computedGeneration: this.computedGeneration });
-  }
-
-  /**
-   * Async version of computeFrames for Python rules.
-   * Guarded: only one async compute can run at a time.
-   *
-   * Saves the display state before computing and restores it after each
-   * await yield, so the renderer never shows intermediate compute-ahead frames.
-   */
-  private async computeFramesAsync(count: number): Promise<void> {
-    if (!this.simulation) return;
-    if (this.asyncComputeInFlight) {
-      logDbg('compute', `computeFramesAsync(${count}) SKIPPED — already in flight`);
-      return;
-    }
-    this.asyncComputeInFlight = true;
-    logDbg('compute', `computeFramesAsync(${count}) START — simGen=${this.simulation.getGeneration()}, computedGen=${this.computedGeneration}, playbackGen=${this.playbackGeneration}, bridgeStatus=${this.pyodideBridge?.getStatus()}`);
-
-    // Lock the display: renderer reads frozen snapshot while we compute freely
-    const grid = this.simulation.grid;
-    const epoch = this.computeEpoch;
-    grid.lockDisplay();
-
-    try {
-      // Move sim to compute frontier (restores from cache — no sync replay needed)
-      if (this.simulation.getGeneration() !== this.computedGeneration) {
-        logDbg('compute', `advancing sim from ${this.simulation.getGeneration()} to computedGen=${this.computedGeneration}`);
-        this.advanceSimTo(this.computedGeneration);
-      }
-
-      for (let i = 0; i < count; i++) {
-        // Check if simulation was replaced (grid resize, preset change)
-        if (this.computeEpoch !== epoch) {
-          logMin('compute', `computeFramesAsync ABORTED — epoch changed (${epoch} → ${this.computeEpoch})`);
-          break;
-        }
-
-        this.cacheCurrentFrame();
-        logDbg('compute', `tickAsync() iteration ${i}/${count} — simGen=${this.simulation.getGeneration()}`);
-        await this.simulation.tickAsync();
-        this.computedGeneration = this.simulation.getGeneration();
-        logDbg('compute', `tickAsync() done — new computedGen=${this.computedGeneration}`);
-
-        // Cache the result with expressions applied
-        this.cacheCurrentFrame();
-      }
-
-      logDbg('compute', `computeFramesAsync(${count}) DONE — computedGen=${this.computedGeneration}`);
-      this.eventBus.emit('sim:computeProgress', { computedGeneration: this.computedGeneration });
-    } catch (err) {
-      logMin('compute', `computeFramesAsync ERROR: ${err}`);
-      throw err;
-    } finally {
-      // Unlock the grid we locked (not this.simulation.grid — might have changed)
-      if (this.computeEpoch === epoch) {
-        // Same simulation: restore playback frame, then unlock
-        const playbackSnapshot = this.frameCache.get(this.playbackGeneration);
-        if (playbackSnapshot) {
-          this.applySnapshot(playbackSnapshot);
-        }
-      }
-      grid.unlockDisplay();
-      this.asyncComputeInFlight = false;
-    }
-  }
-
-  /**
-   * Advance the sim engine to a specific generation (for internal use).
-   * If the target is cached, restores from cache. Otherwise replays from initial state.
-   */
-  private advanceSimTo(targetGen: number): void {
-    if (!this.simulation) return;
-
-    const currentGen = this.simulation.getGeneration();
-    if (currentGen === targetGen) return;
-
-    // Check cache
-    if (this.frameCache.has(targetGen)) {
-      logDbg('compute', `advanceSimTo(${targetGen}) — from cache (simGen was ${currentGen})`);
-      this.applySnapshot(this.frameCache.get(targetGen)!);
-      return;
-    }
-
-    // Need to replay
-    logDbg('compute', `advanceSimTo(${targetGen}) — REPLAY from ${currentGen < targetGen && this.frameCache.has(currentGen) ? currentGen : 0}`);
-    if (targetGen < currentGen || !this.frameCache.has(currentGen)) {
-      this.restoreInitialState();
-      for (let i = 0; i < targetGen; i++) {
-        this.simulation.tick();
-      }
-    } else {
-      for (let i = currentGen; i < targetGen; i++) {
-        this.simulation.tick();
-      }
-    }
-  }
-
-  /**
-   * Recompute from initial state to target, populating cache along the way.
-   */
-  private recomputeTo(targetGen: number): void {
-    if (!this.simulation) return;
-    this.restoreInitialState();
-    for (let i = 0; i < targetGen; i++) {
-      this.cacheCurrentFrame();
-      this.simulation.tick();
-    }
-    this.cacheCurrentFrame();
-    if (targetGen > this.computedGeneration) {
-      this.computedGeneration = targetGen;
-    }
   }
 
   /**
@@ -1343,7 +1008,7 @@ export class SimulationController {
       const currentBuf = this.simulation.grid.getCurrentBuffer(propName);
       currentBuf.set(buffer);
     }
-    this.simulation.runner.setGeneration(snapshot.generation);
+    this.simulation.setGeneration(snapshot.generation);
   }
 
   /**
@@ -1373,143 +1038,46 @@ export class SimulationController {
   }
 
   private playbackTick(): void {
-    if (!this.simulation) return;
-    logDbg('play', `playbackTick() — playbackGen=${this.playbackGeneration}, computedGen=${this.computedGeneration}, gpu=${!!this.gpuRuleRunner}`);
+    if (!this.simulation || !this.gpuRuleRunner) return;
+    logDbg('play', `playbackTick() — playbackGen=${this.playbackGeneration}, computedGen=${this.computedGeneration}`);
 
-    // GPU path takes priority — always live-tick for performance.
-    // Restoring from cache requires a full CPU→GPU upload per frame which is
-    // prohibitively slow for large grids. Cache is only used for seek/step-back.
-    if (this.gpuRuleRunner) {
-      if (this.gpuSyncInFlight) return; // Wait for readback to finish
-      const nextGen = this.playbackGeneration + 1;
-      if (nextGen >= this.timelineDuration) {
-        switch (this.playbackMode) {
-          case 'once':
-            this.pause();
-            return;
-          case 'loop': {
-            // Reset GPU runner to initial state
-            this.playbackGeneration = 0;
-            if (this.initialSnapshot) {
-              for (const [propName, buf] of this.initialSnapshot) {
-                this.simulation.grid.getCurrentBuffer(propName).set(buf);
-              }
-              this.syncGridToGPU();
+    if (this.gpuSyncInFlight) return; // Wait for readback to finish
+    const nextGen = this.playbackGeneration + 1;
+    if (nextGen >= this.timelineDuration) {
+      switch (this.playbackMode) {
+        case 'once':
+          this.pause();
+          return;
+        case 'loop': {
+          // Reset GPU runner to initial state
+          this.playbackGeneration = 0;
+          if (this.initialSnapshot) {
+            for (const [propName, buf] of this.initialSnapshot) {
+              this.simulation.grid.getCurrentBuffer(propName).set(buf);
             }
-            this.gpuRuleRunner.setGeneration(0);
-            this.simulation.runner.setGeneration(0);
-            this.eventBus.emit('sim:tick', { generation: 0, liveCellCount: -1 });
-            return;
+            this.syncGridToGPU();
           }
-          case 'endless': {
-            const newDuration = smartExtendDuration(this.timelineDuration);
-            this.timelineDuration = newDuration;
-            this.eventBus.emit('sim:timelineExtend', { duration: newDuration });
-            break;
-          }
+          this.gpuRuleRunner.setGeneration(0);
+          this.simulation.setGeneration(0);
+          this.eventBus.emit('sim:tick', { generation: 0, liveCellCount: -1 });
+          return;
         }
-      }
-      // Always live-tick on GPU — no cache roundtrip
-      this.gpuRuleRunner.tick();
-      this.playbackGeneration = this.gpuRuleRunner.getGeneration();
-      this.simulation.runner.setGeneration(this.playbackGeneration);
-      this.eventBus.emit('sim:tick', {
-        generation: this.playbackGeneration,
-        liveCellCount: -1,
-      });
-      return;
-    }
-
-    // Async rules (Python via Pyodide, expressions, scripts) — CPU fallback
-    if (this.simulation.needsAsyncTick()) {
-      void this.playbackTickAsync();
-      return;
-    }
-
-    const nextGen = this.playbackGeneration + 1;
-
-    // Check if playback has reached the end of the timeline
-    if (nextGen >= this.timelineDuration) {
-      switch (this.playbackMode) {
-        case 'once':
-          this.pause();
-          return;
-        case 'loop':
-          this.playbackGeneration = 0;
-          this.restoreFrame(0);
-          return;
         case 'endless': {
           const newDuration = smartExtendDuration(this.timelineDuration);
           this.timelineDuration = newDuration;
           this.eventBus.emit('sim:timelineExtend', { duration: newDuration });
-          // Extend compute-ahead target and kick off caching if idle
-          this.computeAheadTarget = newDuration;
-          if (!this.computeAheadTimer) {
-            this.runComputeAheadChunk();
-          }
-          break; // Continue to advance playback below
-        }
-      }
-    }
-
-    // If next frame isn't computed yet, compute just 1 frame to keep playback going
-    if (nextGen > this.computedGeneration) {
-      this.computeFrames(1);
-    }
-
-    // Advance playback if the frame is now available
-    if (nextGen <= this.computedGeneration) {
-      this.playbackGeneration = nextGen;
-      this.restoreFrame(this.playbackGeneration);
-    }
-  }
-
-  private async playbackTickAsync(): Promise<void> {
-    if (!this.simulation) return;
-    if (this.asyncPlaybackInFlight) {
-      logDbg('play', `playbackTickAsync() SKIPPED — already in flight`);
-      return;
-    }
-    this.asyncPlaybackInFlight = true;
-    const epoch = this.computeEpoch;
-    logDbg('play', `playbackTickAsync() — playbackGen=${this.playbackGeneration}, computedGen=${this.computedGeneration}`);
-
-    try {
-    const nextGen = this.playbackGeneration + 1;
-
-    if (nextGen >= this.timelineDuration) {
-      switch (this.playbackMode) {
-        case 'once':
-          this.pause();
-          return;
-        case 'loop':
-          this.playbackGeneration = 0;
-          this.restoreFrame(0);
-          return;
-        case 'endless': {
-          const newDuration = smartExtendDuration(this.timelineDuration);
-          this.timelineDuration = newDuration;
-          this.eventBus.emit('sim:timelineExtend', { duration: newDuration });
-          this.computeAheadTarget = newDuration;
           break;
         }
       }
     }
-
-    if (nextGen > this.computedGeneration) {
-      await this.computeFramesAsync(1);
-    }
-
-    // Bail if simulation was replaced during await
-    if (this.computeEpoch !== epoch) return;
-
-    if (nextGen <= this.computedGeneration) {
-      this.playbackGeneration = nextGen;
-      this.restoreFrame(this.playbackGeneration);
-    }
-    } finally {
-      this.asyncPlaybackInFlight = false;
-    }
+    // Always live-tick on GPU — no cache roundtrip
+    this.gpuRuleRunner.tick();
+    this.playbackGeneration = this.gpuRuleRunner.getGeneration();
+    this.simulation.setGeneration(this.playbackGeneration);
+    this.eventBus.emit('sim:tick', {
+      generation: this.playbackGeneration,
+      liveCellCount: -1,
+    });
   }
 
   /**
@@ -1523,72 +1091,13 @@ export class SimulationController {
   }
 
   /**
-   * Async compute-ahead: computes frames in chunks to avoid blocking.
-   */
-  private runComputeAheadChunk(): void {
-    // GPU mode: no compute-ahead. GPU ticks live.
-    if (this.gpuRuleRunner) {
-      this.computeAheadTimer = null;
-      return;
-    }
-
-    // Cap compute-ahead to timeline duration
-    const effectiveTarget = Math.min(this.computeAheadTarget, this.timelineDuration);
-    if (this.computedGeneration >= effectiveTarget) {
-      logDbg('compute', `runComputeAheadChunk DONE — computedGen=${this.computedGeneration} >= target=${effectiveTarget}`);
-      this.computeAheadTimer = null;
-      return;
-    }
-
-    const remaining = effectiveTarget - this.computedGeneration;
-    const maxChunk = this.playing ? PLAYBACK_CHUNK_SIZE : COMPUTE_CHUNK_SIZE;
-    const chunkSize = Math.min(maxChunk, remaining);
-    logDbg('compute', `runComputeAheadChunk — computedGen=${this.computedGeneration}, target=${effectiveTarget}, chunk=${chunkSize}`);
-
-    if (this.needsAsyncTick()) {
-      if (this.asyncComputeInFlight) {
-        logDbg('compute', `runComputeAheadChunk — async in flight, deferring`);
-        this.computeAheadTimer = null;
-        return;
-      }
-      logDbg('compute', `runComputeAheadChunk — launching async chunk of ${chunkSize}`);
-      const chunkEpoch = this.computeEpoch;
-      void this.computeFramesAsync(chunkSize).then(() => {
-        if (this.computeEpoch !== chunkEpoch) return;
-        if (this.frameCache.has(this.playbackGeneration)) {
-          this.applySnapshot(this.frameCache.get(this.playbackGeneration)!);
-        }
-        this.computeAheadTimer = setTimeout(() => {
-          this.runComputeAheadChunk();
-        }, 0);
-      });
-      return;
-    }
-
-    this.computeFrames(chunkSize);
-
-    if (this.frameCache.has(this.playbackGeneration)) {
-      this.applySnapshot(this.frameCache.get(this.playbackGeneration)!);
-    }
-
-    this.computeAheadTimer = setTimeout(() => {
-      this.runComputeAheadChunk();
-    }, 0);
-  }
-
-  /**
-   * Stop compute-ahead.
+   * Stop compute-ahead timer (GPU mode: no-op since GPU ticks live).
    */
   private stopComputeAhead(): void {
-    logDbg('compute', `stopComputeAhead() — timer=${!!this.computeAheadTimer}, deferredListener=${!!this.deferredComputeAheadListener}`);
+    logDbg('compute', `stopComputeAhead() — timer=${!!this.computeAheadTimer}`);
     if (this.computeAheadTimer) {
       clearTimeout(this.computeAheadTimer);
       this.computeAheadTimer = null;
-    }
-    // Cancel deferred compute-ahead waiting for Pyodide
-    if (this.deferredComputeAheadListener) {
-      this.eventBus.off('pyodide:ready', this.deferredComputeAheadListener);
-      this.deferredComputeAheadListener = null;
     }
   }
 
@@ -1624,12 +1133,12 @@ export class SimulationController {
     }
     if (this.computedGeneration > fromGeneration) {
       this.computedGeneration = fromGeneration;
-      this.advanceSimTo(Math.max(0, fromGeneration - 1));
       this.eventBus.emit('sim:computeProgress', { computedGeneration: this.computedGeneration });
     }
-    this.stopComputeAhead();
-    if (this.computeAheadTarget > this.computedGeneration) {
-      this.computeAhead(this.computeAheadTarget);
+    // GPU can recompute on demand — restart cache fill if available
+    if (this.gpuRuleRunner) {
+      this.gpuCacheFillEpoch++;
+      void this.gpuCacheFill();
     }
   }
 
@@ -1640,7 +1149,7 @@ export class SimulationController {
     if (!this.simulation) return;
 
     const gen = this.playbackGeneration;
-    this.simulation.runner.setGeneration(gen);
+    this.simulation.setGeneration(gen);
     this.syncGridToGPU();
     this.cacheCurrentFrame();
 
@@ -1674,8 +1183,6 @@ export class SimulationController {
       if (this.gpuRuleRunner) {
         // GPU mode: re-fill cache from the edit frame onwards
         void this.gpuCacheFill();
-      } else if (this.computeAheadTarget > this.computedGeneration) {
-        this.computeAhead(this.computeAheadTarget);
       }
     }, 150);
   }
@@ -1864,9 +1371,9 @@ export class SimulationController {
   /**
    * Update the rule compute body at runtime.
    */
-  updateRule(newBody: string): void {
+  updateRule(_newBody: string): void {
     if (!this.simulation) return;
-    this.simulation.updateRule(newBody);
+    // Rule update requires GPU re-initialization — handled by preset reload
     this.invalidateCacheFrom(this.playbackGeneration + 1);
   }
 
@@ -1887,9 +1394,9 @@ export class SimulationController {
       clearTimeout(this.editDebounceTimer);
       this.editDebounceTimer = null;
     }
-    if (this.pyodideBridge) {
-      this.pyodideBridge.dispose();
-      this.pyodideBridge = null;
+    if (this.gpuRuleRunner) {
+      this.gpuRuleRunner.destroy();
+      this.gpuRuleRunner = null;
     }
     this.simulation = null;
     this.commandHistory = null;
@@ -1916,7 +1423,6 @@ export class SimulationController {
       computedGeneration: this.computedGeneration,
       initialSnapshot: this.initialSnapshot,
       computeAheadTarget: this.computeAheadTarget,
-      pyodideBridge: this.pyodideBridge,
       playbackGeneration: this.playbackGeneration,
       playbackMode: this.playbackMode,
       timelineDuration: this.timelineDuration,
@@ -1930,7 +1436,6 @@ export class SimulationController {
     this.computedGeneration = 0;
     this.initialSnapshot = null;
     this.computeAheadTarget = 0;
-    this.pyodideBridge = null;
     this.playbackGeneration = 0;
     this.playbackMode = 'loop';
     this.timelineDuration = 256;
@@ -1941,8 +1446,6 @@ export class SimulationController {
   restoreState(snapshot: ControllerStateSnapshot): void {
     this.stopPlaybackLoop();
     this.stopComputeAhead();
-    this.asyncComputeInFlight = false;
-    this.asyncPlaybackInFlight = false;
     if (this.editDebounceTimer) {
       clearTimeout(this.editDebounceTimer);
       this.editDebounceTimer = null;
@@ -1957,17 +1460,12 @@ export class SimulationController {
     this.computedGeneration = snapshot.computedGeneration;
     this.initialSnapshot = snapshot.initialSnapshot;
     this.computeAheadTarget = snapshot.computeAheadTarget;
-    this.pyodideBridge = snapshot.pyodideBridge;
     this.playbackGeneration = snapshot.playbackGeneration;
     this.playbackMode = snapshot.playbackMode;
     this.timelineDuration = snapshot.timelineDuration;
 
     if (this.playing && this.simulation) {
       this.startPlaybackLoop();
-    }
-
-    if (this.computeAheadTarget > this.computedGeneration) {
-      this.computeAhead(this.computeAheadTarget);
     }
   }
 }

@@ -525,7 +525,7 @@ export class ExpressionTagRegistry {
    * read and write the same cell properties (that's what a rule does).
    * They run at their own pipeline stage, not in the expression graph.
    */
-  addFromRule(presetName: string, computeBody: string, _ruleType: 'typescript' | 'wasm' | 'python' = 'typescript'): ExpressionTag {
+  addFromRule(presetName: string, computeBody: string, _ruleType: string = 'webgpu'): ExpressionTag {
     const tag: ExpressionTag = {
       id: generateId(),
       name: `${presetName} Rule`,

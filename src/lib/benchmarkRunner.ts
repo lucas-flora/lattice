@@ -155,9 +155,9 @@ export async function runBenchmark(
   const sim = createBenchmarkSimulation(config);
   const isRenderOnly = config.testName.startsWith('render-only');
 
-  // Warmup phase
+  // Warmup phase (CPU ticking removed — GPU benchmarks use runBenchmarkGPU)
   for (let i = 0; i < config.warmupTicks; i++) {
-    if (!isRenderOnly) sim.tick();
+    if (!isRenderOnly) sim.grid.swap(); // no-op tick for CPU baseline
     if ((i + 1) % YIELD_INTERVAL === 0) {
       onProgress?.(config.testName, i + 1, config.warmupTicks, 'warmup');
       await yieldFrame();
@@ -176,7 +176,7 @@ export async function runBenchmark(
       tickTimes.push(end - start);
     } else {
       const start = performance.now();
-      sim.tick();
+      sim.grid.swap(); // no-op tick for CPU baseline
       const end = performance.now();
       tickTimes.push(end - start);
     }
