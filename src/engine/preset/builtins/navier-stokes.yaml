@@ -43,17 +43,17 @@ params:
   - name: "diffusion"
     label: "Diffusion"
     type: "float"
-    default: 0.0001
+    default: 0.05
     min: 0.0
-    max: 0.01
-    step: 0.0001
+    max: 0.5
+    step: 0.01
   - name: "dt"
     label: "Time Step"
     type: "float"
-    default: 0.1
+    default: 0.5
     min: 0.01
-    max: 1.0
-    step: 0.01
+    max: 2.0
+    step: 0.1
 
 rule:
   type: "webgpu"
@@ -73,10 +73,11 @@ rule:
     new_d = clamp(density + env_dt * (env_diffusion * lap_d - density * div_v * 0.01), 0.0, 10.0)
     self.density = new_d
     self.pressure = clamp(pressure + env_dt * (-div_v * 0.5), -10.0, 10.0)
-    t = clamp(new_d * 0.1, 0.0, 1.0)
-    self.colorR = t * 0.0
-    self.colorG = t * 0.8
-    self.colorB = 0.2 + t * 0.8
+    d = clamp(new_d, 0.0, 2.0) * 0.5
+    spd = clamp(sqrt(new_vx * new_vx + new_vy * new_vy) * 2.0, 0.0, 1.0)
+    self.colorR = spd * 0.4
+    self.colorG = d * 0.8 + spd * 0.3
+    self.colorB = d
 
 visual_mappings:
   - property: "density"
