@@ -1,6 +1,5 @@
-# Built-in preset: TypeScript compute body (JS/WASM fast path).
-# User-authored custom rules will use Python via Pyodide — both paths coexist.
-# See docs/ARCHITECTURE.md for the scripting system design.
+# Langton's Ant — GPU-native via Python transpiler → IR → WGSL.
+# Uses neighbor_at() for directional neighbor reads.
 
 schema_version: "1"
 
@@ -31,47 +30,40 @@ cell_properties:
     role: "input_output"
 
 rule:
-  type: "typescript"
+  type: "webgpu"
   compute: |
-    const hasAnt = ctx.cell.ant === 1;
-    if (!hasAnt) {
-      let newColor = ctx.cell.color;
-      let newAnt = 0;
-      let newDir = 0;
-      for (const n of ctx.neighbors) {
-        if (n.ant !== 1) continue;
-        const nDir = n.ant_dir;
-        const nColor = n.color;
-        let nextDir;
-        if (nColor === 0) {
-          nextDir = (nDir + 1) % 4;
-        } else {
-          nextDir = (nDir + 3) % 4;
-        }
-        const dx = [0, 1, 0, -1];
-        const dy = [-1, 0, 1, 0];
-        const targetX = (ctx.x - dx[nextDir] + ctx.grid.width) % ctx.grid.width;
-        const targetY = (ctx.y - dy[nextDir] + ctx.grid.height) % ctx.grid.height;
-        if (targetX === ctx.x && targetY === ctx.y) {
-          return { color: ctx.cell.color, ant: 1, ant_dir: nextDir };
-        }
-      }
-      return { color: newColor, ant: 0, ant_dir: 0 };
-    }
-    const color = ctx.cell.color;
-    const dir = ctx.cell.ant_dir;
-    let nextDir;
-    if (color === 0) {
-      nextDir = (dir + 1) % 4;
-    } else {
-      nextDir = (dir + 3) % 4;
-    }
-    const newColor = color === 0 ? 1 : 0;
-    const dx = [0, 1, 0, -1];
-    const dy = [-1, 0, 1, 0];
-    const targetX = (ctx.x + dx[nextDir] + ctx.grid.width) % ctx.grid.width;
-    const targetY = (ctx.y + dy[nextDir] + ctx.grid.height) % ctx.grid.height;
-    return { color: newColor, ant: 0, ant_dir: 0 };
+    new_color = color
+    new_ant = 0.0
+    new_dir = 0.0
+    if ant > 0.5:
+        new_color = 1.0 - color
+    na = neighbor_at(0, -1, ant)
+    if na > 0.5:
+        d0 = (neighbor_at(0, -1, ant_dir) + 1.0 + 2.0 * neighbor_at(0, -1, color)) % 4.0
+        if d0 > 1.5 and d0 < 2.5:
+            new_ant = 1.0
+            new_dir = d0
+    nb = neighbor_at(1, 0, ant)
+    if nb > 0.5:
+        d1 = (neighbor_at(1, 0, ant_dir) + 1.0 + 2.0 * neighbor_at(1, 0, color)) % 4.0
+        if d1 > 2.5 and d1 < 3.5:
+            new_ant = 1.0
+            new_dir = d1
+    nc = neighbor_at(0, 1, ant)
+    if nc > 0.5:
+        d2 = (neighbor_at(0, 1, ant_dir) + 1.0 + 2.0 * neighbor_at(0, 1, color)) % 4.0
+        if d2 < 0.5:
+            new_ant = 1.0
+            new_dir = d2
+    nl = neighbor_at(-1, 0, ant)
+    if nl > 0.5:
+        d3 = (neighbor_at(-1, 0, ant_dir) + 1.0 + 2.0 * neighbor_at(-1, 0, color)) % 4.0
+        if d3 > 0.5 and d3 < 1.5:
+            new_ant = 1.0
+            new_dir = d3
+    self.color = new_color
+    self.ant = new_ant
+    self.ant_dir = new_dir
 
 visual_mappings:
   - property: "color"
@@ -87,6 +79,6 @@ visual_mappings:
 ai_context:
   description: "Langton's Ant — a 2D Turing machine on a grid"
   hints:
-    - "On a white cell: turn right 90°, flip color, move forward"
-    - "On a black cell: turn left 90°, flip color, move forward"
+    - "On a white cell: turn right 90 degrees, flip color, move forward"
+    - "On a black cell: turn left 90 degrees, flip color, move forward"
     - "After ~10000 steps, the ant creates a repeating 'highway' pattern"

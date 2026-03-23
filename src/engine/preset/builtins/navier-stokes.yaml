@@ -1,13 +1,11 @@
-# Built-in preset: TypeScript compute body with WASM accelerator (fast path).
-# User-authored custom rules will use Python via Pyodide — both paths coexist.
-# See docs/ARCHITECTURE.md for the scripting system design.
+# Navier-Stokes Fluid Dynamics — GPU-native via Python transpiler → IR → WGSL.
 
 schema_version: "1"
 
 meta:
   name: "Navier-Stokes Fluid Dynamics"
   author: "Lattice Engine"
-  description: "Simplified 2D Navier-Stokes fluid simulation using a lattice-based diffusion and advection model. Proves the engine's universality — same substrate, different rule YAML."
+  description: "Simplified 2D Navier-Stokes fluid simulation using a lattice-based diffusion and advection model."
   tags: ["2d", "continuous", "fluid", "navier-stokes", "physics"]
 
 grid:
@@ -34,54 +32,52 @@ cell_properties:
     default: 0.0
     role: "input_output"
 
+params:
+  - name: "viscosity"
+    label: "Viscosity"
+    type: "float"
+    default: 0.1
+    min: 0.0
+    max: 1.0
+    step: 0.01
+  - name: "diffusion"
+    label: "Diffusion"
+    type: "float"
+    default: 0.05
+    min: 0.0
+    max: 0.5
+    step: 0.01
+  - name: "dt"
+    label: "Time Step"
+    type: "float"
+    default: 0.5
+    min: 0.01
+    max: 2.0
+    step: 0.1
+
 rule:
-  type: "wasm"
-  wasm_module: "navier_stokes_tick"
+  type: "webgpu"
   compute: |
-    const viscosity = 0.1;
-    const diffusion = 0.0001;
-    const dt = 0.1;
-    const vx = ctx.cell.vx;
-    const vy = ctx.cell.vy;
-    const density = ctx.cell.density;
-    const pressure = ctx.cell.pressure;
-    let lapVx = 0;
-    let lapVy = 0;
-    let lapDensity = 0;
-    let dpdx = 0;
-    let dpdy = 0;
-    let divV = 0;
-    const nc = ctx.neighbors.length;
-    for (const n of ctx.neighbors) {
-      lapVx += n.vx - vx;
-      lapVy += n.vy - vy;
-      lapDensity += n.density - density;
-      dpdx += n.pressure - pressure;
-      dpdy += n.pressure - pressure;
-      divV += n.vx + n.vy;
-    }
-    if (nc > 0) {
-      const scale = 4.0 / nc;
-      lapVx *= scale;
-      lapVy *= scale;
-      lapDensity *= scale;
-      dpdx *= scale / 2.0;
-      dpdy *= scale / 2.0;
-      divV = divV * scale - 4.0 * (vx + vy);
-    }
-    let newVx = vx + dt * (viscosity * lapVx - dpdx);
-    let newVy = vy + dt * (viscosity * lapVy - dpdy);
-    const newDensity = Math.max(0, density + dt * (diffusion * lapDensity - density * divV * 0.01));
-    const newPressure = pressure + dt * (-divV * 0.5);
-    const damping = 0.999;
-    newVx *= damping;
-    newVy *= damping;
-    return {
-      vx: Math.max(-10, Math.min(10, newVx)),
-      vy: Math.max(-10, Math.min(10, newVy)),
-      density: Math.min(10, newDensity),
-      pressure: Math.max(-10, Math.min(10, newPressure))
-    };
+    lap_vx = neighbor_at(0,-1,vx) + neighbor_at(0,1,vx) + neighbor_at(-1,0,vx) + neighbor_at(1,0,vx) - 4.0 * vx
+    lap_vy = neighbor_at(0,-1,vy) + neighbor_at(0,1,vy) + neighbor_at(-1,0,vy) + neighbor_at(1,0,vy) - 4.0 * vy
+    lap_d = neighbor_at(0,-1,density) + neighbor_at(0,1,density) + neighbor_at(-1,0,density) + neighbor_at(1,0,density) - 4.0 * density
+    dpdx = (neighbor_at(1,0,pressure) - neighbor_at(-1,0,pressure)) * 0.5
+    dpdy = (neighbor_at(0,1,pressure) - neighbor_at(0,-1,pressure)) * 0.5
+    n_vx = neighbor_at(0,-1,vx) + neighbor_at(0,1,vx) + neighbor_at(-1,0,vx) + neighbor_at(1,0,vx)
+    n_vy = neighbor_at(0,-1,vy) + neighbor_at(0,1,vy) + neighbor_at(-1,0,vy) + neighbor_at(1,0,vy)
+    div_v = (n_vx - 4.0 * vx) + (n_vy - 4.0 * vy)
+    new_vx = clamp((vx + env_dt * (env_viscosity * lap_vx - dpdx)) * 0.999, -10.0, 10.0)
+    new_vy = clamp((vy + env_dt * (env_viscosity * lap_vy - dpdy)) * 0.999, -10.0, 10.0)
+    self.vx = new_vx
+    self.vy = new_vy
+    new_d = clamp(density + env_dt * (env_diffusion * lap_d - density * div_v * 0.01), 0.0, 10.0)
+    self.density = new_d
+    self.pressure = clamp(pressure + env_dt * (-div_v * 0.5), -10.0, 10.0)
+    d = clamp(new_d, 0.0, 2.0) * 0.5
+    spd = clamp(sqrt(new_vx * new_vx + new_vy * new_vy) * 3.0, 0.0, 1.0)
+    self.colorR = d * spd * 0.6
+    self.colorG = d * (0.7 + spd * 0.3)
+    self.colorB = d
 
 visual_mappings:
   - property: "density"
@@ -89,10 +85,6 @@ visual_mappings:
     mapping:
       min: "#000033"
       max: "#00ccff"
-  - property: "vx"
-    channel: "orientation"
-    mapping:
-      type: "angle"
 
 ai_context:
   description: "Simplified 2D Navier-Stokes fluid simulation"

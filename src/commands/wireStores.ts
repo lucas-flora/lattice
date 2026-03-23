@@ -192,6 +192,16 @@ export function wireStores(eventBus: EventBus): () => void {
   eventBus.on('scene:selectionChanged', onSceneSelectionChanged);
   eventBus.on('scene:nodeAdded', onSceneNodeAdded);
 
+  // --- GPU wiring ---
+  const onGpuInitialized = (payload: { adapter: string; device: string; maxBufferSize: number }) => {
+    // Compute max grid size for 8-channel properties
+    const bytesPerCell = 8 * 4; // 8 channels × 4 bytes
+    const maxCells = Math.floor(payload.maxBufferSize / bytesPerCell);
+    const maxSide = Math.floor(Math.sqrt(maxCells));
+    simStoreActions.setGpuStatus(true, payload.adapter, maxSide);
+  };
+  eventBus.on('gpu:initialized', onGpuInitialized);
+
   // Return cleanup function
   return () => {
     eventBus.off('sim:tick', onTick);
@@ -220,5 +230,6 @@ export function wireStores(eventBus: EventBus): () => void {
     eventBus.off('tag:reset', onTagReset);
     eventBus.off('scene:selectionChanged', onSceneSelectionChanged);
     eventBus.off('scene:nodeAdded', onSceneNodeAdded);
+    eventBus.off('gpu:initialized', onGpuInitialized);
   };
 }

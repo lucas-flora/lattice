@@ -1,6 +1,4 @@
-# Built-in preset: TypeScript compute body (JS/WASM fast path).
-# User-authored custom rules will use Python via Pyodide — both paths coexist.
-# See docs/ARCHITECTURE.md for the scripting system design.
+# Brian's Brain — GPU-native via Python transpiler → IR → WGSL.
 
 schema_version: "1"
 
@@ -23,17 +21,30 @@ cell_properties:
     role: "input_output"
 
 rule:
-  type: "typescript"
+  type: "webgpu"
   compute: |
-    const state = ctx.cell.state;
-    if (state === 1) {
-      return { state: 2 };
-    }
-    if (state === 2) {
-      return { state: 0 };
-    }
-    const onNeighbors = ctx.neighbors.filter(n => n.state === 1).length;
-    return { state: onNeighbors === 2 ? 1 : 0 };
+    n = neighbor_count(state, 1)
+    if state > 0.5 and state < 1.5:
+        self.state = 2.0
+        self.colorR = 0.0
+        self.colorG = 0.4
+        self.colorB = 1.0
+    elif state > 1.5:
+        self.state = 0.0
+        self.colorR = 0.0
+        self.colorG = 0.0
+        self.colorB = 0.0
+    else:
+        if n == 2:
+            self.state = 1.0
+            self.colorR = 1.0
+            self.colorG = 1.0
+            self.colorB = 1.0
+        else:
+            self.state = 0.0
+            self.colorR = 0.0
+            self.colorG = 0.0
+            self.colorB = 0.0
 
 visual_mappings:
   - property: "state"

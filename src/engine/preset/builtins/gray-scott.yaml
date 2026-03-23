@@ -1,6 +1,4 @@
-# Built-in preset: TypeScript compute body with WASM accelerator (fast path).
-# User-authored custom rules will use Python via Pyodide — both paths coexist.
-# See docs/ARCHITECTURE.md for the scripting system design.
+# Gray-Scott Reaction-Diffusion — GPU-native via Python transpiler → IR → WGSL.
 
 schema_version: "1"
 
@@ -26,35 +24,51 @@ cell_properties:
     default: 0.0
     role: "input_output"
 
+params:
+  - name: "Du"
+    label: "Diffusion U"
+    type: "float"
+    default: 0.2097
+    min: 0.0
+    max: 1.0
+    step: 0.001
+  - name: "Dv"
+    label: "Diffusion V"
+    type: "float"
+    default: 0.105
+    min: 0.0
+    max: 1.0
+    step: 0.001
+  - name: "F"
+    label: "Feed Rate"
+    type: "float"
+    default: 0.037
+    min: 0.0
+    max: 0.1
+    step: 0.001
+  - name: "k"
+    label: "Kill Rate"
+    type: "float"
+    default: 0.06
+    min: 0.0
+    max: 0.1
+    step: 0.001
+  - name: "dt"
+    label: "Time Step"
+    type: "float"
+    default: 1.0
+    min: 0.1
+    max: 2.0
+    step: 0.1
+
 rule:
-  type: "wasm"
-  wasm_module: "gray_scott_tick"
+  type: "webgpu"
   compute: |
-    const Du = 0.2097;
-    const Dv = 0.105;
-    const F = 0.037;
-    const k = 0.06;
-    const dt = 1.0;
-    const u = ctx.cell.u;
-    const v = ctx.cell.v;
-    let lapU = 0;
-    let lapV = 0;
-    const neighborCount = ctx.neighbors.length;
-    for (const n of ctx.neighbors) {
-      lapU += n.u - u;
-      lapV += n.v - v;
-    }
-    if (neighborCount > 0) {
-      lapU = lapU * (4.0 / neighborCount);
-      lapV = lapV * (4.0 / neighborCount);
-    }
-    const uvv = u * v * v;
-    const newU = u + dt * (Du * lapU - uvv + F * (1.0 - u));
-    const newV = v + dt * (Dv * lapV + uvv - (F + k) * v);
-    return {
-      u: Math.max(0, Math.min(1, newU)),
-      v: Math.max(0, Math.min(1, newV))
-    };
+    lap_u = neighbor_at(0, -1, u) + neighbor_at(0, 1, u) + neighbor_at(-1, 0, u) + neighbor_at(1, 0, u) - 4.0 * u
+    lap_v = neighbor_at(0, -1, v) + neighbor_at(0, 1, v) + neighbor_at(-1, 0, v) + neighbor_at(1, 0, v) - 4.0 * v
+    uvv = u * v * v
+    self.u = clamp(u + env_dt * (env_Du * lap_u - uvv + env_F * (1.0 - u)), 0.0, 1.0)
+    self.v = clamp(v + env_dt * (env_Dv * lap_v + uvv - (env_F + env_k) * v), 0.0, 1.0)
 
 visual_mappings:
   - property: "v"

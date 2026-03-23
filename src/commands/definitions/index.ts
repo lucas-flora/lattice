@@ -28,6 +28,8 @@ import { registerCellCommands } from './cell';
 import { registerNodeCommands } from './node';
 import { registerStateCommands } from './state';
 import { registerBenchCommands } from './bench';
+import { registerGpuCommands } from './gpu';
+import { registerIrCommands } from './ir';
 
 /**
  * Register all commands in the registry.
@@ -57,4 +59,6 @@ export function registerAllCommands(
   registerNodeCommands(registry, controller, eventBus);
   registerStateCommands(registry, controller, eventBus);
   registerBenchCommands(registry, eventBus);
+  registerGpuCommands(registry);
+  registerIrCommands(registry);
 }

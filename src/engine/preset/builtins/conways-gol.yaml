@@ -1,6 +1,4 @@
-# Built-in preset: TypeScript compute body (JS/WASM fast path).
-# User-authored custom rules will use Python via Pyodide — both paths coexist.
-# See docs/ARCHITECTURE.md for the scripting system design.
+# Conway's Game of Life — GPU-native via Python transpiler → IR → WGSL.
 
 schema_version: "1"
 
@@ -23,14 +21,13 @@ cell_properties:
     role: "input_output"
 
 rule:
-  type: "typescript"
+  type: "webgpu"
   compute: |
-    const alive = ctx.cell.alive;
-    const liveNeighbors = ctx.neighbors.filter(n => n.alive === 1).length;
-    if (alive === 1) {
-      return { alive: (liveNeighbors === 2 || liveNeighbors === 3) ? 1 : 0 };
-    }
-    return { alive: liveNeighbors === 3 ? 1 : 0 };
+    n = neighbor_sum_alive
+    if n == 3 or (alive > 0.5 and n >= 2 and n < 4):
+        self.alive = 1.0
+    else:
+        self.alive = 0.0
 
 visual_mappings:
   - property: "alive"

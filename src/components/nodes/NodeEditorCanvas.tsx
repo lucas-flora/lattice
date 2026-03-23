@@ -135,7 +135,8 @@ function NodeEditorCanvasInner({ graph, onGraphChange }: NodeEditorCanvasProps) 
     (newNodes: Node[], newEdges: RFEdge[]) => {
       const ng = toNodeGraph(newNodes, newEdges);
       graphRef.current = ng;
-      onGraphChange(ng);
+      // Defer to avoid setState-during-render when called from React Flow callbacks
+      queueMicrotask(() => onGraphChange(ng));
     },
     [onGraphChange],
   );

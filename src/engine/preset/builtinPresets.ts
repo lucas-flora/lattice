@@ -24,6 +24,7 @@ export const BUILTIN_PRESET_NAMES = [
   'gray-scott',
   'navier-stokes',
   'link-testbed',
+  'seeds',
 ] as const;
 
 export type BuiltinPresetName = (typeof BUILTIN_PRESET_NAMES)[number];

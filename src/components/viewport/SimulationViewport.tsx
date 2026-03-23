@@ -17,6 +17,7 @@ import { useRef, useEffect, useCallback } from 'react';
 import { LatticeRenderer } from '@/renderer/LatticeRenderer';
 import { CameraController } from '@/renderer/CameraController';
 import { OrbitCameraController } from '@/renderer/OrbitCameraController';
+import { GPUGridRenderer, parseVisualMappingColors, type GPUCameraState, type ColorMappingConfig } from '@/renderer/GPUGridRenderer';
 import { getController } from '@/components/AppShell';
 import { eventBus } from '@/engine/core/EventBus';
 import { commandRegistry } from '@/commands/CommandRegistry';
@@ -24,6 +25,8 @@ import { useLayoutStore, layoutStoreActions } from '@/store/layoutStore';
 import { useUiStore } from '@/store/uiStore';
 import { useSimStore } from '@/store/simStore';
 import { HUD } from '@/components/hud/HUD';
+import { GPUContext } from '@/engine/gpu/GPUContext';
+import { logGPU } from '@/lib/debugLog';
 
 /** Props for multi-viewport support */
 interface SimulationViewportProps {
@@ -136,6 +139,12 @@ export function SimulationViewport({ viewportId = 'viewport-1' }: SimulationView
     // Determine if 3D mode
     const is3D = sim.preset.grid.dimensionality === '3d';
 
+    // If GPU rendering is likely (built-in IR exists), hide InstancedMesh immediately
+    // to prevent the old grid flashing before the GPU renderer takes over
+    if (!is3D && GPUContext.isAvailable() && (sim.preset.rule.compute)) {
+      latticeRenderer.setGPURenderingActive(true);
+    }
+
     // Create appropriate camera controller
     let cameraController: CameraController | null = null;
     let orbitController: OrbitCameraController | null = null;
@@ -165,6 +174,9 @@ export function SimulationViewport({ viewportId = 'viewport-1' }: SimulationView
         const { width: w, height: h } = entry.contentRect;
         if (w > 0 && h > 0) {
           latticeRenderer.resize(w, h);
+          if (gpuGridRenderer && gpuCanvas) {
+            gpuGridRenderer.resize(w, h);
+          }
           if (cameraController) {
             cameraController.resize(w, h);
             syncCamera(latticeRenderer, cameraController);
@@ -316,6 +328,25 @@ export function SimulationViewport({ viewportId = 'viewport-1' }: SimulationView
       const newSim = simController.getSimulation();
       if (newSim && latticeRenderer) {
         latticeRenderer.setSimulation(newSim.grid, newSim.preset);
+
+        // Tear down old GPU renderer — dimensions/buffers changed.
+        // It will be rebuilt when gpu:ruleRunnerReady fires.
+        if (gpuGridRenderer) {
+          gpuGridRenderer.destroy();
+          gpuGridRenderer = null;
+        }
+        if (gpuCanvas && container?.contains(gpuCanvas)) {
+          container.removeChild(gpuCanvas);
+          gpuCanvas = null;
+        }
+
+        // Hide InstancedMesh if GPU is expected for this preset
+        const is3DNew = newSim.preset.grid.dimensionality === '3d';
+        if (!is3DNew && GPUContext.isAvailable() && newSim.preset.rule.compute) {
+          latticeRenderer.setGPURenderingActive(true);
+        } else {
+          latticeRenderer.setGPURenderingActive(false);
+        }
         const newIs3D = newSim.preset.grid.dimensionality === '3d';
 
         if (newIs3D) {
@@ -398,9 +429,148 @@ export function SimulationViewport({ viewportId = 'viewport-1' }: SimulationView
     );
     latticeRenderer.setDeadCellColor(useUiStore.getState().deadCellColor);
 
+    // GPU Grid Renderer setup (if WebGPU available and GPU rule runner active)
+    let gpuGridRenderer: GPUGridRenderer | null = null;
+    let gpuCanvas: HTMLCanvasElement | null = null;
+
+    function trySetupGPURenderer() {
+      // Always read the CURRENT simulation (not stale closure `sim`)
+      const currentSim = simController?.getSimulation();
+      if (!simController || !container || !currentSim) return;
+      const gpuRunner = simController.getGPURuleRunner();
+      if (!gpuRunner || is3D || !GPUContext.isAvailable() || !GPUContext.tryGet()) {
+        logGPU(`Renderer setup skipped (runner=${!!gpuRunner}, is3D=${is3D}, webgpu=${GPUContext.isAvailable()})`);
+        return;
+      }
+      logGPU('Setting up GPU grid renderer (dual-canvas)');
+
+      // Create WebGPU canvas underneath the Three.js canvas
+      gpuCanvas = document.createElement('canvas');
+      gpuCanvas.style.display = 'block';
+      gpuCanvas.style.position = 'absolute';
+      gpuCanvas.style.top = '0';
+      gpuCanvas.style.left = '0';
+      gpuCanvas.style.zIndex = '0';
+      gpuCanvas.width = width;
+      gpuCanvas.height = height;
+      container.insertBefore(gpuCanvas, canvas);
+
+      // Make Three.js canvas transparent so GPU canvas shows through
+      canvas.style.zIndex = '1';
+      latticeRenderer.scene.background = null;
+
+      try {
+        latticeRenderer.setGPURenderingActive(true);
+        gpuGridRenderer = new GPUGridRenderer(gpuCanvas);
+        const layout = gpuRunner.getPropertyLayout();
+        // Primary property = what the renderer displays. Use visual_mappings color
+        // property as the single source of truth, falling back to first cell property.
+        const visualColorProp = currentSim.preset.visual_mappings?.find(m => m.channel === 'color')?.property;
+        const presetPrimaryName = visualColorProp
+          ?? currentSim.preset.cell_properties?.[0]?.name;
+        const primaryProp = (presetPrimaryName && layout.find(p => p.name === presetPrimaryName)) || layout[0];
+
+        // Determine color mapping from visual_mappings — the single source of truth
+        const colorR = layout.find(p => p.name === 'colorR');
+        const colorG = layout.find(p => p.name === 'colorG');
+        const colorB = layout.find(p => p.name === 'colorB');
+        const alpha = layout.find(p => p.name === 'alpha');
+
+        // Check if rule or expression tags write to colorR/G/B → direct mode
+        const exprTags = currentSim.preset.expression_tags ?? [];
+        const exprOutputs = exprTags.flatMap(t => t.outputs ?? []);
+        const ruleBody = currentSim.preset.rule.compute ?? '';
+        const writesColor = exprOutputs.some(o => o.includes('colorR') || o.includes('colorG') || o.includes('colorB'))
+          || ruleBody.includes('self.colorR') || ruleBody.includes('self.colorG') || ruleBody.includes('self.colorB');
+        const writesAlpha = exprOutputs.some(o => o.includes('alpha'))
+          || ruleBody.includes('self.alpha');
+        const useDirectColor = (writesColor || writesAlpha) && colorR && colorG && colorB;
+
+        // Parse visual_mappings to determine rendering mode and colors
+        const colorVm = currentSim.preset.visual_mappings?.find(m => m.channel === 'color');
+        const parsed = parseVisualMappingColors(colorVm?.mapping as Record<string, unknown> | undefined);
+
+        let colorMapping: ColorMappingConfig;
+        const baseConfig = {
+          primaryOffset: primaryProp?.offset ?? 0,
+          gradientOffset: primaryProp?.offset ?? 0,
+          colorROffset: colorR?.offset ?? 0,
+          colorGOffset: colorG?.offset ?? 0,
+          colorBOffset: colorB?.offset ?? 0,
+          alphaOffset: alpha?.offset ?? 0,
+          deadColor: parsed.deadColor,
+          aliveColor: parsed.aliveColor,
+        };
+
+        if (useDirectColor) {
+          colorMapping = { mode: 'direct', ...baseConfig };
+        } else if (parsed.mode === 'gradient') {
+          colorMapping = { mode: 'gradient', ...baseConfig };
+        } else {
+          colorMapping = { mode: 'binary', ...baseConfig };
+        }
+        logGPU(`Color mode: ${colorMapping.mode} (exprTags=${exprTags.length}, writesColor=${writesColor}, writesAlpha=${writesAlpha}, preset=${currentSim.preset.meta.name})`);
+
+        gpuGridRenderer.setSimulation(
+          gpuRunner.getReadBuffer(),
+          gpuRunner.getParamsBuffer(),
+          layout,
+          colorMapping,
+        );
+        logGPU(`Renderer ready (mode=${colorMapping.mode}, stride=${gpuRunner.getStride()}, ${gpuRunner.getWidth()}×${gpuRunner.getHeight()})`);
+      } catch (err) {
+        logGPU(`Renderer setup FAILED: ${err}`);
+        gpuGridRenderer = null;
+        if (gpuCanvas && container?.contains(gpuCanvas)) {
+          container.removeChild(gpuCanvas);
+          gpuCanvas = null;
+        }
+      }
+    }
+
+    // Try immediately (in case GPU runner is already ready from a previous load)
+    trySetupGPURenderer();
+
+    // Also listen for the event when GPU runner finishes async init
+    const onGPURuleRunnerReady = () => {
+      trySetupGPURenderer();
+    };
+    eventBus.on('gpu:ruleRunnerReady', onGPURuleRunnerReady);
+
     // Animation loop
     const animate = () => {
       rafRef.current = requestAnimationFrame(animate);
+
+      const gpuRunner = simController.getGPURuleRunner();
+      if (gpuGridRenderer && gpuRunner && cameraController) {
+        // GPU path: tick simulation at render rate when playing
+        // (playback mode / timeline bounds handled by controller's playbackTick)
+
+
+        // GPU rendering path: read directly from sim buffer
+        gpuGridRenderer.updateReadBuffer(gpuRunner.getReadBuffer());
+        const cam = cameraController.camera;
+        const camState: GPUCameraState = {
+          // Left edge in grid coords. Three.js centers cells at integers
+          // (cell 0 at x=0, grid line at x=-0.5) while the GPU shader places
+          // cell 0 at gridX [0,1). The +0.5 aligns the two coordinate systems.
+          offsetX: cam.position.x + cam.left + 0.5,
+          // Bottom edge in grid coords (pixelY is flipped in shader)
+          offsetY: cam.position.y + cam.bottom + 0.5,
+          // Pixels per world unit
+          scale: (gpuCanvas?.width ?? width) / (cam.right - cam.left),
+          canvasWidth: gpuCanvas?.width ?? width,
+          canvasHeight: gpuCanvas?.height ?? height,
+        };
+        gpuGridRenderer.render(
+          camState,
+          gpuRunner.getWidth(),
+          gpuRunner.getHeight(),
+          gpuRunner.getStride(),
+        );
+      }
+
+      // Three.js renders overlays (grid lines) or full CPU path
       latticeRenderer.update();
       if (orbitController) {
         latticeRenderer.renderWithCamera(orbitController.camera);
@@ -412,6 +582,7 @@ export function SimulationViewport({ viewportId = 'viewport-1' }: SimulationView
 
     // Cleanup
     return () => {
+      eventBus.off('gpu:ruleRunnerReady', onGPURuleRunnerReady);
       cancelAnimationFrame(rafRef.current);
       canvas.removeEventListener('mousedown', onMouseDown);
       canvas.removeEventListener('mousemove', onMouseMove);
@@ -425,11 +596,19 @@ export function SimulationViewport({ viewportId = 'viewport-1' }: SimulationView
       unsubGridLines();
       unsubDeadColor();
 
+      if (gpuGridRenderer) {
+        gpuGridRenderer.destroy();
+        gpuGridRenderer = null;
+      }
+
       latticeRenderer.dispose();
       rendererRef.current = null;
       cameraRef.current = null;
       orbitCameraRef.current = null;
 
+      if (gpuCanvas && container.contains(gpuCanvas)) {
+        container.removeChild(gpuCanvas);
+      }
       if (container.contains(canvas)) {
         container.removeChild(canvas);
       }
@@ -439,8 +618,7 @@ export function SimulationViewport({ viewportId = 'viewport-1' }: SimulationView
   return (
     <div
       ref={containerRef}
-      className="relative w-full h-full cursor-crosshair"
-      style={{ minHeight: '200px' }}
+      className="relative w-full h-full cursor-crosshair overflow-hidden"
       data-testid={`simulation-viewport-${viewportId}`}
     >
       {/* Viewport label — only shown in split view */}

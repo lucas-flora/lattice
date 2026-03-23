@@ -54,7 +54,6 @@ export type ComputeFn = (ctx: ComputeContext) => number | number[];
 
 /** Inherent properties injected into every cell type */
 export const INHERENT_PROPERTIES: CellPropertyConfig[] = [
-  { name: 'alive', type: 'bool', default: 0, role: 'input_output' },
   { name: 'age', type: 'int', default: 0, role: 'output' },
   { name: 'alpha', type: 'float', default: 1.0, role: 'output' },
   { name: 'colorR', type: 'float', default: 0.0, role: 'output' },

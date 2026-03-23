@@ -84,8 +84,29 @@ Lattice is a universal simulation substrate. Cellular automata, reaction-diffusi
 ┌──────────────────────────┴───────────────────────────────────────────┐
 │ RENDER LAYER                                                         │
 │  LatticeRenderer (Three.js scene, animation loop)                    │
+│  GPUGridRenderer (WebGPU fullscreen quad, reads storage buffers)     │
 │  VisualMapper (cell props → color/size/shape, discrete/continuous/expr)│
 │  CameraController / OrbitCameraController                            │
+└──────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────┐
+│ GPU LAYER (WebGPU — active when GPUContext available + built-in IR)   │
+│                                                                      │
+│  GPUContext (singleton adapter/device, auto-init at startup)         │
+│  GPURuleRunner (IR → WGSL → compute shader dispatch, ping-pong)     │
+│  BufferManager (interleaved storage buffers, staging for readback)   │
+│  ShaderCompiler (WGSL → GPUShaderModule, FNV-1a cache)              │
+│  ComputeDispatcher (pipeline + bind group management)                │
+│                                                                      │
+│  IR Pipeline:                                                        │
+│    builtinIR.ts → IRProgram → validate → WGSLCodegen → GPU compute  │
+│                                        → PythonCodegen → "Show Code" │
+│                                                                      │
+│  Rendering: GPUGridRenderer (fullscreen triangle, fragment shader    │
+│    reads directly from simulation storage buffer — zero CPU readback)│
+│  Dual canvas: WebGPU (cells, z:0) + Three.js (overlays, z:1, alpha) │
+│                                                                      │
+│  CPU fallback: if WebGPU unavailable, all paths remain functional   │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 

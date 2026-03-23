@@ -1,14 +1,19 @@
+# Link Testbed — GPU-native via Python transpiler → IR → WGSL.
+
 schema_version: "1"
+
 meta:
   name: "Link Testbed"
   author: "Lattice Engine"
   description: "Test preset for parameter linking. GoL with age tracking, alpha fading, and linked params."
   tags: ["test", "linking", "2d"]
+
 grid:
   dimensionality: "2d"
   width: 64
   height: 64
   topology: "toroidal"
+
 cell_properties:
   - name: "alive"
     type: "bool"
@@ -22,6 +27,7 @@ cell_properties:
     type: "float"
     default: 1.0
     role: "output"
+
 params:
   - name: "surviveMin"
     label: "Survive Min"
@@ -51,28 +57,25 @@ params:
     min: 5.0
     max: 200.0
     step: 5.0
+
 parameter_links:
   - source: "cell.age"
     target: "cell.alpha"
     sourceRange: [0, 50]
     targetRange: [1, 0]
     easing: "smoothstep"
+
 rule:
-  type: "typescript"
+  type: "webgpu"
   compute: |
-    const alive = ctx.cell.alive;
-    const age = ctx.cell.age;
-    const sMin = ctx.params.surviveMin ?? 2;
-    const sMax = ctx.params.surviveMax ?? 3;
-    const birth = ctx.params.birthCount ?? 3;
-    const liveNeighbors = ctx.neighbors.filter(n => n.alive === 1).length;
-    let newAlive;
-    if (alive === 1) {
-      newAlive = (liveNeighbors >= sMin && liveNeighbors <= sMax) ? 1 : 0;
-    } else {
-      newAlive = liveNeighbors === birth ? 1 : 0;
-    }
-    return { alive: newAlive, age: newAlive > 0 ? age + 1 : 0, alpha: ctx.cell.alpha };
+    n = neighbor_sum_alive
+    if (alive > 0.5 and n >= env_surviveMin and n <= env_surviveMax) or (alive < 0.5 and n == env_birthCount):
+        self.alive = 1.0
+        self.age = age + 1.0
+    else:
+        self.alive = 0.0
+        self.age = 0.0
+
 visual_mappings:
   - property: "alive"
     channel: "color"

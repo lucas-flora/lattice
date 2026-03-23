@@ -77,7 +77,7 @@ function formatBenchSummary(data: unknown): FormattedResult {
   const d = data as { summary?: string };
   if (d.summary) {
     return {
-      message: d.summary,
+      message: '',
       structured: { kind: 'code', language: 'text', content: d.summary },
     };
   }
@@ -92,7 +92,13 @@ const FORMATTERS: Record<string, Formatter> = {
   'param.set': formatParamGetSet,
   'sim.status': formatKeyValue,
   'bench.run': formatBenchSummary,
+  'bench.gpu': formatBenchSummary,
+  'bench.cpu': formatBenchSummary,
   'bench.results': formatBenchSummary,
+  'gpu.test': formatBenchSummary,
+  'gpu.info': formatBenchSummary,
+  'ir.test': formatBenchSummary,
+  'ir.show': formatBenchSummary,
 };
 
 export function formatCommandResult(commandName: string, data: unknown): FormattedResult {

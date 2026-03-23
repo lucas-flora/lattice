@@ -83,14 +83,21 @@ export function registerEditCommands(
         return { success: false, error: 'No simulation loaded' };
       }
 
-      // Auto-pause if running
+      // Auto-pause if running (don't await sync — write directly to GPU)
       if (controller.isPlaying()) {
         controller.pause();
       }
 
-      const firstProp = sim.typeRegistry.getPropertyUnion()[0].name;
+      // Determine draw target: use the visual-mapped color property if available,
+      // otherwise the first declared cell property. This ensures drawing is visible
+      // in all rendering modes (binary reads primary, gradient reads the mapped prop).
+      const colorMapping = sim.preset.visual_mappings?.find(m => m.channel === 'color');
+      const drawProp = colorMapping?.property
+        ?? sim.preset.cell_properties?.[0]?.name
+        ?? sim.typeRegistry.getPropertyUnion()[0].name;
       const brushSize = useUiStore.getState().brushSize;
       const halfBrush = Math.floor(brushSize / 2);
+      const gpuRunner = controller.getGPURuleRunner();
 
       history.beginCommand('Draw cell');
       for (let dy = -halfBrush; dy <= halfBrush; dy++) {
@@ -99,13 +106,15 @@ export function registerEditCommands(
           const cy = y + dy;
           if (cx >= 0 && cx < sim.grid.config.width && cy >= 0 && cy < sim.grid.config.height) {
             const index = sim.grid.coordToIndex(cx, cy, 0);
-            history.editCell(firstProp, index, 1);
+            gpuRunner?.writeCellDirect(drawProp, index, 1);
+            gpuRunner?.writeCellDirect('alpha', index, 1);
+            history.editCell(drawProp, index, 1);
+            sim.setCellDirect('alpha', index, 1);
           }
         }
       }
       history.commitCommand();
 
-      // Invalidate cache and restart compute-ahead with the edited grid
       controller.onGridEdited();
 
       eventBus.emit('edit:draw', { x, y });
@@ -126,14 +135,18 @@ export function registerEditCommands(
         return { success: false, error: 'No simulation loaded' };
       }
 
-      // Auto-pause if running
+      // Auto-pause if running (don't await sync — write directly to GPU)
       if (controller.isPlaying()) {
         controller.pause();
       }
 
-      const firstProp = sim.typeRegistry.getPropertyUnion()[0].name;
+      const colorMapping = sim.preset.visual_mappings?.find(m => m.channel === 'color');
+      const drawProp = colorMapping?.property
+        ?? sim.preset.cell_properties?.[0]?.name
+        ?? sim.typeRegistry.getPropertyUnion()[0].name;
       const brushSize = useUiStore.getState().brushSize;
       const halfBrush = Math.floor(brushSize / 2);
+      const gpuRunner = controller.getGPURuleRunner();
 
       history.beginCommand('Erase cell');
       for (let dy = -halfBrush; dy <= halfBrush; dy++) {
@@ -142,13 +155,15 @@ export function registerEditCommands(
           const cy = y + dy;
           if (cx >= 0 && cx < sim.grid.config.width && cy >= 0 && cy < sim.grid.config.height) {
             const index = sim.grid.coordToIndex(cx, cy, 0);
-            history.editCell(firstProp, index, 0);
+            gpuRunner?.writeCellDirect(drawProp, index, 0);
+            gpuRunner?.writeCellDirect('alpha', index, 0);
+            history.editCell(drawProp, index, 0);
+            sim.setCellDirect('alpha', index, 0);
           }
         }
       }
       history.commitCommand();
 
-      // Invalidate cache and restart compute-ahead with the edited grid
       controller.onGridEdited();
 
       eventBus.emit('edit:erase', { x, y });

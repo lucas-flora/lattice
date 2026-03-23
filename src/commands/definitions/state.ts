@@ -162,7 +162,7 @@ export function registerStateCommands(
 
       // Pause and reset playhead
       controller.pause();
-      sim.runner.setGeneration(0);
+      sim.setGeneration(0);
 
       // Update controller state
       controller.onStateRestored();

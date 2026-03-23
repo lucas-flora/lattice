@@ -47,6 +47,9 @@ export class LatticeRenderer {
   // instead of blending into the background. null = transparent (default behavior).
   private deadCellColor: THREE.Color | null = null;
 
+  // When true, skip the per-cell update loop (GPU handles cell rendering)
+  private gpuRenderingActive: boolean = false;
+
   constructor(config: RendererConfig) {
     // Scene
     this.scene = new THREE.Scene();
@@ -64,10 +67,11 @@ export class LatticeRenderer {
     this.camera.position.set(0, 0, 10);
     this.camera.lookAt(0, 0, 0);
 
-    // WebGL renderer
+    // WebGL renderer (alpha: true allows transparent background for GPU canvas layering)
     this._renderer = new THREE.WebGLRenderer({
       canvas: config.canvas,
       antialias: config.antialias ?? true,
+      alpha: true,
     });
     this._renderer.setSize(config.width, config.height);
   }
@@ -195,12 +199,22 @@ export class LatticeRenderer {
     }
   }
 
+  /** Set whether GPU rendering is handling cell display (skip CPU update loop) */
+  setGPURenderingActive(active: boolean): void {
+    this.gpuRenderingActive = active;
+    // Hide InstancedMesh so it doesn't render on top of GPU canvas
+    if (this.instancedMesh) {
+      this.instancedMesh.visible = !active;
+    }
+  }
+
   /**
    * Update instance matrices and colors from current grid state.
    * Reads typed arrays directly from Grid -- zero-copy (RNDR-12).
    */
   update(): void {
     if (!this.grid || !this.instancedMesh || !this.visualMapper) return;
+    if (this.gpuRenderingActive) return; // GPU handles cell rendering
 
     const colorProp = this.visualMapper.getPrimaryColorProperty();
     const sizeProp = this.visualMapper.getPrimarySizeProperty();
