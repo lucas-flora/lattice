@@ -271,6 +271,7 @@ export class GPUGridRenderer {
 
   /** Set the background clear color (hex string like "#ff0000") */
   setClearColor(hex: string): void {
+    if (!hex || hex.length < 7) return;
     const r = parseInt(hex.slice(1, 3), 16) / 255;
     const g = parseInt(hex.slice(3, 5), 16) / 255;
     const b = parseInt(hex.slice(5, 7), 16) / 255;
@@ -320,10 +321,10 @@ export class GPUGridRenderer {
     u32View[18] = this.colorMapping.colorGOffset;
     u32View[19] = this.colorMapping.colorBOffset;
     u32View[20] = this.colorMapping.alphaOffset;
-    // Background color (dark zinc)
-    f32View[21] = 0.07;  // ~zinc-900
-    f32View[22] = 0.07;
-    f32View[23] = 0.08;
+    // Background color (from viewport bg picker)
+    f32View[21] = this.clearColor.r;
+    f32View[22] = this.clearColor.g;
+    f32View[23] = this.clearColor.b;
 
     this.device.queue.writeBuffer(this.renderParamsBuffer, 0, data);
 
