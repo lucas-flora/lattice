@@ -17,6 +17,7 @@ export const NODE_TYPES = {
   GLOBALS: 'globals',
   INITIAL_STATE: 'initial-state',
   SHARED: 'shared',
+  VISUAL: 'visual',
 } as const;
 
 export type NodeType = (typeof NODE_TYPES)[keyof typeof NODE_TYPES] | string;

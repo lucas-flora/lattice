@@ -502,7 +502,10 @@ export function SimulationViewport({ viewportId = 'viewport-1' }: SimulationView
           aliveColor: parsed.aliveColor,
         };
 
-        if (useDirectColor) {
+        // Ramp visual mapping pass writes colorR/G/B via compute → force direct mode
+        const hasRampPass = gpuRunner.hasVisualMappingPass();
+
+        if (hasRampPass || useDirectColor) {
           colorMapping = { mode: 'direct', ...baseConfig };
         } else if (parsed.mode === 'gradient') {
           colorMapping = { mode: 'gradient', ...baseConfig };

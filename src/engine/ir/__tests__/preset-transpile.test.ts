@@ -18,6 +18,7 @@ const PRESETS = [
   'navier-stokes',
   'langtons-ant',
   'rule-110',
+  'fire',
   'link-testbed',
   'seeds',
 ] as const;

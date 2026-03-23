@@ -66,10 +66,24 @@ const RuleSchema = z.object({
   fallback_compute: z.string().optional(),
 });
 
+const ColorStopSchema = z.object({
+  t: z.number().min(0).max(1),
+  color: z.string().optional(),
+  alpha: z.number().min(0).max(1).optional(),
+});
+
 const VisualMappingSchema = z.object({
   property: z.string(),
-  channel: z.enum(['color', 'size', 'shape', 'orientation']),
-  mapping: z.record(z.unknown()),
+  channel: z.enum(['color', 'alpha', 'size', 'shape', 'orientation']),
+  mapping: z.record(z.unknown()).optional(),
+  /** Set to "ramp" to use multi-stop color ramp compiled to GPU compute */
+  type: z.enum(['ramp']).optional(),
+  /** Input value range for normalization [min, max]. Defaults to [0, 1]. */
+  range: z.tuple([z.number(), z.number()]).optional(),
+  /** Color/alpha stops for ramp mode. Must have at least 1 stop. */
+  stops: z.array(ColorStopSchema).optional(),
+  /** Scope this mapping to a specific cell type (by id). */
+  cell_type: z.string().optional(),
 });
 
 const ParamDefSchema = z.object({

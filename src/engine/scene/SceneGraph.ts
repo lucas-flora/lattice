@@ -358,7 +358,23 @@ export class SceneGraph {
       cellTypeNodeMap.set(typeDef.id, cellNode);
     }
 
-    // 5. Attach tags to their owner nodes
+    // 5. Visual node (if ramp-type visual mappings exist)
+    const rampMappings = preset.visual_mappings?.filter(
+      m => m.type === 'ramp' && m.stops && m.stops.length > 0,
+    );
+    if (rampMappings && rampMappings.length > 0) {
+      graph.addNode({
+        type: NODE_TYPES.VISUAL,
+        name: 'Color Mapping',
+        parentId: simRoot.id,
+        childIds: [],
+        enabled: true,
+        properties: { mappings: rampMappings },
+        tags: [],
+      });
+    }
+
+    // 6. Attach tags to their owner nodes
     for (const tag of sim.tagRegistry.getAll()) {
       let ownerNode: SceneNode | undefined;
 

@@ -23,6 +23,7 @@ export const BUILTIN_PRESET_NAMES = [
   'brians-brain',
   'gray-scott',
   'navier-stokes',
+  'fire',
   'link-testbed',
   'seeds',
 ] as const;

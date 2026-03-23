@@ -13,3 +13,4 @@ export { IR } from './IRBuilder';
 export { validateIR, type ValidationResult, type ValidationError, type ValidationWarning } from './validate';
 export { generateWGSL, type WGSLCodegenConfig } from './WGSLCodegen';
 export { generatePython } from './PythonCodegen';
+export { compileRampToIR, type RampMapping, type ColorStop, type AlphaStop } from './RampCompiler';
