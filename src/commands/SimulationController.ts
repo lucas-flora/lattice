@@ -175,6 +175,8 @@ export class SimulationController {
       if (this.initialSnapshot) {
         this.restoreInitialState();
         runner.uploadFromGrid();
+        // Re-run expression/visual passes — the CPU snapshot has no colorR/G/B
+        runner.runExpressionPasses();
       }
       runner.setGeneration(this.playbackGeneration);
 
