@@ -23,12 +23,19 @@ export interface AlphaStop {
   alpha: number; // 0–1
 }
 
+/** A single stop that may have color and/or alpha (from YAML/Zod parsing) */
+export interface GenericStop {
+  t: number;
+  color?: string;
+  alpha?: number;
+}
+
 export interface RampMapping {
   property: string;
   channel: 'color' | 'alpha';
   type: 'ramp';
   range?: [number, number];
-  stops: ColorStop[] | AlphaStop[];
+  stops: GenericStop[];
   cell_type?: string;
 }
 
@@ -43,8 +50,12 @@ function hexToRgb01(hex: string): [number, number, number] {
   ];
 }
 
-function isColorStop(stop: ColorStop | AlphaStop): stop is ColorStop {
-  return 'color' in stop;
+function hasColor(stop: GenericStop): stop is GenericStop & { color: string } {
+  return typeof stop.color === 'string';
+}
+
+function hasAlpha(stop: GenericStop): stop is GenericStop & { alpha: number } {
+  return typeof stop.alpha === 'number';
 }
 
 /**
@@ -142,7 +153,7 @@ export function compileRampToIR(mappings: RampMapping[]): IRProgram {
 
     if (mapping.channel === 'color') {
       // Extract R, G, B channels from color stops
-      const colorStops = sortedStops.filter(isColorStop);
+      const colorStops = sortedStops.filter(hasColor);
       if (colorStops.length === 0) continue;
 
       const rStops = colorStops.map(s => ({ t: s.t, value: hexToRgb01(s.color)[0] }));
@@ -159,7 +170,7 @@ export function compileRampToIR(mappings: RampMapping[]): IRProgram {
     } else if (mapping.channel === 'alpha') {
       // Alpha stops
       const alphaStops = sortedStops
-        .filter((s): s is AlphaStop => 'alpha' in s)
+        .filter(hasAlpha)
         .map(s => ({ t: s.t, value: s.alpha }));
       if (alphaStops.length === 0) continue;
 

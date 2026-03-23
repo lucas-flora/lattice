@@ -42,7 +42,7 @@ export function registerVisualCommands(
     category: 'visual',
     params: UpdateStopParams,
     execute: async (params) => {
-      const { nodeId, index, color, t } = params;
+      const { nodeId, index, color, t } = params as z.infer<typeof UpdateStopParams>;
       const state = useSceneStore.getState();
       const node = state.nodes[nodeId];
       if (!node || node.type !== NODE_TYPES.VISUAL) {
@@ -71,7 +71,7 @@ export function registerVisualCommands(
     category: 'visual',
     params: RemoveStopParams,
     execute: async (params) => {
-      const { nodeId, index } = params;
+      const { nodeId, index } = params as z.infer<typeof RemoveStopParams>;
       const state = useSceneStore.getState();
       const node = state.nodes[nodeId];
       if (!node || node.type !== NODE_TYPES.VISUAL) {
@@ -98,7 +98,7 @@ export function registerVisualCommands(
     category: 'visual',
     params: AddStopParams,
     execute: async (params) => {
-      const { nodeId, t, color } = params;
+      const { nodeId, t, color } = params as z.infer<typeof AddStopParams>;
       const state = useSceneStore.getState();
       const node = state.nodes[nodeId];
       if (!node || node.type !== NODE_TYPES.VISUAL) {
