@@ -14,7 +14,7 @@ describe('Zustand Stores', () => {
     expect(state.gridWidth).toBe(0);
     expect(state.gridHeight).toBe(0);
     expect(state.liveCellCount).toBe(0);
-    expect(state.speed).toBe(10);
+    expect(state.speed).toBe(60);
   });
 
   it('TestViewStore_InitializesWithDefaults', () => {

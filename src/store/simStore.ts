@@ -83,7 +83,7 @@ const initialSimState: SimState = {
   gridWidth: 0,
   gridHeight: 0,
   liveCellCount: 0,
-  speed: 10,
+  speed: 60,
   maxGeneration: 0,
   computedGeneration: 0,
   paramDefs: [],
