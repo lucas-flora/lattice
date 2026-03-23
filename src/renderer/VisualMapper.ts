@@ -35,7 +35,8 @@ export class VisualMapper {
 
     for (const mapping of mappings) {
       const { property, channel } = mapping;
-      const rawMapping = mapping.mapping as Record<string, unknown>;
+      const rawMapping = mapping.mapping as Record<string, unknown> | undefined;
+      if (!rawMapping) continue; // ramp-type mappings have stops, not mapping
 
       switch (channel) {
         case 'color': {
