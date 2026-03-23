@@ -116,6 +116,48 @@ function initializeSimulation(controller: SimulationController): void {
     return;
   }
 
+  if (presetName === 'Fire') {
+    const fuelBuf = sim.grid.getCurrentBuffer('fuel');
+    const tempBuf = sim.grid.getCurrentBuffer('temperature');
+    fuelBuf.fill(0.0);
+    tempBuf.fill(0.0);
+    // Fuel bricks: 3 rectangular blocks across the bottom 20% of the grid
+    const brickH = Math.floor(h * 0.12);
+    const brickW = Math.floor(w * 0.2);
+    const gap = Math.floor(w * 0.07);
+    const baseY = Math.floor(h * 0.05); // slight offset from bottom
+    const bricks = [
+      { x: gap, y: baseY },
+      { x: Math.floor(w / 2 - brickW / 2), y: baseY },
+      { x: w - gap - brickW, y: baseY },
+    ];
+    for (const brick of bricks) {
+      for (let by = 0; by < brickH; by++) {
+        for (let bx = 0; bx < brickW; bx++) {
+          const gx = brick.x + bx;
+          const gy = brick.y + by;
+          if (gx >= 0 && gx < w && gy >= 0 && gy < h) {
+            const idx = gy * w + gx;
+            fuelBuf[idx] = 0.8 + Math.random() * 0.2;
+          }
+        }
+      }
+      // Ignite center-bottom of each brick
+      const igX = brick.x + Math.floor(brickW / 2);
+      const igY = brick.y + brickH - 1;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const gx = igX + dx;
+          const gy = igY + dy;
+          if (gx >= 0 && gx < w && gy >= 0 && gy < h) {
+            tempBuf[gy * w + gx] = 0.5;
+          }
+        }
+      }
+    }
+    return;
+  }
+
   if (presetName === "Langton's Ant") {
     const cx = Math.floor(w / 2);
     const cy = Math.floor(h / 2);

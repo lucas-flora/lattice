@@ -474,8 +474,8 @@ schema_version: "1"
 meta:
   name: "Fire"
   author: "Lattice Engine"
-  description: "Simplified Navier-Stokes combustion with fuel, smoke, buoyancy, and multi-stop color ramp."
-  tags: ["2d", "continuous", "fluid", "fire", "combustion"]
+  description: "Combustion simulation with fuel, smoke, direct buoyancy, and multi-stop color ramp."
+  tags: ["2d", "continuous", "fire", "combustion"]
 grid:
   dimensionality: "2d"
   width: 128
@@ -494,97 +494,75 @@ cell_properties:
     type: "float"
     default: 0.0
     role: "input_output"
-  - name: "vx"
-    type: "float"
-    default: 0.0
-    role: "input_output"
-  - name: "vy"
-    type: "float"
-    default: 0.0
-    role: "input_output"
-  - name: "pressure"
-    type: "float"
-    default: 0.0
-    role: "input_output"
 params:
-  - name: "viscosity"
-    label: "Viscosity"
-    type: "float"
-    default: 0.1
-    min: 0.01
-    max: 0.5
-    step: 0.01
   - name: "diffusion"
     label: "Diffusion"
     type: "float"
-    default: 0.05
+    default: 0.15
     min: 0.01
-    max: 0.3
+    max: 0.5
     step: 0.01
   - name: "burnRate"
     label: "Burn Rate"
     type: "float"
-    default: 0.02
+    default: 0.03
     min: 0.001
-    max: 0.1
+    max: 0.2
     step: 0.005
   - name: "coolingRate"
     label: "Cooling Rate"
     type: "float"
-    default: 0.005
+    default: 0.01
     min: 0.001
-    max: 0.05
+    max: 0.1
     step: 0.001
   - name: "ignitionTemp"
     label: "Ignition Temp"
     type: "float"
-    default: 0.15
-    min: 0.05
+    default: 0.12
+    min: 0.01
     max: 0.5
     step: 0.01
   - name: "buoyancy"
     label: "Buoyancy"
     type: "float"
-    default: 0.5
+    default: 0.4
     min: 0.0
-    max: 2.0
-    step: 0.1
+    max: 1.0
+    step: 0.05
   - name: "smokeRate"
     label: "Smoke Rate"
     type: "float"
-    default: 0.01
+    default: 0.02
     min: 0.001
-    max: 0.05
+    max: 0.1
     step: 0.005
   - name: "dt"
     label: "Time Step"
     type: "float"
-    default: 0.5
-    min: 0.01
-    max: 2.0
+    default: 1.0
+    min: 0.1
+    max: 3.0
     step: 0.1
 rule:
   type: "webgpu"
   compute: |
-    lap_vx = neighbor_at(0,-1,vx) + neighbor_at(0,1,vx) + neighbor_at(-1,0,vx) + neighbor_at(1,0,vx) - 4.0 * vx
-    lap_vy = neighbor_at(0,-1,vy) + neighbor_at(0,1,vy) + neighbor_at(-1,0,vy) + neighbor_at(1,0,vy) - 4.0 * vy
     lap_t = neighbor_at(0,-1,temperature) + neighbor_at(0,1,temperature) + neighbor_at(-1,0,temperature) + neighbor_at(1,0,temperature) - 4.0 * temperature
     lap_s = neighbor_at(0,-1,smoke) + neighbor_at(0,1,smoke) + neighbor_at(-1,0,smoke) + neighbor_at(1,0,smoke) - 4.0 * smoke
-    dpdx = (neighbor_at(1,0,pressure) - neighbor_at(-1,0,pressure)) * 0.5
-    dpdy = (neighbor_at(0,1,pressure) - neighbor_at(0,-1,pressure)) * 0.5
-    new_vx = clamp(vx + env_dt * (env_viscosity * lap_vx - dpdx), -5.0, 5.0)
-    new_vy = clamp(vy + env_dt * (env_viscosity * lap_vy - dpdy - env_buoyancy * temperature), -5.0, 5.0)
-    self.vx = new_vx * 0.999
-    self.vy = new_vy * 0.999
+    temp_below = neighbor_at(0, -1, temperature)
+    temp_above = neighbor_at(0, 1, temperature)
+    smoke_below = neighbor_at(0, -1, smoke)
+    smoke_above = neighbor_at(0, 1, smoke)
+    rise = env_buoyancy * env_dt
+    buoy_t = rise * (temp_below - temp_above) * 0.5
+    buoy_s = rise * (smoke_below - smoke_above) * 0.5
     burning = step(env_ignitionTemp, temperature) * step(0.001, fuel)
     fuel_consumed = burning * env_burnRate * env_dt
-    new_fuel = clamp(fuel - fuel_consumed, 0.0, 1.0)
-    heat_generated = fuel_consumed * 3.0
-    new_temp = clamp(temperature + env_dt * (env_diffusion * lap_t + heat_generated) - env_coolingRate, 0.0, 1.0)
+    heat_generated = fuel_consumed * 5.0
     smoke_generated = fuel_consumed * env_smokeRate * 10.0
-    new_smoke = clamp(smoke + env_dt * (env_diffusion * lap_s + smoke_generated) - 0.002, 0.0, 1.0)
-    div_v = (neighbor_at(1,0,vx) - neighbor_at(-1,0,vx) + neighbor_at(0,1,vy) - neighbor_at(0,-1,vy)) * 0.5
-    self.pressure = clamp(pressure - env_dt * div_v * 0.5, -10.0, 10.0)
+    new_temp = clamp(temperature + env_dt * env_diffusion * lap_t + buoy_t + heat_generated - env_coolingRate * env_dt, 0.0, 1.0)
+    new_smoke = clamp(smoke + env_dt * env_diffusion * lap_s * 0.5 + buoy_s + smoke_generated - 0.003 * env_dt, 0.0, 1.0)
+    new_fuel = clamp(fuel - fuel_consumed, 0.0, 1.0)
     self.temperature = new_temp
     self.fuel = new_fuel
     self.smoke = new_smoke
@@ -603,12 +581,12 @@ visual_mappings:
     range: [0.0, 1.0]
     stops:
       - { t: 0.0, color: "#0a0a0a" }
-      - { t: 0.10, color: "#1a0000" }
-      - { t: 0.25, color: "#8b0000" }
-      - { t: 0.40, color: "#cc2200" }
-      - { t: 0.55, color: "#ff4500" }
-      - { t: 0.70, color: "#ff8c00" }
-      - { t: 0.85, color: "#ffd700" }
+      - { t: 0.08, color: "#1a0000" }
+      - { t: 0.18, color: "#8b0000" }
+      - { t: 0.30, color: "#cc2200" }
+      - { t: 0.45, color: "#ff4500" }
+      - { t: 0.60, color: "#ff8c00" }
+      - { t: 0.80, color: "#ffd700" }
       - { t: 1.0, color: "#ffffee" }
 `,
   'link-testbed': `
