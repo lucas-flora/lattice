@@ -635,10 +635,13 @@ export function SimulationViewport({ viewportId = 'viewport-1' }: SimulationView
     };
   }, [activePreset]);
 
+  const viewportBgColor = useUiStore((s) => s.viewportBgColor);
+
   return (
     <div
       ref={containerRef}
       className="relative w-full h-full cursor-crosshair overflow-hidden"
+      style={{ backgroundColor: viewportBgColor }}
       data-testid={`simulation-viewport-${viewportId}`}
     >
       {/* Viewport label — only shown in split view */}

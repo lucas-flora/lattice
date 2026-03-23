@@ -12,7 +12,7 @@
 
 'use client';
 
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { useSimStore } from '@/store/simStore';
 import { useUiStore } from '@/store/uiStore';
 import { useLayoutStore } from '@/store/layoutStore';
@@ -229,6 +229,12 @@ export function ControlBar() {
         {'\u2261'}
       </button>
 
+      {/* Divider */}
+      <div className="w-px h-5 bg-zinc-700" />
+
+      {/* Viewport Background */}
+      <ViewportBgPicker />
+
       {/* Spacer */}
       <div className="flex-1" />
 
@@ -237,6 +243,56 @@ export function ControlBar() {
         <span className="text-[10px] font-mono text-zinc-600 truncate max-w-[160px]" data-testid="controlbar-preset">
           {activePreset}
         </span>
+      )}
+    </div>
+  );
+}
+
+// ── Viewport Background Picker ──
+
+const BG_PRESETS = [
+  { label: 'Dark', color: '#1a1a2e' },
+  { label: 'Black', color: '#000000' },
+  { label: 'White', color: '#ffffff' },
+  { label: 'Maroon', color: '#3b1010' },
+] as const;
+
+function ViewportBgPicker() {
+  const bgColor = useUiStore((s) => s.viewportBgColor);
+  const [showPicker, setShowPicker] = useState(false);
+
+  const setBg = useCallback((color: string) => {
+    useUiStore.setState({ viewportBgColor: color });
+  }, []);
+
+  return (
+    <div className="relative flex items-center gap-1">
+      {/* Current color swatch + toggle */}
+      <button
+        onClick={() => setShowPicker(!showPicker)}
+        className="w-5 h-5 rounded-sm border border-zinc-600 cursor-pointer shrink-0"
+        style={{ backgroundColor: bgColor }}
+        title="Viewport background"
+      />
+      {showPicker && (
+        <div className="absolute bottom-full left-0 mb-1 flex items-center gap-1 bg-zinc-800 border border-zinc-700 rounded p-1.5 z-30">
+          {BG_PRESETS.map((p) => (
+            <button
+              key={p.color}
+              onClick={() => { setBg(p.color); setShowPicker(false); }}
+              className={`w-5 h-5 rounded-sm border cursor-pointer ${bgColor === p.color ? 'border-green-400' : 'border-zinc-600'}`}
+              style={{ backgroundColor: p.color }}
+              title={p.label}
+            />
+          ))}
+          <input
+            type="color"
+            value={bgColor}
+            onChange={(e) => setBg(e.target.value)}
+            className="w-5 h-5 rounded-sm border border-zinc-600 cursor-pointer bg-transparent p-0"
+            title="Custom color"
+          />
+        </div>
       )}
     </div>
   );

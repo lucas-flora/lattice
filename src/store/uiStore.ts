@@ -32,6 +32,8 @@ export interface UiState {
   playbackMode: PlaybackMode;
   /** Dead cell color (hex string like "#1a1a2e") or null for transparent/background */
   deadCellColor: string | null;
+  /** Viewport background color (hex string) */
+  viewportBgColor: string;
 }
 
 export const useUiStore = create<UiState>()(
@@ -46,6 +48,7 @@ export const useUiStore = create<UiState>()(
     timelineAutoExtend: true,
     playbackMode: 'loop' as PlaybackMode,
     deadCellColor: null,
+    viewportBgColor: '#1a1a2e',
   })),
 );
 

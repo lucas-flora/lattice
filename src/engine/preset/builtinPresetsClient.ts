@@ -502,12 +502,12 @@ params:
   - { name: "diffusion_rate", label: "Diffusion", type: "float", default: 0.0002, min: 0.0, max: 0.01, step: 0.0001 }
   - { name: "burn_rate", label: "Burn Rate", type: "float", default: 3.0, min: 0.1, max: 10.0, step: 0.1 }
   - { name: "heat_generation", label: "Heat Generation", type: "float", default: 15.0, min: 1.0, max: 50.0, step: 1.0 }
-  - { name: "smoke_generation", label: "Smoke Generation", type: "float", default: 0.5, min: 0.0, max: 2.0, step: 0.05 }
+  - { name: "smoke_generation", label: "Smoke Generation", type: "float", default: 1.5, min: 0.0, max: 5.0, step: 0.1 }
   - { name: "buoyancy_factor", label: "Buoyancy", type: "float", default: 1.5, min: 0.0, max: 5.0, step: 0.1 }
   - { name: "cooling_rate", label: "Cooling Rate", type: "float", default: 1.2, min: 0.1, max: 5.0, step: 0.1 }
-  - { name: "smoke_dissipation", label: "Smoke Dissipation", type: "float", default: 0.3, min: 0.01, max: 2.0, step: 0.05 }
+  - { name: "smoke_dissipation", label: "Smoke Dissipation", type: "float", default: 0.15, min: 0.01, max: 2.0, step: 0.05 }
   - { name: "ignition_threshold", label: "Ignition Temp", type: "float", default: 0.5, min: 0.1, max: 2.0, step: 0.1 }
-  - { name: "vorticity_strength", label: "Vorticity", type: "float", default: 8.0, min: 0.0, max: 30.0, step: 0.5 }
+  - { name: "vorticity_strength", label: "Vorticity", type: "float", default: 15.0, min: 0.0, max: 40.0, step: 0.5 }
   - { name: "max_temp", label: "Max Temperature", type: "float", default: 5.0, min: 1.0, max: 20.0, step: 0.5 }
 rule:
   type: "webgpu"
