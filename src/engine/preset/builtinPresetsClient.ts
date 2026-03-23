@@ -481,7 +481,7 @@ schema_version: "1"
 meta:
   name: "Fire"
   author: "Lattice Engine"
-  description: "Combustion simulation with velocity field, buoyancy, and GPU-compiled visual mapping."
+  description: "Combustion simulation with velocity field, buoyancy, vorticity confinement, and GPU-compiled visual mapping."
   tags: ["2d", "continuous", "fire", "combustion", "fluid"]
 grid:
   dimensionality: "2d"
@@ -507,6 +507,7 @@ params:
   - { name: "cooling_rate", label: "Cooling Rate", type: "float", default: 1.2, min: 0.1, max: 5.0, step: 0.1 }
   - { name: "smoke_dissipation", label: "Smoke Dissipation", type: "float", default: 0.3, min: 0.01, max: 2.0, step: 0.05 }
   - { name: "ignition_threshold", label: "Ignition Temp", type: "float", default: 0.5, min: 0.1, max: 2.0, step: 0.1 }
+  - { name: "vorticity_strength", label: "Vorticity", type: "float", default: 8.0, min: 0.0, max: 30.0, step: 0.5 }
   - { name: "max_temp", label: "Max Temperature", type: "float", default: 5.0, min: 1.0, max: 20.0, step: 0.5 }
 rule:
   type: "webgpu"
@@ -515,13 +516,11 @@ rule:
       compute: |
         up_t = mix(neighbor_at(0, -1, temperature), neighbor_at(0, 1, temperature), step(0.0, vy))
         lr_t = mix(neighbor_at(-1, 0, temperature), neighbor_at(1, 0, temperature), step(0.0, vx))
-        up_f = mix(neighbor_at(0, -1, fuel), neighbor_at(0, 1, fuel), step(0.0, vy))
-        lr_f = mix(neighbor_at(-1, 0, fuel), neighbor_at(1, 0, fuel), step(0.0, vx))
         up_s = mix(neighbor_at(0, -1, smoke), neighbor_at(0, 1, smoke), step(0.0, vy))
         lr_s = mix(neighbor_at(-1, 0, smoke), neighbor_at(1, 0, smoke), step(0.0, vx))
         spd = clamp((abs(vx) + abs(vy)) * env_dt, 0.0, 0.45)
         self.temperature = mix(temperature, (up_t + lr_t) * 0.5, spd)
-        self.fuel = mix(fuel, (up_f + lr_f) * 0.5, spd)
+        self.fuel = fuel
         self.smoke = mix(smoke, (up_s + lr_s) * 0.5, spd)
         up_vx = mix(neighbor_at(0, -1, vx), neighbor_at(0, 1, vx), step(0.0, vy))
         lr_vx = mix(neighbor_at(-1, 0, vx), neighbor_at(1, 0, vx), step(0.0, vx))
@@ -560,6 +559,18 @@ rule:
         grad_py = (neighbor_at(0,1,pressure) - neighbor_at(0,-1,pressure)) * 0.5
         self.vx = vx - grad_px
         self.vy = vy - grad_py
+    - name: "vorticity_compute"
+      compute: |
+        self.curl = (neighbor_at(1,0,vy) - neighbor_at(-1,0,vy)) * 0.5 - (neighbor_at(0,1,vx) - neighbor_at(0,-1,vx)) * 0.5
+    - name: "vorticity_apply"
+      compute: |
+        eta_x = abs(neighbor_at(1,0,curl)) - abs(neighbor_at(-1,0,curl))
+        eta_y = abs(neighbor_at(0,1,curl)) - abs(neighbor_at(0,-1,curl))
+        eta_len = sqrt(eta_x * eta_x + eta_y * eta_y) + 0.00001
+        nx = eta_x / eta_len
+        ny = eta_y / eta_len
+        self.vx = vx + env_vorticity_strength * ny * curl * env_dt
+        self.vy = vy + env_vorticity_strength * (0.0 - nx) * curl * env_dt
     - name: "cooling"
       compute: |
         self.temperature = temperature * (1.0 - env_cooling_rate * env_dt)
@@ -570,16 +581,16 @@ visual_mappings:
   - type: "script"
     code: |
       t = clamp(temperature / env_max_temp, 0.0, 1.0)
-      fuel_vis = step(0.001, fuel) * (1.0 - t)
-      fire_r = smoothstep(0.0, 0.4, t)
-      fire_g = smoothstep(0.2, 0.7, t) * 0.8
-      fire_b = smoothstep(0.6, 1.0, t) * 0.4
-      smoke_gray = 0.4 + smoke * 0.2
-      smoke_vis = clamp(smoke * 2.0, 0.0, 0.8) * (1.0 - t)
-      self.colorR = fire_r * t + fuel_vis * 0.35 + smoke_vis * smoke_gray
-      self.colorG = fire_g * t + fuel_vis * 0.18 + smoke_vis * smoke_gray
-      self.colorB = fire_b * t + fuel_vis * 0.05 + smoke_vis * (smoke_gray + 0.05)
-      self.alpha = clamp(t * 3.0 + smoke * 2.0 + step(0.001, fuel), 0.0, 1.0)
+      fr = smoothstep(0.0, 0.2, t)
+      fg = smoothstep(0.15, 0.5, t) * smoothstep(0.0, 0.3, t)
+      fb = smoothstep(0.5, 0.95, t) * t
+      fuel_show = step(0.01, fuel) * (1.0 - smoothstep(0.0, 0.3, t))
+      smoke_show = clamp(smoke, 0.0, 1.0) * (1.0 - t)
+      gray = 0.35 + smoke * 0.15
+      self.colorR = fr + fuel_show * 0.25 + smoke_show * gray
+      self.colorG = fg + fuel_show * 0.12 + smoke_show * gray
+      self.colorB = fb + fuel_show * 0.03 + smoke_show * (gray + 0.02)
+      self.alpha = clamp(t * 4.0 + smoke_show * 1.5 + fuel_show, 0.0, 1.0)
 `,
   'link-testbed': `
 schema_version: "1"
