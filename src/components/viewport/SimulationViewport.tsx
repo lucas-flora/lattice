@@ -429,6 +429,12 @@ export function SimulationViewport({ viewportId = 'viewport-1' }: SimulationView
     );
     latticeRenderer.setDeadCellColor(useUiStore.getState().deadCellColor);
 
+    // Wire viewport bg color → GPU renderer clear color
+    const unsubBgColor = useUiStore.subscribe(
+      (s) => s.viewportBgColor,
+      (color) => { gpuGridRenderer?.setClearColor(color); },
+    );
+
     // GPU Grid Renderer setup (if WebGPU available and GPU rule runner active)
     let gpuGridRenderer: GPUGridRenderer | null = null;
     let gpuCanvas: HTMLCanvasElement | null = null;
@@ -462,6 +468,7 @@ export function SimulationViewport({ viewportId = 'viewport-1' }: SimulationView
       try {
         latticeRenderer.setGPURenderingActive(true);
         gpuGridRenderer = new GPUGridRenderer(gpuCanvas);
+        gpuGridRenderer.setClearColor(useUiStore.getState().viewportBgColor);
         const layout = gpuRunner.getPropertyLayout();
         // Primary property = what the renderer displays. Use visual_mappings color
         // property as the single source of truth, falling back to first cell property.
@@ -615,6 +622,7 @@ export function SimulationViewport({ viewportId = 'viewport-1' }: SimulationView
       eventBus.off('view:change', onViewChange);
       unsubGridLines();
       unsubDeadColor();
+      unsubBgColor();
 
       if (gpuGridRenderer) {
         gpuGridRenderer.destroy();

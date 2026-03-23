@@ -198,6 +198,7 @@ export class GPUGridRenderer {
   private canvas: HTMLCanvasElement;
   private colorMapping: ColorMappingConfig | null = null;
   private currentReadBuffer: GPUBuffer | null = null;
+  private clearColor: { r: number; g: number; b: number; a: number } = { r: 0.07, g: 0.07, b: 0.08, a: 1 };
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -268,6 +269,14 @@ export class GPUGridRenderer {
     });
   }
 
+  /** Set the background clear color (hex string like "#ff0000") */
+  setClearColor(hex: string): void {
+    const r = parseInt(hex.slice(1, 3), 16) / 255;
+    const g = parseInt(hex.slice(3, 5), 16) / 255;
+    const b = parseInt(hex.slice(5, 7), 16) / 255;
+    this.clearColor = { r, g, b, a: 1 };
+  }
+
   /** Update which buffer to read from (called after sim tick swaps buffers) */
   updateReadBuffer(readBuffer: GPUBuffer): void {
     if (readBuffer !== this.currentReadBuffer) {
@@ -324,7 +333,7 @@ export class GPUGridRenderer {
     const pass = encoder.beginRenderPass({
       colorAttachments: [{
         view: textureView,
-        clearValue: { r: 0.07, g: 0.07, b: 0.08, a: 1 },
+        clearValue: this.clearColor,
         loadOp: 'clear',
         storeOp: 'store',
       }],
