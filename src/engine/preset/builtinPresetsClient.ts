@@ -478,8 +478,8 @@ meta:
   tags: ["2d", "continuous", "fire", "combustion"]
 grid:
   dimensionality: "2d"
-  width: 128
-  height: 128
+  width: 512
+  height: 512
   topology: "toroidal"
 cell_properties:
   - name: "temperature"

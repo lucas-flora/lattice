@@ -121,36 +121,51 @@ function initializeSimulation(controller: SimulationController): void {
     const tempBuf = sim.grid.getCurrentBuffer('temperature');
     fuelBuf.fill(0.0);
     tempBuf.fill(0.0);
-    // Fuel bricks: 3 rectangular blocks across the bottom 20% of the grid
-    const brickH = Math.floor(h * 0.12);
-    const brickW = Math.floor(w * 0.2);
-    const gap = Math.floor(w * 0.07);
-    const baseY = Math.floor(h * 0.05); // slight offset from bottom
-    const bricks = [
-      { x: gap, y: baseY },
-      { x: Math.floor(w / 2 - brickW / 2), y: baseY },
-      { x: w - gap - brickW, y: baseY },
-    ];
-    for (const brick of bricks) {
-      for (let by = 0; by < brickH; by++) {
-        for (let bx = 0; bx < brickW; bx++) {
-          const gx = brick.x + bx;
-          const gy = brick.y + by;
+
+    // Thick fuel bed across the bottom 30% of the grid
+    const bedTop = Math.floor(h * 0.30);
+    for (let y = 0; y < bedTop; y++) {
+      for (let x = 0; x < w; x++) {
+        // Irregular top edge — use simple hash for variation
+        const edgeNoise = Math.sin(x * 0.15) * 3 + Math.sin(x * 0.07) * 5;
+        if (y < bedTop + edgeNoise - 4) {
+          fuelBuf[y * w + x] = 0.6 + Math.random() * 0.4;
+        }
+      }
+    }
+
+    // Dense log piles scattered across the bed (extra fuel concentration)
+    const numPiles = 6 + Math.floor(w / 80);
+    for (let p = 0; p < numPiles; p++) {
+      const px = Math.floor(w * 0.05 + Math.random() * w * 0.9);
+      const py = Math.floor(Math.random() * bedTop * 0.7);
+      const pw = Math.floor(8 + Math.random() * (w * 0.08));
+      const ph = Math.floor(4 + Math.random() * (h * 0.04));
+      for (let by = 0; by < ph; by++) {
+        for (let bx = 0; bx < pw; bx++) {
+          const gx = px + bx - Math.floor(pw / 2);
+          const gy = py + by;
           if (gx >= 0 && gx < w && gy >= 0 && gy < h) {
-            const idx = gy * w + gx;
-            fuelBuf[idx] = 0.8 + Math.random() * 0.2;
+            fuelBuf[gy * w + gx] = Math.min(1.0, fuelBuf[gy * w + gx] + 0.3 + Math.random() * 0.2);
           }
         }
       }
-      // Ignite center-bottom of each brick
-      const igX = brick.x + Math.floor(brickW / 2);
-      const igY = brick.y + brickH - 1;
-      for (let dy = -1; dy <= 1; dy++) {
-        for (let dx = -1; dx <= 1; dx++) {
-          const gx = igX + dx;
-          const gy = igY + dy;
-          if (gx >= 0 && gx < w && gy >= 0 && gy < h) {
-            tempBuf[gy * w + gx] = 0.5;
+    }
+
+    // Multiple ignition points along the top of the fuel bed
+    const numIgnitions = 3 + Math.floor(w / 100);
+    for (let i = 0; i < numIgnitions; i++) {
+      const ix = Math.floor(w * 0.1 + (w * 0.8) * (i / (numIgnitions - 1)));
+      const iy = bedTop - 2;
+      const igRadius = Math.max(2, Math.floor(w / 100));
+      for (let dy = -igRadius; dy <= igRadius; dy++) {
+        for (let dx = -igRadius; dx <= igRadius; dx++) {
+          if (dx * dx + dy * dy <= igRadius * igRadius) {
+            const gx = ix + dx;
+            const gy = iy + dy;
+            if (gx >= 0 && gx < w && gy >= 0 && gy < h) {
+              tempBuf[gy * w + gx] = 0.4 + Math.random() * 0.2;
+            }
           }
         }
       }
