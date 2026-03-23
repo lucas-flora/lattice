@@ -26,6 +26,7 @@ import { CellTypeSection } from './inspector/CellTypeSection';
 import { EnvironmentSection } from './inspector/EnvironmentSection';
 import { GlobalsSection } from './inspector/GlobalsSection';
 import { StateSection } from './inspector/StateSection';
+import { VisualSection } from './inspector/VisualSection';
 import { TagRow } from './TagRow';
 
 /** Type icon map */
@@ -37,6 +38,7 @@ const TYPE_LABELS: Record<string, string> = {
   [NODE_TYPES.GROUP]: 'Group',
   [NODE_TYPES.INITIAL_STATE]: 'Initial State',
   [NODE_TYPES.SHARED]: 'Shared',
+  [NODE_TYPES.VISUAL]: 'Color Mapping',
 };
 
 /** Inner content — used by both the registered panel and the shell wrapper */
@@ -84,6 +86,7 @@ function InspectorContent() {
         {node.type === NODE_TYPES.ENVIRONMENT && <EnvironmentSection node={node} />}
         {node.type === NODE_TYPES.GLOBALS && <GlobalsSection node={node} />}
         {node.type === NODE_TYPES.INITIAL_STATE && <StateSection node={node} />}
+        {node.type === NODE_TYPES.VISUAL && <VisualSection node={node} />}
         {node.type === NODE_TYPES.GROUP && (
           <div className="text-zinc-500 text-[11px]">
             Organizational container. {node.childIds.length} children.
