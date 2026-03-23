@@ -481,110 +481,104 @@ schema_version: "1"
 meta:
   name: "Fire"
   author: "Lattice Engine"
-  description: "Combustion simulation with fuel, smoke, direct buoyancy, and multi-stop color ramp."
-  tags: ["2d", "continuous", "fire", "combustion"]
+  description: "Combustion simulation with velocity field, buoyancy, and GPU-compiled visual mapping."
+  tags: ["2d", "continuous", "fire", "combustion", "fluid"]
 grid:
   dimensionality: "2d"
-  width: 512
-  height: 512
-  topology: "toroidal"
+  width: 256
+  height: 256
+  topology: "finite"
 cell_properties:
-  - name: "temperature"
-    type: "float"
-    default: 0.0
-    role: "input_output"
-  - name: "fuel"
-    type: "float"
-    default: 0.0
-    role: "input_output"
-  - name: "smoke"
-    type: "float"
-    default: 0.0
-    role: "input_output"
+  - { name: "vx", type: "float", default: 0.0, role: "input_output" }
+  - { name: "vy", type: "float", default: 0.0, role: "input_output" }
+  - { name: "temperature", type: "float", default: 0.0, role: "input_output" }
+  - { name: "fuel", type: "float", default: 0.0, role: "input_output" }
+  - { name: "smoke", type: "float", default: 0.0, role: "input_output" }
+  - { name: "pressure", type: "float", default: 0.0, role: "input_output" }
+  - { name: "curl", type: "float", default: 0.0, role: "input_output" }
 params:
-  - name: "diffusion"
-    label: "Diffusion"
-    type: "float"
-    default: 0.15
-    min: 0.01
-    max: 0.5
-    step: 0.01
-  - name: "burnRate"
-    label: "Burn Rate"
-    type: "float"
-    default: 0.03
-    min: 0.001
-    max: 0.2
-    step: 0.005
-  - name: "coolingRate"
-    label: "Cooling Rate"
-    type: "float"
-    default: 0.01
-    min: 0.001
-    max: 0.1
-    step: 0.001
-  - name: "ignitionTemp"
-    label: "Ignition Temp"
-    type: "float"
-    default: 0.12
-    min: 0.01
-    max: 0.5
-    step: 0.01
-  - name: "buoyancy"
-    label: "Buoyancy"
-    type: "float"
-    default: 0.4
-    min: 0.0
-    max: 1.0
-    step: 0.05
-  - name: "smokeRate"
-    label: "Smoke Rate"
-    type: "float"
-    default: 0.02
-    min: 0.001
-    max: 0.1
-    step: 0.005
-  - name: "dt"
-    label: "Time Step"
-    type: "float"
-    default: 1.0
-    min: 0.1
-    max: 3.0
-    step: 0.1
+  - { name: "dt", label: "Time Step", type: "float", default: 0.1, min: 0.01, max: 0.5, step: 0.01 }
+  - { name: "diffusion_rate", label: "Diffusion", type: "float", default: 0.0002, min: 0.0, max: 0.01, step: 0.0001 }
+  - { name: "burn_rate", label: "Burn Rate", type: "float", default: 3.0, min: 0.1, max: 10.0, step: 0.1 }
+  - { name: "heat_generation", label: "Heat Generation", type: "float", default: 15.0, min: 1.0, max: 50.0, step: 1.0 }
+  - { name: "smoke_generation", label: "Smoke Generation", type: "float", default: 0.5, min: 0.0, max: 2.0, step: 0.05 }
+  - { name: "buoyancy_factor", label: "Buoyancy", type: "float", default: 1.5, min: 0.0, max: 5.0, step: 0.1 }
+  - { name: "cooling_rate", label: "Cooling Rate", type: "float", default: 1.2, min: 0.1, max: 5.0, step: 0.1 }
+  - { name: "smoke_dissipation", label: "Smoke Dissipation", type: "float", default: 0.3, min: 0.01, max: 2.0, step: 0.05 }
+  - { name: "ignition_threshold", label: "Ignition Temp", type: "float", default: 0.5, min: 0.1, max: 2.0, step: 0.1 }
+  - { name: "max_temp", label: "Max Temperature", type: "float", default: 5.0, min: 1.0, max: 20.0, step: 0.5 }
 rule:
   type: "webgpu"
-  compute: |
-    lap_t = neighbor_at(0,-1,temperature) + neighbor_at(0,1,temperature) + neighbor_at(-1,0,temperature) + neighbor_at(1,0,temperature) - 4.0 * temperature
-    lap_s = neighbor_at(0,-1,smoke) + neighbor_at(0,1,smoke) + neighbor_at(-1,0,smoke) + neighbor_at(1,0,smoke) - 4.0 * smoke
-    temp_below = neighbor_at(0, -1, temperature)
-    temp_above = neighbor_at(0, 1, temperature)
-    smoke_below = neighbor_at(0, -1, smoke)
-    smoke_above = neighbor_at(0, 1, smoke)
-    rise = env_buoyancy * env_dt
-    buoy_t = rise * (temp_below - temp_above) * 0.5
-    buoy_s = rise * (smoke_below - smoke_above) * 0.5
-    burning = step(env_ignitionTemp, temperature) * step(0.001, fuel)
-    fuel_consumed = burning * env_burnRate * env_dt
-    heat_generated = fuel_consumed * 5.0
-    smoke_generated = fuel_consumed * env_smokeRate * 10.0
-    new_temp = clamp(temperature + env_dt * env_diffusion * lap_t + buoy_t + heat_generated - env_coolingRate * env_dt, 0.0, 1.0)
-    new_smoke = clamp(smoke + env_dt * env_diffusion * lap_s * 0.5 + buoy_s + smoke_generated - 0.003 * env_dt, 0.0, 1.0)
-    new_fuel = clamp(fuel - fuel_consumed, 0.0, 1.0)
-    self.temperature = new_temp
-    self.fuel = new_fuel
-    self.smoke = new_smoke
+  stages:
+    - name: "advection"
+      compute: |
+        up_t = mix(neighbor_at(0, -1, temperature), neighbor_at(0, 1, temperature), step(0.0, vy))
+        lr_t = mix(neighbor_at(-1, 0, temperature), neighbor_at(1, 0, temperature), step(0.0, vx))
+        up_f = mix(neighbor_at(0, -1, fuel), neighbor_at(0, 1, fuel), step(0.0, vy))
+        lr_f = mix(neighbor_at(-1, 0, fuel), neighbor_at(1, 0, fuel), step(0.0, vx))
+        up_s = mix(neighbor_at(0, -1, smoke), neighbor_at(0, 1, smoke), step(0.0, vy))
+        lr_s = mix(neighbor_at(-1, 0, smoke), neighbor_at(1, 0, smoke), step(0.0, vx))
+        spd = clamp((abs(vx) + abs(vy)) * env_dt, 0.0, 0.45)
+        self.temperature = mix(temperature, (up_t + lr_t) * 0.5, spd)
+        self.fuel = mix(fuel, (up_f + lr_f) * 0.5, spd)
+        self.smoke = mix(smoke, (up_s + lr_s) * 0.5, spd)
+        up_vx = mix(neighbor_at(0, -1, vx), neighbor_at(0, 1, vx), step(0.0, vy))
+        lr_vx = mix(neighbor_at(-1, 0, vx), neighbor_at(1, 0, vx), step(0.0, vx))
+        up_vy = mix(neighbor_at(0, -1, vy), neighbor_at(0, 1, vy), step(0.0, vy))
+        lr_vy = mix(neighbor_at(-1, 0, vy), neighbor_at(1, 0, vy), step(0.0, vx))
+        self.vx = mix(vx, (up_vx + lr_vx) * 0.5, spd)
+        self.vy = mix(vy, (up_vy + lr_vy) * 0.5, spd)
+    - name: "forces"
+      compute: |
+        lap_t = neighbor_at(1,0,temperature) + neighbor_at(-1,0,temperature) + neighbor_at(0,1,temperature) + neighbor_at(0,-1,temperature) - 4.0 * temperature
+        lap_s = neighbor_at(1,0,smoke) + neighbor_at(-1,0,smoke) + neighbor_at(0,1,smoke) + neighbor_at(0,-1,smoke) - 4.0 * smoke
+        new_temp = temperature + env_diffusion_rate * lap_t
+        new_smoke = smoke + env_diffusion_rate * lap_s * 0.5
+        burning = step(env_ignition_threshold, new_temp) * step(0.001, fuel)
+        burn_amount = min(fuel, env_burn_rate * env_dt) * burning
+        new_temp = new_temp + burn_amount * env_heat_generation
+        new_smoke = new_smoke + burn_amount * env_smoke_generation
+        new_fuel = fuel - burn_amount
+        self.vy = vy - env_buoyancy_factor * new_temp * env_dt
+        self.vx = vx
+        self.temperature = new_temp
+        self.fuel = clamp(new_fuel, 0.0, 1.0)
+        self.smoke = clamp(new_smoke, 0.0, 1.0)
+    - name: "pressure_setup"
+      compute: |
+        self.curl = (neighbor_at(1,0,vx) - neighbor_at(-1,0,vx) + neighbor_at(0,1,vy) - neighbor_at(0,-1,vy)) * 0.5
+        self.pressure = 0.0
+    - name: "pressure_jacobi"
+      iterations: 10
+      compute: |
+        p_sum = neighbor_at(1,0,pressure) + neighbor_at(-1,0,pressure) + neighbor_at(0,1,pressure) + neighbor_at(0,-1,pressure)
+        self.pressure = (p_sum - curl) * 0.25
+    - name: "pressure_project"
+      compute: |
+        grad_px = (neighbor_at(1,0,pressure) - neighbor_at(-1,0,pressure)) * 0.5
+        grad_py = (neighbor_at(0,1,pressure) - neighbor_at(0,-1,pressure)) * 0.5
+        self.vx = vx - grad_px
+        self.vy = vy - grad_py
+    - name: "cooling"
+      compute: |
+        self.temperature = temperature * (1.0 - env_cooling_rate * env_dt)
+        self.smoke = smoke * (1.0 - env_smoke_dissipation * env_dt)
+        self.vx = vx * 0.999
+        self.vy = vy * 0.999
 visual_mappings:
   - type: "script"
     code: |
-      t = clamp(temperature, 0.0, 1.0)
+      t = clamp(temperature / env_max_temp, 0.0, 1.0)
       fuel_vis = step(0.001, fuel) * (1.0 - t)
-      fire_r = t * mix(0.1, 1.0, smoothstep(0.0, 0.4, t))
-      fire_g = t * smoothstep(0.3, 0.8, t)
-      fire_b = t * smoothstep(0.7, 1.0, t)
-      self.colorR = fire_r + fuel_vis * 0.35
-      self.colorG = fire_g + fuel_vis * 0.18
-      self.colorB = fire_b + fuel_vis * 0.05
-      self.alpha = clamp(t * 8.0 + smoke * 2.0 + step(0.001, fuel), 0.0, 1.0)
+      fire_r = smoothstep(0.0, 0.4, t)
+      fire_g = smoothstep(0.2, 0.7, t) * 0.8
+      fire_b = smoothstep(0.6, 1.0, t) * 0.4
+      smoke_gray = 0.4 + smoke * 0.2
+      smoke_vis = clamp(smoke * 2.0, 0.0, 0.8) * (1.0 - t)
+      self.colorR = fire_r * t + fuel_vis * 0.35 + smoke_vis * smoke_gray
+      self.colorG = fire_g * t + fuel_vis * 0.18 + smoke_vis * smoke_gray
+      self.colorB = fire_b * t + fuel_vis * 0.05 + smoke_vis * (smoke_gray + 0.05)
+      self.alpha = clamp(t * 3.0 + smoke * 2.0 + step(0.001, fuel), 0.0, 1.0)
 `,
   'link-testbed': `
 schema_version: "1"

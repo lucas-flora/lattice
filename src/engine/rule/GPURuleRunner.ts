@@ -33,15 +33,23 @@ interface ExpressionPass {
   bindGroups: [GPUBindGroup, GPUBindGroup];
 }
 
+/** A compiled rule stage with iteration count */
+interface RuleStage {
+  name: string;
+  pipeline: GPUComputePipeline;
+  bindGroups: [GPUBindGroup, GPUBindGroup];
+  /** Number of times to dispatch this stage per tick (default 1) */
+  iterations: number;
+}
+
 export class GPURuleRunner {
   private grid: Grid;
   private preset: PresetConfig;
   private bufferManager: BufferManager;
   private shaderCompiler: ShaderCompiler;
   private computeDispatcher: ComputeDispatcher;
-  private pipeline: GPUComputePipeline | null = null;
-  /** Two bind groups for ping-pong: [readA→writeB, readB→writeA] */
-  private bindGroups: [GPUBindGroup, GPUBindGroup] | null = null;
+  /** Rule stages — single-pass rules have 1 stage, multi-pass have N */
+  private ruleStages: RuleStage[] = [];
   /** Which bind group is current (0 or 1) */
   private currentBindGroup: 0 | 1 = 0;
   private generation: number = 0;
@@ -89,8 +97,7 @@ export class GPURuleRunner {
     // 3. Build env param names (order matters — maps to uniform buffer slots)
     this.envParamNames = (this.preset.params ?? []).map(p => p.name);
 
-    // 4. Transpile rule compute body (Python subset) → IR
-    // Use the full property layout (includes inherent props like age, alpha, colorR/G/B)
+    // 4. Build parse context (shared by rule and expression tags)
     const context = {
       cellProperties: this.propertyLayout
         .filter(p => p.name !== '_cellType')
@@ -104,36 +111,16 @@ export class GPURuleRunner {
       neighborhoodType: 'moore' as const,
     };
 
-    let irProgram: IRProgram;
-    try {
-      const result = parsePython(this.preset.rule.compute, context);
-      irProgram = result.program;
-      logGPU(`Transpiled "${presetName}" → IR (${irProgram.statements.length} statements)`);
-    } catch (e) {
-      const msg = e instanceof ParseError ? e.message : String(e);
-      throw new Error(`Transpilation failed for "${presetName}": ${msg}`);
-    }
-
-    // 5. Validate IR
-    const validation = validateIR(irProgram);
-    if (!validation.valid) {
-      throw new Error(`IR validation failed for "${presetName}": ${validation.errors.map(e => e.message).join('; ')}`);
-    }
-
-    // 6. Generate WGSL
-    const config: WGSLCodegenConfig = {
+    const wgslConfig: WGSLCodegenConfig = {
       workgroupSize: [8, 8, 1],
       topology: this.grid.config.topology ?? 'toroidal',
       propertyLayout: this.propertyLayout,
       envParams: this.envParamNames,
       globalParams: [],
-      copyAllProperties: true, // Copy through unwritten props (alpha, age, etc.) to prevent ping-pong stale data
+      copyAllProperties: true,
     };
-    this.wgsl = generateWGSL(irProgram, config);
 
-    // 7. Create explicit bind group layout shared by all compute pipelines.
-    //    This prevents the GPU driver from optimizing away unused bindings
-    //    in expression tag shaders (which may not reference all buffers).
+    // 5. Create explicit bind group layout shared by all compute pipelines.
     const ctx = GPUContext.get();
     this.bindGroupLayout = ctx.device.createBindGroupLayout({
       label: `${presetName}-bgl`,
@@ -144,35 +131,68 @@ export class GPURuleRunner {
       ],
     });
 
-    // 8. Compile shader + create pipeline with explicit layout
-    this.pipeline = this.createPipelineWithLayout(this.wgsl, `${presetName}-gpu-rule`);
-
-    // 9. Create two bind groups for ping-pong
     const readBuf = this.bufferManager.getReadBuffer();
     const writeBuf = this.bufferManager.getWriteBuffer();
     const paramsBuf = this.bufferManager.getParamsBuffer();
 
-    const bg0 = this.createBindGroup(readBuf, writeBuf, paramsBuf);
-    const bg1 = this.createBindGroup(writeBuf, readBuf, paramsBuf);
-    this.bindGroups = [bg0, bg1];
+    // 6. Compile rule — either single compute or multi-stage
+    const stages = this.preset.rule.stages;
+    const computeBodies = stages && stages.length > 0
+      ? stages.map(s => ({ name: s.name, compute: s.compute, iterations: s.iterations ?? 1 }))
+      : [{ name: 'main', compute: this.preset.rule.compute ?? '', iterations: 1 }];
+
+    for (const stage of computeBodies) {
+      try {
+        const result = parsePython(stage.compute, context);
+        const irProgram = result.program;
+
+        const validation = validateIR(irProgram);
+        if (!validation.valid) {
+          throw new Error(`IR validation failed: ${validation.errors.map(e => e.message).join('; ')}`);
+        }
+
+        const wgsl = generateWGSL(irProgram, wgslConfig);
+        if (stage.name === 'main' && computeBodies.length === 1) {
+          this.wgsl = wgsl; // Store for debugging (single-pass)
+        }
+
+        const pipeline = this.createPipelineWithLayout(wgsl, `${presetName}-${stage.name}`);
+        const bg0 = this.createBindGroup(readBuf, writeBuf, paramsBuf);
+        const bg1 = this.createBindGroup(writeBuf, readBuf, paramsBuf);
+
+        this.ruleStages.push({
+          name: stage.name,
+          pipeline,
+          bindGroups: [bg0, bg1],
+          iterations: stage.iterations,
+        });
+
+        logGPU(`Transpiled "${presetName}/${stage.name}" → IR (${irProgram.statements.length} stmts)${stage.iterations > 1 ? ` ×${stage.iterations}` : ''}`);
+      } catch (e) {
+        const msg = e instanceof ParseError ? e.message : String(e);
+        throw new Error(`Transpilation failed for "${presetName}/${stage.name}": ${msg}`);
+      }
+    }
+
     this.currentBindGroup = 0;
 
-    // 9. Pack grid state from CPU into interleaved GPU format and upload
+    // 7. Pack grid state from CPU into interleaved GPU format and upload
     this.uploadFromGrid();
 
-    // 10. Write initial params
+    // 8. Write initial params
     this.updateParams({}, 0, 1.0);
 
-    // 11. Compile expression tags (post-rule passes)
+    // 9. Compile expression tags (post-rule passes)
     this.compileExpressionTags();
 
-    // 12. Compile visual mapping ramp (runs after all expression tags)
+    // 10. Compile visual mapping (runs after all expression tags)
     this.compileVisualMapping();
 
-    // 13. Run expression/visual passes once to compute colorR/G/B for the initial frame
+    // 11. Run expression/visual passes once to compute colorR/G/B for the initial frame
     this.runExpressionPasses();
 
-    logGPU(`GPURuleRunner initialized: ${presetName} (${width}×${height}, stride=${this.bufferManager.stride}, ${this.wgsl.length} chars WGSL, ${this.expressionPasses.length} expr passes)`);
+    const totalDispatches = this.ruleStages.reduce((n, s) => n + s.iterations, 0);
+    logGPU(`GPURuleRunner initialized: ${presetName} (${width}×${height}, stride=${this.bufferManager.stride}, ${this.ruleStages.length} rule stages (${totalDispatches} dispatches/tick), ${this.expressionPasses.length} expr passes)`);
   }
 
   /** Create a compute pipeline using the shared bind group layout */
@@ -396,10 +416,10 @@ export class GPURuleRunner {
 
   /**
    * Execute one simulation tick on the GPU.
-   * Dispatches the main rule pass, then all expression tag passes.
+   * Dispatches all rule stages, then all expression tag passes.
    */
   tick(): void {
-    if (!this.pipeline || !this.bindGroups) {
+    if (this.ruleStages.length === 0) {
       throw new Error('GPURuleRunner not initialized');
     }
 
@@ -414,16 +434,18 @@ export class GPURuleRunner {
     this.generation++;
     this.bufferManager.updateParams(this.getEnvParamsObject());
 
-    // Main rule pass
-    this.computeDispatcher.dispatchAndSubmit(
-      this.pipeline,
-      this.bindGroups[this.currentBindGroup],
-      workgroups,
-    );
-
-    // Swap after main rule
-    this.currentBindGroup = this.currentBindGroup === 0 ? 1 : 0;
-    this.bufferManager.swap();
+    // Rule stages (each dispatches N iterations with buffer swaps)
+    for (const stage of this.ruleStages) {
+      for (let i = 0; i < stage.iterations; i++) {
+        this.computeDispatcher.dispatchAndSubmit(
+          stage.pipeline,
+          stage.bindGroups[this.currentBindGroup],
+          workgroups,
+        );
+        this.currentBindGroup = this.currentBindGroup === 0 ? 1 : 0;
+        this.bufferManager.swap();
+      }
+    }
 
     // Expression tag passes (each reads current, writes to other, then swaps)
     for (const pass of this.expressionPasses) {
@@ -565,8 +587,7 @@ export class GPURuleRunner {
   /** Clean up all GPU resources */
   destroy(): void {
     this.bufferManager.destroy();
-    this.pipeline = null;
-    this.bindGroups = null;
+    this.ruleStages = [];
   }
 
   private getEnvParamsObject(): Record<string, number> {

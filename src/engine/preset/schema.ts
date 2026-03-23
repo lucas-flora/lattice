@@ -57,14 +57,28 @@ const CellPropertySchema = z.object({
   expression: z.string().optional(),
 });
 
+/** A single compute stage in a multi-pass rule */
+const RuleStageSchema = z.object({
+  name: z.string().min(1),
+  compute: z.string().min(1),
+  /** Run this stage N times (e.g. 20 for Jacobi pressure solve) */
+  iterations: z.number().int().positive().optional(),
+});
+
 const RuleSchema = z.object({
   type: z.enum(['webgpu', 'python', 'typescript', 'wasm']),
-  compute: z.string().min(1, 'Rule compute function body is required'),
+  /** Single-pass rule compute body (mutually exclusive with stages) */
+  compute: z.string().optional(),
+  /** Multi-pass rule: ordered array of compute stages (mutually exclusive with compute) */
+  stages: z.array(RuleStageSchema).optional(),
   /** Name of the WASM function to call (deprecated — WASM rules are no longer supported). */
   wasm_module: z.string().optional(),
   /** TypeScript compute body used as fallback (deprecated — all rules transpile to WGSL). */
   fallback_compute: z.string().optional(),
-});
+}).refine(
+  (data) => data.compute || (data.stages && data.stages.length > 0),
+  { message: 'Rule must have either compute or stages' },
+);
 
 const ColorStopSchema = z.object({
   t: z.number().min(0).max(1),

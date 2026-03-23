@@ -146,8 +146,8 @@ export class SimulationController {
     try {
       if (!GPUContext.isAvailable()) return;
 
-      // All presets with a compute body can run on GPU via the transpiler
-      if (!this.simulation.preset.rule.compute) return;
+      // All presets with a compute body or stages can run on GPU via the transpiler
+      if (!this.simulation.preset.rule.compute && !this.simulation.preset.rule.stages) return;
 
       // Wait for GPU context if not yet initialized
       let ctx = GPUContext.tryGet();
@@ -1400,7 +1400,10 @@ export class SimulationController {
    * Get the current rule compute body.
    */
   getRuleBody(): string {
-    return this.simulation?.preset.rule.compute ?? '';
+    const rule = this.simulation?.preset.rule;
+    if (!rule) return '';
+    if (rule.stages) return rule.stages.map(s => `# --- ${s.name} ---\n${s.compute}`).join('\n\n');
+    return rule.compute ?? '';
   }
 
   /**

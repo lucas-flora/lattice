@@ -127,7 +127,7 @@ export function canRunGPU(config: BenchmarkConfig): boolean {
   if (!GPUContext.isAvailable()) return false;
   if (config.testName.startsWith('render-only')) return false;
   const presetConfig = loadBuiltinPresetClient(config.presetName as BuiltinPresetNameClient);
-  return !!presetConfig.rule.compute;
+  return !!(presetConfig.rule.compute || presetConfig.rule.stages);
 }
 
 /**

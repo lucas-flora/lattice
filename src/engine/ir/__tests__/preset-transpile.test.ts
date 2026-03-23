@@ -45,8 +45,11 @@ describe('Preset transpilation (Phase 6 validation)', () => {
         neighborhoodType: 'moore' as const,
       };
 
-      // 1. Transpile Python → IR
-      const result = parsePython(preset.rule.compute, context);
+      // 1. Transpile Python → IR (handle both single compute and multi-stage rules)
+      const computeBodies = preset.rule.stages
+        ? preset.rule.stages.map(s => s.compute)
+        : [preset.rule.compute ?? ''];
+      const result = parsePython(computeBodies[0], context);
       expect(result.program.statements.length).toBeGreaterThan(0);
 
       // 2. Validate IR

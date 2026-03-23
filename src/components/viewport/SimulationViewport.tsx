@@ -141,7 +141,7 @@ export function SimulationViewport({ viewportId = 'viewport-1' }: SimulationView
 
     // If GPU rendering is likely (built-in IR exists), hide InstancedMesh immediately
     // to prevent the old grid flashing before the GPU renderer takes over
-    if (!is3D && GPUContext.isAvailable() && (sim.preset.rule.compute)) {
+    if (!is3D && GPUContext.isAvailable() && (sim.preset.rule.compute || sim.preset.rule.stages)) {
       latticeRenderer.setGPURenderingActive(true);
     }
 
@@ -342,7 +342,7 @@ export function SimulationViewport({ viewportId = 'viewport-1' }: SimulationView
 
         // Hide InstancedMesh if GPU is expected for this preset
         const is3DNew = newSim.preset.grid.dimensionality === '3d';
-        if (!is3DNew && GPUContext.isAvailable() && newSim.preset.rule.compute) {
+        if (!is3DNew && GPUContext.isAvailable() && (newSim.preset.rule.compute || newSim.preset.rule.stages)) {
           latticeRenderer.setGPURenderingActive(true);
         } else {
           latticeRenderer.setGPURenderingActive(false);
@@ -479,11 +479,13 @@ export function SimulationViewport({ viewportId = 'viewport-1' }: SimulationView
         // Check if rule or expression tags write to colorR/G/B → direct mode
         const exprTags = currentSim.preset.expression_tags ?? [];
         const exprOutputs = exprTags.flatMap(t => t.outputs ?? []);
-        const ruleBody = currentSim.preset.rule.compute ?? '';
+        const ruleBodies = currentSim.preset.rule.stages
+          ? currentSim.preset.rule.stages.map(s => s.compute).join('\n')
+          : (currentSim.preset.rule.compute ?? '');
         const writesColor = exprOutputs.some(o => o.includes('colorR') || o.includes('colorG') || o.includes('colorB'))
-          || ruleBody.includes('self.colorR') || ruleBody.includes('self.colorG') || ruleBody.includes('self.colorB');
+          || ruleBodies.includes('self.colorR') || ruleBodies.includes('self.colorG') || ruleBodies.includes('self.colorB');
         const writesAlpha = exprOutputs.some(o => o.includes('alpha'))
-          || ruleBody.includes('self.alpha');
+          || ruleBodies.includes('self.alpha');
         const useDirectColor = (writesColor || writesAlpha) && colorR && colorG && colorB;
 
         // Parse visual_mappings to determine rendering mode and colors
