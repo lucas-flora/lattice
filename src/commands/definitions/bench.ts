@@ -1,17 +1,17 @@
 /**
- * Benchmark commands: bench.run, bench.gpu, bench.cpu, bench.results.
+ * Benchmark commands: bench.run, bench.results.
  *
- * bench.run — Run both GPU and CPU benchmarks (GPU first).
- * bench.gpu — Run GPU benchmarks only.
- * bench.cpu — Run CPU benchmarks only.
+ * bench.run — Run GPU benchmark suite (all rules execute on GPU).
  * bench.results — Query and display recent results from Supabase.
+ *
+ * CPU benchmarks removed — all rule execution is GPU-native now.
  */
 
 import { z } from 'zod';
 import type { CommandRegistry } from '../CommandRegistry';
 import type { EventBus } from '../../engine/core/EventBus';
 import { BENCHMARK_SUITE } from '../../lib/benchmarkSuite';
-import { runBenchmark, runBenchmarkGPU, canRunGPU, submitResults, queryResults, type BenchmarkResult } from '../../lib/benchmarkRunner';
+import { runBenchmarkGPU, canRunGPU, submitResults, queryResults, type BenchmarkResult } from '../../lib/benchmarkRunner';
 
 const RunParams = z.object({
   test: z.string().optional(),
@@ -100,39 +100,22 @@ function resolveSuite(test?: string): { suite: typeof BENCHMARK_SUITE; error?: s
   return { suite };
 }
 
-/** Run CPU benchmarks for the given suite */
-async function runCPU(suite: typeof BENCHMARK_SUITE, eventBus: EventBus, offset: number, total: number): Promise<BenchmarkResult[]> {
-  const results: BenchmarkResult[] = [];
-  for (let idx = 0; idx < suite.length; idx++) {
-    const config = suite[idx];
-    const label = `[${offset + idx + 1}/${total}] ${config.testName}`;
-    eventBus.emit('bench:progress', { message: `${label}  warming up...`, testIndex: offset + idx, totalTests: total });
-
-    const result = await runBenchmark(config, (_tn, tick, tickTotal, phase) => {
-      eventBus.emit('bench:progress', { message: `${label}  ${phase} ${progressBar(tick, tickTotal)}  (${tick}/${tickTotal})`, testIndex: offset + idx, totalTests: total });
-    });
-    results.push(result);
-    eventBus.emit('bench:progress', { message: `${label}  done — ${result.metrics.tick_ms}ms/tick, ${result.metrics.fps} fps`, testIndex: offset + idx, totalTests: total });
-    await submitResults(result);
-  }
-  return results;
-}
-
 /** Run GPU benchmarks for the given suite */
-async function runGPU(suite: typeof BENCHMARK_SUITE, eventBus: EventBus, offset: number, total: number): Promise<BenchmarkResult[]> {
+async function runGPU(suite: typeof BENCHMARK_SUITE, eventBus: EventBus): Promise<BenchmarkResult[]> {
   const gpuSuite = suite.filter(canRunGPU);
+  const total = gpuSuite.length;
   const results: BenchmarkResult[] = [];
   for (let idx = 0; idx < gpuSuite.length; idx++) {
     const config = gpuSuite[idx];
-    const label = `[${offset + idx + 1}/${total}] ${config.testName}-gpu`;
-    eventBus.emit('bench:progress', { message: `${label}  warming up (GPU)...`, testIndex: offset + idx, totalTests: total });
+    const label = `[${idx + 1}/${total}] ${config.testName}`;
+    eventBus.emit('bench:progress', { message: `${label}  warming up (GPU)...`, testIndex: idx, totalTests: total });
 
     const result = await runBenchmarkGPU(config, (_tn, tick, tickTotal, phase) => {
-      eventBus.emit('bench:progress', { message: `${label}  ${phase} ${progressBar(tick, tickTotal)}  (${tick}/${tickTotal})`, testIndex: offset + idx, totalTests: total });
+      eventBus.emit('bench:progress', { message: `${label}  ${phase} ${progressBar(tick, tickTotal)}  (${tick}/${tickTotal})`, testIndex: idx, totalTests: total });
     });
     if (result) {
       results.push(result);
-      eventBus.emit('bench:progress', { message: `${label}  done — ${result.metrics.tick_ms}ms/tick, ${result.metrics.fps} fps`, testIndex: offset + idx, totalTests: total });
+      eventBus.emit('bench:progress', { message: `${label}  done — ${result.metrics.tick_ms}ms/tick, ${result.metrics.fps} fps`, testIndex: idx, totalTests: total });
       await submitResults(result);
     }
   }
@@ -147,31 +130,10 @@ async function supabaseNote(results: BenchmarkResult[]): Promise<string> {
 }
 
 export function registerBenchCommands(registry: CommandRegistry, eventBus: EventBus): void {
-  // bench.run — both GPU (first) and CPU
+  // bench.run — GPU benchmarks
   registry.register({
     name: 'bench.run',
-    description: 'Run GPU + CPU benchmark suite',
-    category: 'bench',
-    params: RunParams,
-    execute: async (params) => {
-      const { test } = params as z.infer<typeof RunParams>;
-      const { suite, error } = resolveSuite(test);
-      if (error) return { success: false, error };
-
-      const gpuCount = suite.filter(canRunGPU).length;
-      const total = gpuCount + suite.length;
-      const gpuResults = await runGPU(suite, eventBus, 0, total);
-      const cpuResults = await runCPU(suite, eventBus, gpuCount, total);
-      const results = [...gpuResults, ...cpuResults];
-
-      return { success: true, data: { summary: formatSummaryTable(results) + '\n' + await supabaseNote(results), results } };
-    },
-  });
-
-  // bench.gpu — GPU only
-  registry.register({
-    name: 'bench.gpu',
-    description: 'Run GPU benchmark suite only',
+    description: 'Run GPU benchmark suite',
     category: 'bench',
     params: RunParams,
     execute: async (params) => {
@@ -180,26 +142,21 @@ export function registerBenchCommands(registry: CommandRegistry, eventBus: Event
       if (error) return { success: false, error };
 
       const gpuSuite = suite.filter(canRunGPU);
-      if (gpuSuite.length === 0) return { success: false, error: 'No GPU-compatible tests in suite' };
+      if (gpuSuite.length === 0) return { success: false, error: 'No GPU-compatible tests (WebGPU unavailable?)' };
 
-      const results = await runGPU(suite, eventBus, 0, gpuSuite.length);
+      const results = await runGPU(suite, eventBus);
       return { success: true, data: { summary: formatSummaryTable(results) + '\n' + await supabaseNote(results), results } };
     },
   });
 
-  // bench.cpu — CPU only
+  // bench.gpu — alias for bench.run (backward compat)
   registry.register({
-    name: 'bench.cpu',
-    description: 'Run CPU benchmark suite only',
+    name: 'bench.gpu',
+    description: 'Run GPU benchmark suite',
     category: 'bench',
     params: RunParams,
     execute: async (params) => {
-      const { test } = params as z.infer<typeof RunParams>;
-      const { suite, error } = resolveSuite(test);
-      if (error) return { success: false, error };
-
-      const results = await runCPU(suite, eventBus, 0, suite.length);
-      return { success: true, data: { summary: formatSummaryTable(results) + '\n' + await supabaseNote(results), results } };
+      return registry.execute('bench.run', params);
     },
   });
 

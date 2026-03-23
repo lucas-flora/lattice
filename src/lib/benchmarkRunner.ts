@@ -1,12 +1,11 @@
 /**
- * Benchmark runner for measuring simulation and render performance.
+ * Benchmark runner for measuring GPU simulation performance.
  *
- * Creates isolated Simulation instances from preset configs with overridden
- * grid dimensions, seeds random initial state, and collects timing data.
+ * Creates isolated Simulation + GPURuleRunner instances, seeds random
+ * initial state, and collects timing data with onSubmittedWorkDone()
+ * for accurate GPU execution time.
+ *
  * Results are submitted to Supabase for cross-architecture comparison.
- *
- * All timing uses performance.now() for sub-millisecond precision.
- * Memory uses performance.memory.usedJSHeapSize (Chrome only, gracefully degrades).
  */
 
 import { Simulation } from '../engine/rule/Simulation';
@@ -17,10 +16,8 @@ import type { BenchmarkConfig } from './benchmarkSuite';
 import { GPURuleRunner } from '../engine/rule/GPURuleRunner';
 import { GPUContext } from '../engine/gpu/GPUContext';
 
-/** Architecture tag for CPU measurements */
-const CPU_TAG = 'baseline-cpu';
 /** Architecture tag for GPU measurements */
-const GPU_TAG = 'phase-3-gpu-sim';
+const GPU_TAG = 'phase-6-final';
 
 export interface BenchmarkResult {
   gitCommit: string;
@@ -39,22 +36,14 @@ export interface BenchmarkResult {
 /** Progress callback for UI/terminal updates */
 export type BenchmarkProgressFn = (testName: string, tick: number, total: number, phase: 'warmup' | 'measure') => void;
 
-/**
- * Detect browser user agent string.
- */
 function detectBrowser(): string {
   if (typeof navigator === 'undefined') return 'unknown';
   const ua = navigator.userAgent;
-  // Extract browser name and version
   const match = ua.match(/(Chrome|Firefox|Safari|Edge)\/(\d+[\d.]*)/);
   if (match) return `${match[1]}/${match[2]}`;
   return ua.slice(0, 100);
 }
 
-/**
- * Detect GPU via WebGL debug renderer info extension.
- * Returns the unmasked renderer string (e.g. 'Apple M4 Max') or null.
- */
 function detectGPU(): string | null {
   try {
     const canvas = document.createElement('canvas');
@@ -68,16 +57,10 @@ function detectGPU(): string | null {
   }
 }
 
-/**
- * Get the git commit hash injected at build time via next.config.ts.
- */
 function getGitCommit(): string {
   return process.env.NEXT_PUBLIC_GIT_COMMIT ?? 'unknown';
 }
 
-/**
- * Get current JS heap usage in MB. Chrome only — returns null on other browsers.
- */
 function getHeapMB(): number | null {
   const mem = (performance as unknown as { memory?: { usedJSHeapSize: number } }).memory;
   if (!mem) return null;
@@ -86,12 +69,10 @@ function getHeapMB(): number | null {
 
 /**
  * Create a Simulation from a preset with overridden grid dimensions.
- * Seeds ~25% of cells as alive/active for TS-path presets.
  */
 function createBenchmarkSimulation(config: BenchmarkConfig): Simulation {
   const presetConfig = loadBuiltinPresetClient(config.presetName as BuiltinPresetNameClient);
 
-  // Override grid dimensions
   const overridden: PresetConfig = {
     ...presetConfig,
     grid: {
@@ -105,7 +86,9 @@ function createBenchmarkSimulation(config: BenchmarkConfig): Simulation {
 
   // Seed random initial state (~25% density)
   const cellCount = config.gridWidth * config.gridHeight;
-  const primaryProp = presetConfig.cell_properties?.[0]?.name ?? 'alive';
+  const colorMapping = presetConfig.visual_mappings?.find(m => m.channel === 'color');
+  const primaryProp = colorMapping?.property
+    ?? presetConfig.cell_properties?.[0]?.name ?? 'alive';
 
   if (sim.grid.hasProperty(primaryProp)) {
     for (let i = 0; i < cellCount; i++) {
@@ -134,103 +117,15 @@ function createBenchmarkSimulation(config: BenchmarkConfig): Simulation {
   return sim;
 }
 
-/** Yield to the event loop so the UI can repaint */
 const yieldFrame = () => new Promise<void>(resolve => setTimeout(resolve, 0));
-
-/** How often to yield during tick loops (every N ticks) */
 const YIELD_INTERVAL = 10;
-
-/**
- * Run a single benchmark test and return results.
- * Async to yield periodically, allowing the UI to update progress.
- *
- * @param config - Test configuration
- * @param onProgress - Optional progress callback (called every YIELD_INTERVAL ticks)
- * @returns Benchmark result with all collected metrics
- */
-export async function runBenchmark(
-  config: BenchmarkConfig,
-  onProgress?: BenchmarkProgressFn,
-): Promise<BenchmarkResult> {
-  const sim = createBenchmarkSimulation(config);
-  const isRenderOnly = config.testName.startsWith('render-only');
-
-  // Warmup phase (CPU ticking removed — GPU benchmarks use runBenchmarkGPU)
-  for (let i = 0; i < config.warmupTicks; i++) {
-    if (!isRenderOnly) sim.grid.swap(); // no-op tick for CPU baseline
-    if ((i + 1) % YIELD_INTERVAL === 0) {
-      onProgress?.(config.testName, i + 1, config.warmupTicks, 'warmup');
-      await yieldFrame();
-    }
-  }
-
-  // Measurement phase — timing is per-tick so yields don't affect measurements
-  const tickTimes: number[] = [];
-  const heapBefore = getHeapMB();
-
-  for (let i = 0; i < config.measureTicks; i++) {
-    if (isRenderOnly) {
-      const start = performance.now();
-      sim.grid.swap();
-      const end = performance.now();
-      tickTimes.push(end - start);
-    } else {
-      const start = performance.now();
-      sim.grid.swap(); // no-op tick for CPU baseline
-      const end = performance.now();
-      tickTimes.push(end - start);
-    }
-    if ((i + 1) % YIELD_INTERVAL === 0) {
-      onProgress?.(config.testName, i + 1, config.measureTicks, 'measure');
-      await yieldFrame();
-    }
-  }
-
-  const heapAfter = getHeapMB();
-
-  // Compute statistics
-  const sorted = [...tickTimes].sort((a, b) => a - b);
-  const avgMs = tickTimes.reduce((s, t) => s + t, 0) / tickTimes.length;
-  const p95Ms = sorted[Math.floor(sorted.length * 0.95)];
-  const fps = 1000 / avgMs;
-
-  const metrics: Record<string, number> = {
-    tick_ms: round2(avgMs),
-    tick_p95_ms: round2(p95Ms),
-    fps: round2(fps),
-  };
-
-  if (heapAfter !== null) {
-    metrics.heap_mb = heapAfter;
-  }
-  if (heapBefore !== null && heapAfter !== null) {
-    metrics.heap_delta_mb = round2(heapAfter - heapBefore);
-  }
-
-  return {
-    gitCommit: getGitCommit(),
-    architectureTag: CPU_TAG,
-    browser: detectBrowser(),
-    gpu: detectGPU(),
-    testName: config.testName,
-    gridWidth: config.gridWidth,
-    gridHeight: config.gridHeight,
-    metrics,
-    metadata: {
-      warmupTicks: config.warmupTicks,
-      measureTicks: config.measureTicks,
-      presetName: config.presetName,
-      ruleType: 'typescript',
-      numProperties: sim.grid.getPropertyNames().length,
-    },
-  };
-}
 
 /**
  * Check if a benchmark config can run on GPU.
  */
 export function canRunGPU(config: BenchmarkConfig): boolean {
   if (!GPUContext.isAvailable()) return false;
+  if (config.testName.startsWith('render-only')) return false;
   const presetConfig = loadBuiltinPresetClient(config.presetName as BuiltinPresetNameClient);
   return !!presetConfig.rule.compute;
 }
@@ -244,7 +139,6 @@ export async function runBenchmarkGPU(
   onProgress?: BenchmarkProgressFn,
 ): Promise<BenchmarkResult | null> {
   if (!canRunGPU(config)) return null;
-  if (config.testName.startsWith('render-only')) return null;
 
   const ctx = GPUContext.tryGet();
   if (!ctx) return null;
@@ -258,13 +152,13 @@ export async function runBenchmarkGPU(
     runner.tick();
     if ((i + 1) % YIELD_INTERVAL === 0) {
       await ctx.device.queue.onSubmittedWorkDone();
-      onProgress?.(config.testName + '-gpu', i + 1, config.warmupTicks, 'warmup');
+      onProgress?.(config.testName, i + 1, config.warmupTicks, 'warmup');
       await yieldFrame();
     }
   }
   await ctx.device.queue.onSubmittedWorkDone();
 
-  // Measurement phase — time includes GPU execution via onSubmittedWorkDone()
+  // Measurement phase
   const tickTimes: number[] = [];
   const heapBefore = getHeapMB();
 
@@ -276,7 +170,7 @@ export async function runBenchmarkGPU(
     tickTimes.push(end - start);
 
     if ((i + 1) % YIELD_INTERVAL === 0) {
-      onProgress?.(config.testName + '-gpu', i + 1, config.measureTicks, 'measure');
+      onProgress?.(config.testName, i + 1, config.measureTicks, 'measure');
       await yieldFrame();
     }
   }
@@ -284,7 +178,6 @@ export async function runBenchmarkGPU(
   const heapAfter = getHeapMB();
   runner.destroy();
 
-  // Compute statistics
   const sorted = [...tickTimes].sort((a, b) => a - b);
   const avgMs = tickTimes.reduce((s, t) => s + t, 0) / tickTimes.length;
   const p95Ms = sorted[Math.floor(sorted.length * 0.95)];
@@ -306,7 +199,7 @@ export async function runBenchmarkGPU(
     architectureTag: GPU_TAG,
     browser: detectBrowser(),
     gpu: detectGPU(),
-    testName: config.testName + '-gpu',
+    testName: config.testName,
     gridWidth: config.gridWidth,
     gridHeight: config.gridHeight,
     metrics,
@@ -322,8 +215,6 @@ export async function runBenchmarkGPU(
 
 /**
  * Submit benchmark results to Supabase.
- * Each metric becomes a separate row for easy querying/comparison.
- * Falls back to console.log if Supabase is not configured.
  */
 export async function submitResults(result: BenchmarkResult): Promise<void> {
   const rows = Object.entries(result.metrics).map(([metricName, metricValue]) => ({
@@ -353,10 +244,7 @@ export async function submitResults(result: BenchmarkResult): Promise<void> {
 }
 
 /**
- * Query recent benchmark results from Supabase, grouped by architecture tag.
- *
- * @param limit - Max rows to fetch (default 200)
- * @returns Array of result rows, or null if Supabase is not configured
+ * Query recent benchmark results from Supabase.
  */
 export async function queryResults(limit: number = 200): Promise<Record<string, unknown>[] | null> {
   if (!supabase) {
@@ -378,7 +266,6 @@ export async function queryResults(limit: number = 200): Promise<Record<string, 
   return data;
 }
 
-/** Round to 2 decimal places */
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
