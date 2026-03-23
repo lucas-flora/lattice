@@ -261,8 +261,8 @@ export function AppShell() {
     };
     eventBus.on('sim:presetLoaded', onPresetLoaded);
 
-    logMin('ctrl', 'AppShell boot — loading default preset conways-gol');
-    const config = loadBuiltinPresetClient('conways-gol');
+    logMin('ctrl', 'AppShell boot — loading default preset fire');
+    const config = loadBuiltinPresetClient('fire');
     controller.loadPresetConfig(config);
     initializeSimulation(controller);
     const { timelineDuration } = useUiStore.getState();
