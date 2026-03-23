@@ -62,6 +62,8 @@ export class GPURuleRunner {
   private bindGroupLayout: GPUBindGroupLayout | null = null;
   /** Whether a visual mapping ramp pass was compiled */
   private _hasVisualMappingPass = false;
+  /** Current env param values (updated by controller, read during tick) */
+  private currentEnvParams: Record<string, number> = {};
 
   constructor(grid: Grid, preset: PresetConfig) {
     this.grid = grid;
@@ -590,7 +592,19 @@ export class GPURuleRunner {
     this.ruleStages = [];
   }
 
+  /**
+   * Update the current env param values. Called by the controller
+   * when params change (slider, command, etc.).
+   */
+  setEnvParams(params: Record<string, number>): void {
+    this.currentEnvParams = params;
+  }
+
   private getEnvParamsObject(): Record<string, number> {
+    // Use current values if available, fall back to preset defaults
+    if (Object.keys(this.currentEnvParams).length > 0) {
+      return this.currentEnvParams;
+    }
     const params: Record<string, number> = {};
     if (this.preset.params) {
       for (const p of this.preset.params) {

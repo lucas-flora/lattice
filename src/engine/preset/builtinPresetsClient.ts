@@ -485,8 +485,8 @@ meta:
   tags: ["2d", "continuous", "fire", "combustion", "fluid"]
 grid:
   dimensionality: "2d"
-  width: 256
-  height: 256
+  width: 512
+  height: 512
   topology: "finite"
 draw_property: "fuel"
 cell_properties:
@@ -541,7 +541,7 @@ rule:
         new_fuel = fuel - burn_amount
         self.vy = vy - env_buoyancy_factor * new_temp * env_dt
         self.vx = vx
-        self.temperature = new_temp
+        self.temperature = clamp(new_temp, 0.0, env_max_temp)
         self.fuel = clamp(new_fuel, 0.0, 1.0)
         self.smoke = clamp(new_smoke, 0.0, 1.0)
     - name: "pressure_setup"
@@ -573,24 +573,24 @@ rule:
         self.vy = vy + env_vorticity_strength * (0.0 - nx) * curl * env_dt
     - name: "cooling"
       compute: |
-        self.temperature = temperature * (1.0 - env_cooling_rate * env_dt)
-        self.smoke = smoke * (1.0 - env_smoke_dissipation * env_dt)
-        self.vx = vx * 0.999
-        self.vy = vy * 0.999
+        self.temperature = clamp(temperature * (1.0 - env_cooling_rate * env_dt), 0.0, env_max_temp)
+        self.smoke = clamp(smoke * (1.0 - env_smoke_dissipation * env_dt), 0.0, 1.0)
+        self.vx = clamp(vx * 0.998, -5.0, 5.0)
+        self.vy = clamp(vy * 0.998, -5.0, 5.0)
 visual_mappings:
   - type: "script"
     code: |
       t = clamp(temperature / env_max_temp, 0.0, 1.0)
-      fr = smoothstep(0.0, 0.2, t)
-      fg = smoothstep(0.15, 0.5, t) * smoothstep(0.0, 0.3, t)
-      fb = smoothstep(0.5, 0.95, t) * t
-      fuel_show = step(0.01, fuel) * (1.0 - smoothstep(0.0, 0.3, t))
+      fr = smoothstep(0.0, 0.15, t)
+      fg = t * t * 0.7
+      fb = pow(t, 4.0) * 0.5
+      fuel_show = step(0.01, fuel) * (1.0 - smoothstep(0.0, 0.2, t))
       smoke_show = clamp(smoke, 0.0, 1.0) * (1.0 - t)
-      gray = 0.35 + smoke * 0.15
-      self.colorR = fr + fuel_show * 0.25 + smoke_show * gray
-      self.colorG = fg + fuel_show * 0.12 + smoke_show * gray
+      gray = 0.3 + smoke * 0.1
+      self.colorR = fr + fuel_show * 0.22 + smoke_show * gray
+      self.colorG = fg + fuel_show * 0.11 + smoke_show * gray
       self.colorB = fb + fuel_show * 0.03 + smoke_show * (gray + 0.02)
-      self.alpha = clamp(t * 4.0 + smoke_show * 1.5 + fuel_show, 0.0, 1.0)
+      self.alpha = clamp(t * 4.0 + smoke_show + fuel_show, 0.0, 1.0)
 `,
   'link-testbed': `
 schema_version: "1"

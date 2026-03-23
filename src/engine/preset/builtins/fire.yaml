@@ -13,8 +13,8 @@ meta:
 
 grid:
   dimensionality: "2d"
-  width: 256
-  height: 256
+  width: 512
+  height: 512
   topology: "finite"
 
 draw_property: "fuel"
@@ -171,7 +171,7 @@ rule:
         # Buoyancy: hot gas rises (negative vy = upward in screen coords)
         self.vy = vy - env_buoyancy_factor * new_temp * env_dt
         self.vx = vx
-        self.temperature = new_temp
+        self.temperature = clamp(new_temp, 0.0, env_max_temp)
         self.fuel = clamp(new_fuel, 0.0, 1.0)
         self.smoke = clamp(new_smoke, 0.0, 1.0)
 
@@ -220,30 +220,30 @@ rule:
     # Stage 8: Cooling and decay
     - name: "cooling"
       compute: |
-        self.temperature = temperature * (1.0 - env_cooling_rate * env_dt)
-        self.smoke = smoke * (1.0 - env_smoke_dissipation * env_dt)
-        # Dampen velocity slightly (numerical stability)
-        self.vx = vx * 0.999
-        self.vy = vy * 0.999
+        self.temperature = clamp(temperature * (1.0 - env_cooling_rate * env_dt), 0.0, env_max_temp)
+        self.smoke = clamp(smoke * (1.0 - env_smoke_dissipation * env_dt), 0.0, 1.0)
+        # Clamp velocity for numerical stability
+        self.vx = clamp(vx * 0.998, -5.0, 5.0)
+        self.vy = clamp(vy * 0.998, -5.0, 5.0)
 
 visual_mappings:
   - type: "script"
     code: |
       t = clamp(temperature / env_max_temp, 0.0, 1.0)
-      # Fire: black → dark red → orange → yellow → white
-      fr = smoothstep(0.0, 0.2, t)
-      fg = smoothstep(0.15, 0.5, t) * smoothstep(0.0, 0.3, t)
-      fb = smoothstep(0.5, 0.95, t) * t
+      # Fire: black → dark red → orange → yellow-white (red always dominant)
+      fr = smoothstep(0.0, 0.15, t)
+      fg = t * t * 0.7
+      fb = pow(t, 4.0) * 0.5
       # Fuel: dark brown, fades as temperature rises
-      fuel_show = step(0.01, fuel) * (1.0 - smoothstep(0.0, 0.3, t))
+      fuel_show = step(0.01, fuel) * (1.0 - smoothstep(0.0, 0.2, t))
       # Smoke: gray wisps, visible where not hot
       smoke_show = clamp(smoke, 0.0, 1.0) * (1.0 - t)
-      gray = 0.35 + smoke * 0.15
+      gray = 0.3 + smoke * 0.1
       # Combine layers
-      self.colorR = fr + fuel_show * 0.25 + smoke_show * gray
-      self.colorG = fg + fuel_show * 0.12 + smoke_show * gray
+      self.colorR = fr + fuel_show * 0.22 + smoke_show * gray
+      self.colorG = fg + fuel_show * 0.11 + smoke_show * gray
       self.colorB = fb + fuel_show * 0.03 + smoke_show * (gray + 0.02)
-      self.alpha = clamp(t * 4.0 + smoke_show * 1.5 + fuel_show, 0.0, 1.0)
+      self.alpha = clamp(t * 4.0 + smoke_show + fuel_show, 0.0, 1.0)
 
 ai_context:
   description: "Fire: staged fluid-combustion with velocity field and GPU visual mapping"

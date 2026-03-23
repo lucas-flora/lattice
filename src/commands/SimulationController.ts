@@ -560,6 +560,7 @@ export class SimulationController {
       this.timelineDuration = nextGen + 1;
       this.eventBus.emit('sim:timelineExtend', { duration: this.timelineDuration });
     }
+    this.gpuRuleRunner.setEnvParams(this.simulation.getParamsObject());
     this.gpuRuleRunner.tick();
     this.playbackGeneration = this.gpuRuleRunner.getGeneration();
     this.simulation.setGeneration(this.playbackGeneration);
@@ -671,6 +672,7 @@ export class SimulationController {
 
       // GPU-tick forward to target (no readback, no cache — just compute)
       const ticksNeeded = targetGen - nearest;
+      this.gpuRuleRunner.setEnvParams(this.simulation.getParamsObject());
       for (let i = 0; i < ticksNeeded; i++) {
         this.gpuRuleRunner.tick();
       }
@@ -1005,6 +1007,7 @@ export class SimulationController {
     if (!this.simulation || !this.gpuRuleRunner) return;
     logDbg('compute', `computeFrames(${count}) — simGen=${this.simulation.getGeneration()}, computedGen=${this.computedGeneration}`);
 
+    this.gpuRuleRunner.setEnvParams(this.simulation.getParamsObject());
     for (let i = 0; i < count; i++) {
       this.gpuRuleRunner.tick();
       const gpuGen = this.gpuRuleRunner.getGeneration();
@@ -1090,6 +1093,7 @@ export class SimulationController {
       }
     }
     // Always live-tick on GPU — no cache roundtrip
+    this.gpuRuleRunner.setEnvParams(this.simulation.getParamsObject());
     this.gpuRuleRunner.tick();
     this.playbackGeneration = this.gpuRuleRunner.getGeneration();
     this.simulation.setGeneration(this.playbackGeneration);
