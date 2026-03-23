@@ -285,7 +285,7 @@ export function AppShell() {
     if (initializedRef.current) return;
     initializedRef.current = true;
 
-    const controller = new SimulationController(eventBus, 100);
+    const controller = new SimulationController(eventBus, Math.round(1000 / 60));
     controllerSingleton = controller;
 
     commandRegistry.clear();

@@ -112,33 +112,27 @@ rule:
     # Fuel: consumed by burning
     new_fuel = clamp(fuel - fuel_consumed, 0.0, 1.0)
 
+    # Color: blend fuel brown + temperature fire gradient + smoke gray
+    t = clamp(new_temp, 0.0, 1.0)
+    fuel_vis = step(0.001, new_fuel) * (1.0 - t)
+    fire_r = t * mix(0.1, 1.0, smoothstep(0.0, 0.4, t))
+    fire_g = t * smoothstep(0.3, 0.8, t)
+    fire_b = t * smoothstep(0.7, 1.0, t)
+    self.colorR = fire_r + fuel_vis * 0.35
+    self.colorG = fire_g + fuel_vis * 0.18
+    self.colorB = fire_b + fuel_vis * 0.05
+    self.alpha = clamp(t * 8.0 + new_smoke * 2.0 + step(0.001, new_fuel), 0.0, 1.0)
+
     self.temperature = new_temp
     self.fuel = new_fuel
     self.smoke = new_smoke
 
-expression_tags:
-  - name: "fire-alpha"
-    owner: { type: "cell-type", id: "default" }
-    code: "self.alpha = clamp(temperature * 8.0 + smoke * 2.0, 0.0, 1.0)"
-    phase: "post-rule"
-    source: "code"
-    outputs: ["cell.alpha"]
-    inputs: ["cell.temperature", "cell.smoke"]
-
 visual_mappings:
   - property: "temperature"
     channel: "color"
-    type: "ramp"
-    range: [0.0, 1.0]
-    stops:
-      - { t: 0.0, color: "#0a0a0a" }
-      - { t: 0.08, color: "#1a0000" }
-      - { t: 0.18, color: "#8b0000" }
-      - { t: 0.30, color: "#cc2200" }
-      - { t: 0.45, color: "#ff4500" }
-      - { t: 0.60, color: "#ff8c00" }
-      - { t: 0.80, color: "#ffd700" }
-      - { t: 1.0, color: "#ffffee" }
+    mapping:
+      min: "#000000"
+      max: "#ff6600"
 
 ai_context:
   description: "Fire simulation: combustion with direct buoyancy transport"
