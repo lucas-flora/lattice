@@ -169,6 +169,9 @@ export class GPURuleRunner {
     // 12. Compile visual mapping ramp (runs after all expression tags)
     this.compileVisualMapping();
 
+    // 13. Run expression/visual passes once to compute colorR/G/B for the initial frame
+    this.runExpressionPasses();
+
     logGPU(`GPURuleRunner initialized: ${presetName} (${width}×${height}, stride=${this.bufferManager.stride}, ${this.wgsl.length} chars WGSL, ${this.expressionPasses.length} expr passes)`);
   }
 
@@ -322,6 +325,33 @@ export class GPURuleRunner {
 
   /** Whether a visual mapping ramp compute pass is active */
   hasVisualMappingPass(): boolean { return this._hasVisualMappingPass; }
+
+  /**
+   * Run only the expression/visual passes without the main rule.
+   * Used to compute colorR/G/B on the initial frame and after draw edits.
+   */
+  runExpressionPasses(): void {
+    if (this.expressionPasses.length === 0) return;
+
+    const { width, height } = this.grid.config;
+    const depth = this.grid.config.depth ?? 1;
+    const workgroups = ComputeDispatcher.calcWorkgroups(
+      [width, height, depth],
+      [8, 8, 1],
+    );
+
+    this.bufferManager.updateParams(this.getEnvParamsObject());
+
+    for (const pass of this.expressionPasses) {
+      this.computeDispatcher.dispatchAndSubmit(
+        pass.pipeline,
+        pass.bindGroups[this.currentBindGroup],
+        workgroups,
+      );
+      this.currentBindGroup = this.currentBindGroup === 0 ? 1 : 0;
+      this.bufferManager.swap();
+    }
+  }
 
   /**
    * Execute one simulation tick on the GPU.

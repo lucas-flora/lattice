@@ -215,6 +215,8 @@ export class SimulationController {
     if (!this.gpuRuleRunner) return;
     this.gpuRuleRunner.uploadFromGrid();
     this.gpuRuleRunner.setGeneration(this.playbackGeneration);
+    // Re-run expression/visual passes to recompute colorR/G/B from current state
+    this.gpuRuleRunner.runExpressionPasses();
   }
 
   /**
