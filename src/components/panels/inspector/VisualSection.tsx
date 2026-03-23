@@ -10,12 +10,13 @@ import type { SceneNode } from '../../../engine/scene/SceneNode';
 import { GradientBar, type GradientStop } from '../../ui/GradientBar';
 import { commandRegistry } from '../../../commands/CommandRegistry';
 
-interface RampMapping {
-  property: string;
-  channel: string;
+interface VisualMapping {
+  property?: string;
+  channel?: string;
   type?: string;
   range?: [number, number];
   stops?: Array<{ t: number; color?: string; alpha?: number }>;
+  code?: string;
 }
 
 interface VisualSectionProps {
@@ -23,25 +24,48 @@ interface VisualSectionProps {
 }
 
 export const VisualSection: React.FC<VisualSectionProps> = ({ node }) => {
-  const mappings = (node.properties.mappings ?? []) as RampMapping[];
-  const colorMapping = mappings.find(m => m.channel === 'color');
+  const mappings = (node.properties.mappings ?? []) as VisualMapping[];
+  const scriptMapping = mappings.find(m => m.type === 'script' && m.code);
+  const rampMapping = mappings.find(m => m.channel === 'color' && m.stops && m.stops.length > 0);
   const [editingStop, setEditingStop] = useState<number | null>(null);
 
-  if (!colorMapping || !colorMapping.stops || colorMapping.stops.length === 0) {
+  // Script-type visual mapping
+  if (scriptMapping) {
+    return (
+      <div className="space-y-2">
+        <div className="text-zinc-400 text-[9px] uppercase tracking-wide font-mono">
+          Color Mapping
+        </div>
+        <div className="flex items-center gap-2 text-[11px] font-mono">
+          <span className="text-zinc-500">type</span>
+          <span className="text-green-400">script</span>
+        </div>
+        <pre className="text-[10px] font-mono text-zinc-300 bg-zinc-900 rounded p-2 overflow-x-auto max-h-48 overflow-y-auto whitespace-pre border border-zinc-800">
+          {scriptMapping.code}
+        </pre>
+        <div className="text-[9px] text-zinc-600 font-mono">
+          script &middot; GPU compute pass
+        </div>
+      </div>
+    );
+  }
+
+  // Ramp-type visual mapping
+  if (!rampMapping || !rampMapping.stops || rampMapping.stops.length === 0) {
     return (
       <div className="space-y-1">
         <div className="text-zinc-400 text-[9px] uppercase tracking-wide font-mono">
           Color Mapping
         </div>
         <div className="text-zinc-500 text-[11px] font-mono">
-          No ramp configured
+          No mapping configured
         </div>
       </div>
     );
   }
 
-  const stops = colorMapping.stops;
-  const range = colorMapping.range ?? [0, 1];
+  const stops = rampMapping.stops;
+  const range = rampMapping.range ?? [0, 1];
   const gradientStops: GradientStop[] = stops
     .filter(s => s.color)
     .map(s => ({ t: s.t, color: s.color! }));
@@ -56,7 +80,7 @@ export const VisualSection: React.FC<VisualSectionProps> = ({ node }) => {
       {/* Property + range */}
       <div className="flex items-center gap-2 text-[11px] font-mono">
         <span className="text-zinc-500">property</span>
-        <span className="text-green-400">{colorMapping.property}</span>
+        <span className="text-green-400">{rampMapping.property}</span>
         <span className="text-zinc-600 ml-auto">
           [{range[0]}, {range[1]}]
         </span>
@@ -81,7 +105,7 @@ export const VisualSection: React.FC<VisualSectionProps> = ({ node }) => {
 
       {/* Stop count */}
       <div className="text-[9px] text-zinc-600 font-mono">
-        {stops.length} stops &middot; {colorMapping.type ?? 'ramp'}
+        {stops.length} stops &middot; {rampMapping.type ?? 'ramp'}
       </div>
     </div>
   );

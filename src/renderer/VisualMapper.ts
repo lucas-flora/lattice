@@ -35,6 +35,7 @@ export class VisualMapper {
 
     for (const mapping of mappings) {
       const { property, channel } = mapping;
+      if (!property || !channel) continue; // script-type mappings have no property/channel
       const rawMapping = mapping.mapping as Record<string, unknown> | undefined;
       if (!rawMapping) continue; // ramp-type mappings have stops, not mapping
 

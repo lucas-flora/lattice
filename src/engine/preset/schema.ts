@@ -73,15 +73,17 @@ const ColorStopSchema = z.object({
 });
 
 const VisualMappingSchema = z.object({
-  property: z.string(),
-  channel: z.enum(['color', 'alpha', 'size', 'shape', 'orientation']),
+  property: z.string().optional(),
+  channel: z.enum(['color', 'alpha', 'size', 'shape', 'orientation']).optional(),
   mapping: z.record(z.unknown()).optional(),
-  /** Set to "ramp" to use multi-stop color ramp compiled to GPU compute */
-  type: z.enum(['ramp']).optional(),
+  /** "ramp" for multi-stop gradient compiled to GPU; "script" for freeform Python code */
+  type: z.enum(['ramp', 'script']).optional(),
   /** Input value range for normalization [min, max]. Defaults to [0, 1]. */
   range: z.tuple([z.number(), z.number()]).optional(),
   /** Color/alpha stops for ramp mode. Must have at least 1 stop. */
   stops: z.array(ColorStopSchema).optional(),
+  /** Python-subset code for script mode. Reads cell properties, writes colorR/G/B/alpha. */
+  code: z.string().optional(),
   /** Scope this mapping to a specific cell type (by id). */
   cell_type: z.string().optional(),
 });

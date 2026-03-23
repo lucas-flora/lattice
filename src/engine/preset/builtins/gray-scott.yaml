@@ -73,14 +73,16 @@ rule:
 visual_mappings:
   - property: "v"
     channel: "color"
-    mapping:
-      min: "#000000"
-      max: "#ff6600"
-  - property: "u"
-    channel: "size"
-    mapping:
-      min: 0.5
-      max: 1.0
+    type: "ramp"
+    range: [0.0, 1.0]
+    stops:
+      - { t: 0.0, color: "#000033" }
+      - { t: 0.15, color: "#000066" }
+      - { t: 0.3, color: "#0066ff" }
+      - { t: 0.5, color: "#00ccff" }
+      - { t: 0.7, color: "#ffffff" }
+      - { t: 0.85, color: "#ff6600" }
+      - { t: 1.0, color: "#ff3300" }
 
 ai_context:
   description: "Gray-Scott reaction-diffusion with chemicals U and V"

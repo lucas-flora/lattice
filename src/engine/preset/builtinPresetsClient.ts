@@ -384,9 +384,16 @@ rule:
 visual_mappings:
   - property: "v"
     channel: "color"
-    mapping:
-      min: "#000000"
-      max: "#ff6600"
+    type: "ramp"
+    range: [0.0, 1.0]
+    stops:
+      - { t: 0.0, color: "#000033" }
+      - { t: 0.15, color: "#000066" }
+      - { t: 0.3, color: "#0066ff" }
+      - { t: 0.5, color: "#00ccff" }
+      - { t: 0.7, color: "#ffffff" }
+      - { t: 0.85, color: "#ff6600" }
+      - { t: 1.0, color: "#ff3300" }
 `,
   'navier-stokes': `
 schema_version: "1"
@@ -563,24 +570,21 @@ rule:
     new_temp = clamp(temperature + env_dt * env_diffusion * lap_t + buoy_t + heat_generated - env_coolingRate * env_dt, 0.0, 1.0)
     new_smoke = clamp(smoke + env_dt * env_diffusion * lap_s * 0.5 + buoy_s + smoke_generated - 0.003 * env_dt, 0.0, 1.0)
     new_fuel = clamp(fuel - fuel_consumed, 0.0, 1.0)
-    t = clamp(new_temp, 0.0, 1.0)
-    fuel_vis = step(0.001, new_fuel) * (1.0 - t)
-    fire_r = t * mix(0.1, 1.0, smoothstep(0.0, 0.4, t))
-    fire_g = t * smoothstep(0.3, 0.8, t)
-    fire_b = t * smoothstep(0.7, 1.0, t)
-    self.colorR = fire_r + fuel_vis * 0.35
-    self.colorG = fire_g + fuel_vis * 0.18
-    self.colorB = fire_b + fuel_vis * 0.05
-    self.alpha = clamp(t * 8.0 + new_smoke * 2.0 + step(0.001, new_fuel), 0.0, 1.0)
     self.temperature = new_temp
     self.fuel = new_fuel
     self.smoke = new_smoke
 visual_mappings:
-  - property: "temperature"
-    channel: "color"
-    mapping:
-      min: "#000000"
-      max: "#ff6600"
+  - type: "script"
+    code: |
+      t = clamp(temperature, 0.0, 1.0)
+      fuel_vis = step(0.001, fuel) * (1.0 - t)
+      fire_r = t * mix(0.1, 1.0, smoothstep(0.0, 0.4, t))
+      fire_g = t * smoothstep(0.3, 0.8, t)
+      fire_b = t * smoothstep(0.7, 1.0, t)
+      self.colorR = fire_r + fuel_vis * 0.35
+      self.colorG = fire_g + fuel_vis * 0.18
+      self.colorB = fire_b + fuel_vis * 0.05
+      self.alpha = clamp(t * 8.0 + smoke * 2.0 + step(0.001, fuel), 0.0, 1.0)
 `,
   'link-testbed': `
 schema_version: "1"

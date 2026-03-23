@@ -358,18 +358,18 @@ export class SceneGraph {
       cellTypeNodeMap.set(typeDef.id, cellNode);
     }
 
-    // 5. Visual node (if ramp-type visual mappings exist)
-    const rampMappings = preset.visual_mappings?.filter(
-      m => m.type === 'ramp' && m.stops && m.stops.length > 0,
+    // 5. Visual node (if visual mappings exist — ramp or script type)
+    const activeMappings = preset.visual_mappings?.filter(
+      m => (m.type === 'ramp' && m.stops && m.stops.length > 0) || (m.type === 'script' && m.code),
     );
-    if (rampMappings && rampMappings.length > 0) {
+    if (activeMappings && activeMappings.length > 0) {
       graph.addNode({
         type: NODE_TYPES.VISUAL,
         name: 'Color Mapping',
         parentId: simRoot.id,
         childIds: [],
         enabled: true,
-        properties: { mappings: rampMappings },
+        properties: { mappings: activeMappings },
         tags: [],
       });
     }

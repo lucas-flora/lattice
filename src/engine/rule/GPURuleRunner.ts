@@ -267,18 +267,34 @@ export class GPURuleRunner {
   }
 
   /**
-   * Compile visual mapping ramps from the preset into a final compute pass.
-   * Runs after all expression tags so the ramp has the last word on colorR/G/B.
+   * Compile visual mappings from the preset into final compute passes.
+   * Supports two modes:
+   *   - type: 'ramp'   → multi-stop gradient compiled via RampCompiler
+   *   - type: 'script'  → freeform Python code compiled via PythonParser
+   * Runs after all expression tags so the visual mapping has the last word on colorR/G/B.
    */
   private compileVisualMapping(): void {
     const mappings = this.preset.visual_mappings;
     if (!mappings) return;
 
-    // Filter for ramp-type mappings with stops
+    const readBuf = this.bufferManager.getReadBuffer();
+    const writeBuf = this.bufferManager.getWriteBuffer();
+    const paramsBuf = this.bufferManager.getParamsBuffer();
+
+    const baseConfig: WGSLCodegenConfig = {
+      workgroupSize: [8, 8, 1],
+      topology: this.grid.config.topology ?? 'toroidal',
+      propertyLayout: this.propertyLayout,
+      envParams: this.envParamNames,
+      globalParams: [],
+      copyAllProperties: true,
+    };
+
+    // --- Ramp-type mappings ---
     const rampMappings: RampMapping[] = mappings
       .filter(m => m.type === 'ramp' && m.stops && m.stops.length > 0)
       .map(m => ({
-        property: m.property,
+        property: m.property!,
         channel: m.channel as 'color' | 'alpha',
         type: 'ramp' as const,
         range: m.range as [number, number] | undefined,
@@ -286,40 +302,65 @@ export class GPURuleRunner {
         cell_type: m.cell_type,
       }));
 
-    if (rampMappings.length === 0) return;
-
-    try {
-      const irProgram = compileRampToIR(rampMappings);
-      if (irProgram.statements.length === 0) return;
-
-      const validation = validateIR(irProgram);
-      if (!validation.valid) {
-        logGPU(`Visual mapping ramp IR validation failed: ${validation.errors.map(e => e.message).join('; ')}`);
-        return;
+    if (rampMappings.length > 0) {
+      try {
+        const irProgram = compileRampToIR(rampMappings);
+        if (irProgram.statements.length > 0) {
+          const validation = validateIR(irProgram);
+          if (!validation.valid) {
+            logGPU(`Visual mapping ramp IR validation failed: ${validation.errors.map(e => e.message).join('; ')}`);
+          } else {
+            const wgsl = generateWGSL(irProgram, baseConfig);
+            const pipeline = this.createPipelineWithLayout(wgsl, 'visual-ramp');
+            const bg0 = this.createBindGroup(readBuf, writeBuf, paramsBuf);
+            const bg1 = this.createBindGroup(writeBuf, readBuf, paramsBuf);
+            this.expressionPasses.push({ name: 'visual-ramp', pipeline, bindGroups: [bg0, bg1] });
+            this._hasVisualMappingPass = true;
+            logGPU(`Visual mapping ramp compiled to GPU (${rampMappings.length} ramp(s))`);
+          }
+        }
+      } catch (e) {
+        logGPU(`Visual mapping ramp compilation failed: ${e instanceof Error ? e.message : e}`);
       }
+    }
 
-      const config: WGSLCodegenConfig = {
-        workgroupSize: [8, 8, 1],
-        topology: this.grid.config.topology ?? 'toroidal',
-        propertyLayout: this.propertyLayout,
-        envParams: this.envParamNames,
-        globalParams: [],
-        copyAllProperties: true,
-      };
-      const wgsl = generateWGSL(irProgram, config);
-      const pipeline = this.createPipelineWithLayout(wgsl, 'visual-ramp');
+    // --- Script-type mappings ---
+    const scriptMappings = mappings.filter(m => m.type === 'script' && m.code);
 
-      const readBuf = this.bufferManager.getReadBuffer();
-      const writeBuf = this.bufferManager.getWriteBuffer();
-      const paramsBuf = this.bufferManager.getParamsBuffer();
-      const bg0 = this.createBindGroup(readBuf, writeBuf, paramsBuf);
-      const bg1 = this.createBindGroup(writeBuf, readBuf, paramsBuf);
+    const context = {
+      cellProperties: this.propertyLayout
+        .filter(p => p.name !== '_cellType')
+        .map(p => ({
+          name: p.name,
+          type: 'f32' as const,
+          channels: p.channels,
+        })),
+      envParams: this.envParamNames,
+      globalVars: [] as string[],
+      neighborhoodType: 'moore' as const,
+    };
 
-      this.expressionPasses.push({ name: 'visual-ramp', pipeline, bindGroups: [bg0, bg1] });
-      this._hasVisualMappingPass = true;
-      logGPU(`Visual mapping ramp compiled to GPU (${rampMappings.length} ramp(s))`);
-    } catch (e) {
-      logGPU(`Visual mapping ramp compilation failed: ${e instanceof Error ? e.message : e}`);
+    for (const mapping of scriptMappings) {
+      try {
+        const result = parsePython(mapping.code!, context);
+        const irProgram = result.program;
+
+        const validation = validateIR(irProgram);
+        if (!validation.valid) {
+          logGPU(`Visual mapping script IR validation failed: ${validation.errors.map(e => e.message).join('; ')}`);
+          continue;
+        }
+
+        const wgsl = generateWGSL(irProgram, baseConfig);
+        const pipeline = this.createPipelineWithLayout(wgsl, 'visual-script');
+        const bg0 = this.createBindGroup(readBuf, writeBuf, paramsBuf);
+        const bg1 = this.createBindGroup(writeBuf, readBuf, paramsBuf);
+        this.expressionPasses.push({ name: 'visual-script', pipeline, bindGroups: [bg0, bg1] });
+        this._hasVisualMappingPass = true;
+        logGPU(`Visual mapping script compiled to GPU`);
+      } catch (e) {
+        logGPU(`Visual mapping script compilation failed: ${e instanceof Error ? e.message : e}`);
+      }
     }
   }
 
