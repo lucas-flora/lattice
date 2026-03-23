@@ -198,7 +198,7 @@ export class GPUGridRenderer {
   private canvas: HTMLCanvasElement;
   private colorMapping: ColorMappingConfig | null = null;
   private currentReadBuffer: GPUBuffer | null = null;
-  private clearColor: { r: number; g: number; b: number; a: number } = { r: 0.07, g: 0.07, b: 0.08, a: 1 };
+  private clearColor: { r: number; g: number; b: number; a: number } = { r: 0.086, g: 0.086, b: 0.086, a: 1 };
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;

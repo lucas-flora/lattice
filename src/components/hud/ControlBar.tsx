@@ -251,7 +251,7 @@ export function ControlBar() {
 // ── Viewport Background Picker ──
 
 const BG_PRESETS = [
-  { label: 'Dark', color: '#1a1a2e' },
+  { label: 'Default', color: '#161616' },
   { label: 'Black', color: '#000000' },
   { label: 'White', color: '#ffffff' },
   { label: 'Maroon', color: '#3b1010' },

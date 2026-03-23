@@ -48,7 +48,7 @@ export const useUiStore = create<UiState>()(
     timelineAutoExtend: true,
     playbackMode: 'loop' as PlaybackMode,
     deadCellColor: null,
-    viewportBgColor: '#1a1a2e',
+    viewportBgColor: '#161616',
   })),
 );
 
