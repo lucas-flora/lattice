@@ -31,9 +31,21 @@ const AddStopParams = z.object({
   color: z.string().default('#ffffff'),
 }).describe('{ nodeId, t, color? }');
 
+/** After a visual mapping edit, recompile the GPU ramp/script pass */
+function triggerVisualRecompile(controller: SimulationController): void {
+  const gpuRunner = controller.getGPURuleRunner();
+  if (!gpuRunner) return;
+  // Read the updated mappings from the scene store's Visual node
+  const state = useSceneStore.getState();
+  const visualNode = Object.values(state.nodes).find(n => n.type === NODE_TYPES.VISUAL);
+  if (!visualNode) return;
+  const mappings = (visualNode.properties.mappings ?? []) as Array<Record<string, unknown>>;
+  gpuRunner.recompileVisualMapping(mappings as any);
+}
+
 export function registerVisualCommands(
   registry: CommandRegistry,
-  _controller: SimulationController,
+  controller: SimulationController,
   _eventBus: EventBus,
 ): void {
   registry.register({
@@ -61,6 +73,7 @@ export function registerVisualCommands(
       useSceneStore.setState(s => ({
         nodes: { ...s.nodes, [nodeId]: { ...node, properties: { ...node.properties, mappings: newMappings } } },
       }));
+      triggerVisualRecompile(controller);
       return { success: true };
     },
   });
@@ -88,6 +101,7 @@ export function registerVisualCommands(
       useSceneStore.setState(s => ({
         nodes: { ...s.nodes, [nodeId]: { ...node, properties: { ...node.properties, mappings: newMappings } } },
       }));
+      triggerVisualRecompile(controller);
       return { success: true };
     },
   });
@@ -115,6 +129,7 @@ export function registerVisualCommands(
       useSceneStore.setState(s => ({
         nodes: { ...s.nodes, [nodeId]: { ...node, properties: { ...node.properties, mappings: newMappings } } },
       }));
+      triggerVisualRecompile(controller);
       return { success: true };
     },
   });

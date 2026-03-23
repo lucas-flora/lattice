@@ -289,15 +289,38 @@ export class GPURuleRunner {
   }
 
   /**
-   * Compile visual mappings from the preset into final compute passes.
+   * Recompile visual mapping from updated configuration (e.g. after user edits stops).
+   * Removes old visual passes and compiles new ones.
+   */
+  recompileVisualMapping(mappings: PresetConfig['visual_mappings']): void {
+    // Remove old visual mapping passes
+    this.expressionPasses = this.expressionPasses.filter(
+      p => p.name !== 'visual-ramp' && p.name !== 'visual-script',
+    );
+    this._hasVisualMappingPass = false;
+
+    // Compile new ones
+    this.compileVisualMappingFrom(mappings ?? []);
+
+    // Re-run expression passes to update colorR/G/B immediately
+    this.runExpressionPasses();
+
+    logGPU(`Visual mapping recompiled (${this.expressionPasses.filter(p => p.name.startsWith('visual-')).length} visual passes)`);
+  }
+
+  /**
+   * Compile visual mappings into final compute passes.
    * Supports two modes:
    *   - type: 'ramp'   → multi-stop gradient compiled via RampCompiler
    *   - type: 'script'  → freeform Python code compiled via PythonParser
    * Runs after all expression tags so the visual mapping has the last word on colorR/G/B.
    */
   private compileVisualMapping(): void {
-    const mappings = this.preset.visual_mappings;
-    if (!mappings) return;
+    this.compileVisualMappingFrom(this.preset.visual_mappings ?? []);
+  }
+
+  private compileVisualMappingFrom(mappings: NonNullable<PresetConfig['visual_mappings']>): void {
+    if (mappings.length === 0) return;
 
     const readBuf = this.bufferManager.getReadBuffer();
     const writeBuf = this.bufferManager.getWriteBuffer();
