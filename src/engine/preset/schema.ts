@@ -186,6 +186,8 @@ export const PresetSchema = z
     parameter_links: z.array(ParameterLinkSchema).optional(),
     expression_tags: z.array(ExpressionTagSchema).optional(),
     visual_mappings: z.array(VisualMappingSchema).optional(),
+    /** Which cell property the draw tool should paint. Defaults to the color-mapped property. */
+    draw_property: z.string().optional(),
     ai_context: AiContextSchema.optional(),
   })
   .refine(

@@ -488,6 +488,7 @@ grid:
   width: 256
   height: 256
   topology: "finite"
+draw_property: "fuel"
 cell_properties:
   - { name: "vx", type: "float", default: 0.0, role: "input_output" }
   - { name: "vy", type: "float", default: 0.0, role: "input_output" }

@@ -12,6 +12,7 @@ import { useSimStore } from '@/store/simStore';
 export function HUD() {
   const generation = useSimStore((s) => s.generation);
   const liveCellCount = useSimStore((s) => s.liveCellCount);
+  const measuredFps = useSimStore((s) => s.measuredFps);
 
   return (
     <div
@@ -26,6 +27,9 @@ export function HUD() {
       </span>
       <span className="text-[10px] font-mono text-zinc-500" data-testid="hud-cell-count">
         {liveCellCount.toLocaleString()} cells
+      </span>
+      <span className="text-[10px] font-mono text-zinc-500 tabular-nums" data-testid="hud-fps">
+        {measuredFps} fps
       </span>
     </div>
   );

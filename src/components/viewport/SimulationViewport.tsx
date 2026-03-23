@@ -542,9 +542,24 @@ export function SimulationViewport({ viewportId = 'viewport-1' }: SimulationView
     };
     eventBus.on('gpu:ruleRunnerReady', onGPURuleRunnerReady);
 
+    // FPS tracking
+    let fpsFrameCount = 0;
+    let fpsLastTime = performance.now();
+
     // Animation loop
     const animate = () => {
       rafRef.current = requestAnimationFrame(animate);
+
+      // Measure actual FPS (update every 500ms)
+      fpsFrameCount++;
+      const now = performance.now();
+      const elapsed = now - fpsLastTime;
+      if (elapsed >= 500) {
+        const fps = Math.round((fpsFrameCount / elapsed) * 1000);
+        useSimStore.setState({ measuredFps: fps });
+        fpsFrameCount = 0;
+        fpsLastTime = now;
+      }
 
       const gpuRunner = simController.getGPURuleRunner();
       if (gpuGridRenderer && gpuRunner && cameraController) {

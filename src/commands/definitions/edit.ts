@@ -9,7 +9,26 @@ import { z } from 'zod';
 import type { CommandRegistry } from '../CommandRegistry';
 import type { SimulationController } from '../SimulationController';
 import type { EventBus } from '../../engine/core/EventBus';
+import type { Simulation } from '../../engine/rule/Simulation';
 import { useUiStore } from '../../store/uiStore';
+
+/** Internal/velocity properties that shouldn't be the draw target */
+const INTERNAL_PROPS = new Set(['vx', 'vy', 'pressure', 'curl']);
+
+/** Resolve which cell property the draw tool should paint. */
+function resolveDrawProperty(sim: Simulation): string {
+  // 1. Explicit draw_property in preset YAML
+  if (sim.preset.draw_property) return sim.preset.draw_property;
+  // 2. Ramp-type mapping with explicit property
+  const colorMapping = sim.preset.visual_mappings?.find(m => m.channel === 'color' && m.property);
+  if (colorMapping?.property) return colorMapping.property;
+  // 3. First non-internal cell property (skip velocity, pressure, curl)
+  const userProp = sim.preset.cell_properties?.find(p => !INTERNAL_PROPS.has(p.name));
+  if (userProp) return userProp.name;
+  // 4. Absolute fallback
+  return sim.preset.cell_properties?.[0]?.name
+    ?? sim.typeRegistry.getPropertyUnion()[0].name;
+}
 
 const NoParams = z.object({}).describe('none');
 
@@ -89,12 +108,8 @@ export function registerEditCommands(
       }
 
       // Determine draw target: use the visual-mapped color property if available,
-      // otherwise the first declared cell property. This ensures drawing is visible
-      // in all rendering modes (binary reads primary, gradient reads the mapped prop).
-      const colorMapping = sim.preset.visual_mappings?.find(m => m.channel === 'color');
-      const drawProp = colorMapping?.property
-        ?? sim.preset.cell_properties?.[0]?.name
-        ?? sim.typeRegistry.getPropertyUnion()[0].name;
+      // otherwise the first non-internal cell property.
+      const drawProp = resolveDrawProperty(sim);
       const brushSize = useUiStore.getState().brushSize;
       const halfBrush = Math.floor(brushSize / 2);
       const gpuRunner = controller.getGPURuleRunner();
@@ -140,10 +155,7 @@ export function registerEditCommands(
         controller.pause();
       }
 
-      const colorMapping = sim.preset.visual_mappings?.find(m => m.channel === 'color');
-      const drawProp = colorMapping?.property
-        ?? sim.preset.cell_properties?.[0]?.name
-        ?? sim.typeRegistry.getPropertyUnion()[0].name;
+      const drawProp = resolveDrawProperty(sim);
       const brushSize = useUiStore.getState().brushSize;
       const halfBrush = Math.floor(brushSize / 2);
       const gpuRunner = controller.getGPURuleRunner();

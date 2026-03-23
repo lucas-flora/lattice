@@ -73,6 +73,8 @@ export interface SimState {
   gpuAdapter: string | null;
   /** Max square grid side length for 8-channel properties */
   gpuMaxGridSize: number;
+  /** Measured actual playback FPS (updated from render loop) */
+  measuredFps: number;
 }
 
 /** Default initial state */
@@ -95,6 +97,7 @@ const initialSimState: SimState = {
   gpuAvailable: false,
   gpuAdapter: null,
   gpuMaxGridSize: 0,
+  measuredFps: 0,
 };
 
 export const useSimStore = create<SimState>()(

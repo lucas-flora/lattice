@@ -17,6 +17,8 @@ grid:
   height: 256
   topology: "finite"
 
+draw_property: "fuel"
+
 cell_properties:
   - name: "vx"
     type: "float"
