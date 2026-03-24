@@ -48,13 +48,21 @@ See `docs/ARCHITECTURE.md` for the full system architecture document (north star
 - **YAML**: Universal format. Presets, layout, scripts — everything serializes to YAML. URL hash sharing.
 - **Independent Viewports**: Each viewport can be its own SimulationInstance with separate Grid/Rule/state.
 
-### Tick Pipeline Order
-1. Resolve parameter links
-2. Execute rule (TS/WASM built-in or Python custom)
-3. Swap buffers (rule output becomes current)
-4. Evaluate expressions (post-rule, derives values from rule output, writes current in-place)
-5. Run tags (per-cell post-processing)
-6. Run global scripts (per-frame) → emit sim:tick
+### Tick Pipeline Order (GPU)
+1. Update env params uniform (current slider values)
+2. Execute rule stages (1..N GPU compute dispatches, buffer swap after each)
+3. Execute expression tag passes (post-rule GPU compute)
+4. Execute visual mapping pass (ramp or script → GPU compute, writes colorR/G/B/alpha)
+5. Fragment shader reads colorR/G/B/alpha → render
 
-### Existing YAML Presets
-The 6 built-in presets (`src/engine/preset/builtins/`) use TypeScript `compute` bodies. These remain as-is (JS/WASM fast path). Python rules are for user-authored custom logic — both paths coexist.
+### Visual Mapping
+Colors are NEVER written in rules. Three types: `discrete` (fragment shader dead/alive), `ramp` (RampCompiler → IR → WGSL gradient), `script` (PythonParser → IR → WGSL freeform). All defined in YAML `visual_mappings` section.
+
+### Multi-Stage Rules
+`rule.stages[]` as alternative to `rule.compute`. Each stage is a separate GPU dispatch. Supports `iterations: N` for solvers. Fire uses 8 stages (17 dispatches/tick).
+
+### Initial State
+`initial_state: { type: "script", code: "..." }` — JS executed on CPU at load. Access to `width`, `height`, `buffers`, `Math`. No hardcoded seeding in engine code.
+
+### Built-in Presets
+10 presets in `src/engine/preset/builtins/`. All are 100% YAML-driven — the engine has zero preset-specific logic. Every preset defines meta, grid, cell_properties, rule, visual_mappings, and initial_state.

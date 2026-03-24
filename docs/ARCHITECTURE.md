@@ -432,15 +432,40 @@ User-added params (`param.add`) are stored in `SimulationController.userParamDef
 
 ---
 
-## Visual Mapper Evolution
+## Visual Mapping System
 
-Three mapping modes:
+Color is ALWAYS computed separately from simulation. Rules compute state (temperature, fuel, alive). A separate visual mapping pass converts state to colorR/G/B/alpha. The fragment shader ONLY reads colorR/G/B/alpha.
 
-| Mode         | Description                                    | Example                           |
-|--------------|------------------------------------------------|-----------------------------------|
-| `discrete`   | Exact value → color (existing)                 | `alive: 0→#000, 1→#0f0`          |
-| `continuous`  | Range → interpolated color with easing         | `age: [0,100]→[green,black]` |
-| `expression` | Python expression returning color/size/etc.    | `hsv(cell.age/100, 1, 1)`    |
+Three mapping types:
+
+| Type       | Pipeline                                | Use case                              |
+|------------|------------------------------------------|---------------------------------------|
+| `discrete` | YAML mapping → fragment shader dead/alive colors | Simple binary presets (Conway's, Seeds) |
+| `ramp`     | YAML stops → RampCompiler → IR → WGSL → GPU compute pass | Smooth gradients (Gray-Scott) |
+| `script`   | YAML Python code → PythonParser → IR → WGSL → GPU compute pass | Multi-property coloring (fire, N-S, Brian's Brain) |
+
+All three types are defined in the YAML `visual_mappings` section. The Visual node in the scene tree owns and displays the mapping configuration.
+
+### Multi-Stage Rules
+
+Rules can be either single-pass (`rule.compute`) or multi-stage (`rule.stages[]`). Each stage is a separate GPU compute shader dispatched in sequence with buffer swaps. Stages support `iterations: N` for iterative solvers (e.g., Jacobi pressure solve).
+
+```yaml
+rule:
+  type: "webgpu"
+  stages:
+    - name: "advection"
+      compute: |
+        # ...
+    - name: "pressure_jacobi"
+      iterations: 10
+      compute: |
+        # ...
+```
+
+### Initial State
+
+Presets define their initial conditions via `initial_state: { type: "script", code: "..." }`. The code is JavaScript executed on the CPU once at load time. It has access to `width`, `height`, `buffers` (property name → Float32Array), and `Math`. No hardcoded seeding in engine code.
 
 ---
 
@@ -462,15 +487,15 @@ Any surface (GUI click, CLI command, AI tool call, MCP request, API endpoint)
 
 **No shortcutting.** A button onClick handler does NOT directly mutate engine state. It calls `commandRegistry.execute()`. This guarantees that CLI, AI, MCP, and API can always do exactly what the GUI can do.
 
-For scripting:
+GPU tick pipeline (per frame):
 ```
-Tick pipeline (per frame):
-  0. Resolve pre-rule tags (ExpressionTags with phase='pre-rule', JS fast-path for links)
-  1. Execute rule (TS/WASM for built-in, Python for custom)
-  2. Swap buffers (rule output becomes current)
-  3. Evaluate post-rule tags (ExpressionTags with phase='post-rule', Python for code/script)
-  4. Run global scripts (per-frame)
-  5. Emit sim:tick
+  0. Update env params uniform (current slider values)
+  1. Rule stages (1..N compute dispatches, buffer swap after each)
+     - Single-pass: 1 dispatch
+     - Multi-stage: N dispatches (fire = 8 stages, 17 dispatches incl. Jacobi x10)
+  2. Expression tag passes (post-rule GPU compute, buffer swap after each)
+  3. Visual mapping pass (ramp or script → GPU compute, writes colorR/G/B/alpha)
+  4. Fragment shader reads colorR/G/B/alpha → render to canvas
 ```
 Tags within each phase are evaluated in dependency order (topological sort).
 Pre-rule link tags use JS rangeMap for speed. Post-rule code tags go through

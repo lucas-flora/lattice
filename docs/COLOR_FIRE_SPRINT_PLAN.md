@@ -1,8 +1,10 @@
 # Color & Fire Sprint Plan
 
-## What We're Building
+> **STATUS: COMPLETE.** All 6 milestones delivered. Final audit passed — zero hardcoded colors, initial state, or preset-specific logic in engine code. All 10 presets are 100% YAML-driven.
 
-A proper visual mapping system that separates simulation state from color computation, then a physically-accurate fire simulation that uses it. The previous attempt failed because the color system couldn't handle multi-property blending, so fire bypassed it entirely. This time we build the right system first.
+## What Was Built
+
+A proper visual mapping system that separates simulation state from color computation, plus a physically-accurate fire simulation with Navier-Stokes fluid dynamics and vorticity confinement. The previous attempt failed because the color system couldn't handle multi-property blending, so fire bypassed it entirely. This sprint built the right system first.
 
 ---
 
