@@ -42,6 +42,27 @@ interface RuleStage {
   iterations: number;
 }
 
+/** A single entry in the pipeline execution order */
+export interface PipelineEntry {
+  /** Unique ID (stage name for rules, pass name for ops, 'visual-ramp'/'visual-script' for visual) */
+  id: string;
+  /** Display name */
+  name: string;
+  /** Pipeline category */
+  type: 'pre-rule-op' | 'rule-stage' | 'post-rule-op' | 'visual-mapping';
+  /** Pipeline phase */
+  phase: 'pre-rule' | 'rule' | 'post-rule' | 'visual';
+  enabled: boolean;
+  /** CPU for pre-rule link ops, GPU for everything else */
+  executionContext: 'cpu' | 'gpu';
+  /** Cross-reference ID (op ID, stage name) */
+  sourceId?: string;
+  /** For rule stages with iterations > 1 */
+  iterations?: number;
+  /** Position in the full pipeline (0-based) */
+  index: number;
+}
+
 export class GPURuleRunner {
   private grid: Grid;
   private preset: PresetConfig;
@@ -543,6 +564,71 @@ export class GPURuleRunner {
 
   /** Get the generated WGSL source (for debugging / ir.show) */
   getWGSL(): string { return this.wgsl; }
+
+  /** Get the preset (for pipeline introspection) */
+  getPreset(): PresetConfig { return this.preset; }
+
+  /**
+   * Return the full dispatch sequence as an ordered list.
+   * Matches the actual execution order in tick():
+   *   pre-rule ops (CPU) → rule stages (GPU) → post-rule expression passes (GPU) → visual mapping (GPU)
+   */
+  getExecutionOrder(): PipelineEntry[] {
+    const entries: PipelineEntry[] = [];
+    let idx = 0;
+
+    // 1. Pre-rule ops — link-sourced fast-path evaluations (CPU)
+    const tags = this.preset.expression_tags;
+    if (tags) {
+      for (const tag of tags) {
+        if (tag.phase === 'pre-rule') {
+          entries.push({
+            id: `pre-rule-${tag.name}`,
+            name: tag.name,
+            type: 'pre-rule-op',
+            phase: 'pre-rule',
+            enabled: tag.enabled !== false,
+            executionContext: 'cpu',
+            sourceId: tag.name,
+            index: idx++,
+          });
+        }
+      }
+    }
+
+    // 2. Rule stages (GPU)
+    for (const stage of this.ruleStages) {
+      entries.push({
+        id: `rule-${stage.name}`,
+        name: stage.name,
+        type: 'rule-stage',
+        phase: 'rule',
+        enabled: true,
+        executionContext: 'gpu',
+        sourceId: stage.name,
+        iterations: stage.iterations > 1 ? stage.iterations : undefined,
+        index: idx++,
+      });
+    }
+
+    // 3. Post-rule expression passes + visual mapping passes (GPU)
+    // expressionPasses contains both post-rule ops AND visual mapping passes in order
+    for (const pass of this.expressionPasses) {
+      const isVisual = pass.name === 'visual-ramp' || pass.name === 'visual-script';
+      entries.push({
+        id: isVisual ? pass.name : `post-rule-${pass.name}`,
+        name: isVisual ? (pass.name === 'visual-ramp' ? 'Color Ramp' : 'Color Script') : pass.name,
+        type: isVisual ? 'visual-mapping' : 'post-rule-op',
+        phase: isVisual ? 'visual' : 'post-rule',
+        enabled: true,
+        executionContext: 'gpu',
+        sourceId: pass.name,
+        index: idx++,
+      });
+    }
+
+    return entries;
+  }
 
   /**
    * Upload new cell data from CPU. Used for cell editing and state restore.

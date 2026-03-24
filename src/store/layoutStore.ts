@@ -32,6 +32,8 @@ export interface LayoutState {
   drawer1Width: number;
   /** Split ratio: fraction of height for Object Manager (0-1). Rest is Inspector. */
   drawer1SplitRatio: number;
+  /** Active tab in drawer 1 top section: 'tree' (Object Manager) or 'pipeline' */
+  drawer1TopTab: 'tree' | 'pipeline';
 
   // --- Drawer 2 : Card View (left) ---
   isDrawer2Open: boolean;
@@ -90,6 +92,7 @@ const DEFAULTS: LayoutState = {
   drawer1Mode: 'docked',
   drawer1Width: 280,
   drawer1SplitRatio: 0.35,
+  drawer1TopTab: 'tree',
 
   isDrawer2Open: false,
   drawer2Mode: 'docked',
@@ -151,6 +154,10 @@ export const layoutStoreActions = {
 
   setDrawer1SplitRatio: (ratio: number): void => {
     useLayoutStore.setState({ drawer1SplitRatio: Math.max(0.15, Math.min(0.85, ratio)) });
+  },
+
+  setDrawer1TopTab: (tab: 'tree' | 'pipeline'): void => {
+    useLayoutStore.setState({ drawer1TopTab: tab });
   },
 
   // --- Drawer 2: Card View ---

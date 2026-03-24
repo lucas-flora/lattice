@@ -37,6 +37,7 @@ import { ObjectManagerPanel } from '@/components/panels/ObjectManagerPanel';
 import { InspectorPanel } from '@/components/panels/InspectorPanel';
 import { CardViewPanel } from '@/components/panels/CardViewPanel';
 import { MetricsPanel } from '@/components/panels/MetricsPanel';
+import { PipelinePanel } from '@/components/panels/pipeline/PipelinePanel';
 import { useSceneStore } from '@/store/sceneStore';
 import { registerPanels } from '@/layout/registerPanels';
 import { logMin, logDbg } from '@/lib/debugLog';
@@ -88,11 +89,12 @@ function initializeSimulation(controller: SimulationController): void {
 }
 
 // ---------------------------------------------------------------------------
-// Drawer 1: Object Manager (top) + Inspector (bottom), vertically split
+// Drawer 1: Tree/Pipeline tabs (top) + Inspector (bottom), vertically split
 // ---------------------------------------------------------------------------
 
 function Drawer1Content() {
   const splitRatio = useLayoutStore((s) => s.drawer1SplitRatio);
+  const activeTab = useLayoutStore((s) => s.drawer1TopTab);
   const [dragging, setDragging] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -119,9 +121,40 @@ function Drawer1Content() {
 
   return (
     <div ref={containerRef} className="flex flex-col h-full">
-      {/* Object Manager (top) */}
-      <div className="overflow-hidden" style={{ height: `${splitRatio * 100}%` }}>
-        <ObjectManagerPanel panelId="object-manager" />
+      {/* Tabbed top section: Tree | Pipeline */}
+      <div className="overflow-hidden flex flex-col" style={{ height: `${splitRatio * 100}%` }}>
+        {/* Tab bar */}
+        <div className="flex shrink-0 border-b border-zinc-700 bg-zinc-900/95">
+          <button
+            onClick={() => layoutStoreActions.setDrawer1TopTab('tree')}
+            className={`px-3 py-1 text-[10px] font-mono transition-colors border-b-2 ${
+              activeTab === 'tree'
+                ? 'text-zinc-200 border-green-500'
+                : 'text-zinc-500 border-transparent hover:text-zinc-300'
+            }`}
+          >
+            Tree
+          </button>
+          <button
+            onClick={() => layoutStoreActions.setDrawer1TopTab('pipeline')}
+            className={`px-3 py-1 text-[10px] font-mono transition-colors border-b-2 ${
+              activeTab === 'pipeline'
+                ? 'text-zinc-200 border-green-500'
+                : 'text-zinc-500 border-transparent hover:text-zinc-300'
+            }`}
+          >
+            Pipeline
+          </button>
+        </div>
+        {/* Tab content — both stay mounted */}
+        <div className="flex-1 min-h-0 relative">
+          <div className="absolute inset-0" style={{ display: activeTab === 'tree' ? 'block' : 'none' }}>
+            <ObjectManagerPanel panelId="object-manager" />
+          </div>
+          <div className="absolute inset-0" style={{ display: activeTab === 'pipeline' ? 'block' : 'none' }}>
+            <PipelinePanel panelId="pipeline" />
+          </div>
+        </div>
       </div>
 
       {/* Resize handle */}

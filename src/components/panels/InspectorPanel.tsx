@@ -21,12 +21,14 @@ import { useLayoutStore, layoutStoreActions } from '../../store/layoutStore';
 import { commandRegistry } from '../../commands/CommandRegistry';
 import { ResizeHandle } from '../ui/ResizeHandle';
 import { NODE_TYPES } from '../../engine/scene/SceneNode';
+import type { SceneNode } from '../../engine/scene/SceneNode';
 import { SimRootSection } from './inspector/SimRootSection';
 import { CellTypeSection } from './inspector/CellTypeSection';
 import { EnvironmentSection } from './inspector/EnvironmentSection';
 import { GlobalsSection } from './inspector/GlobalsSection';
 import { StateSection } from './inspector/StateSection';
 import { VisualSection } from './inspector/VisualSection';
+import { LogicInspectorTabs } from './inspector/LogicInspectorTabs';
 import { OpRow } from './OpRow';
 
 /** Type icon map */
@@ -40,6 +42,21 @@ const TYPE_LABELS: Record<string, string> = {
   [NODE_TYPES.SHARED]: 'Shared',
   [NODE_TYPES.VISUAL]: 'Color Mapping',
 };
+
+/** Extract code from a visual node's properties for the Code tab */
+function getVisualCode(node: SceneNode): string | undefined {
+  const mappings = node.properties.visual_mappings as Array<{ type?: string; code?: string }> | undefined;
+  if (!mappings) return undefined;
+  const scriptMapping = mappings.find((m) => m.type === 'script' && m.code);
+  return scriptMapping?.code;
+}
+
+function getVisualCodeLang(node: SceneNode): string {
+  const mappings = node.properties.visual_mappings as Array<{ type?: string }> | undefined;
+  if (!mappings) return 'Config';
+  const hasScript = mappings.some((m) => m.type === 'script');
+  return hasScript ? 'Python (transpiled to WGSL)' : 'Ramp Config';
+}
 
 /** Inner content — used by both the registered panel and the shell wrapper */
 export const InspectorPanel: React.FC<PanelProps> = () => {
@@ -86,7 +103,15 @@ function InspectorContent() {
         {node.type === NODE_TYPES.ENVIRONMENT && <EnvironmentSection node={node} />}
         {node.type === NODE_TYPES.GLOBALS && <GlobalsSection node={node} />}
         {node.type === NODE_TYPES.INITIAL_STATE && <StateSection node={node} />}
-        {node.type === NODE_TYPES.VISUAL && <VisualSection node={node} />}
+        {node.type === NODE_TYPES.VISUAL && (
+          <LogicInspectorTabs
+            node={node}
+            summaryContent={<VisualSection node={node} />}
+            code={getVisualCode(node)}
+            codeLang={getVisualCodeLang(node)}
+            noCodeMessage="No source code — this mapping uses a ramp/discrete configuration. See the Summary tab."
+          />
+        )}
         {node.type === NODE_TYPES.GROUP && (
           <div className="text-zinc-500 text-[11px]">
             Organizational container. {node.childIds.length} children.
