@@ -7,10 +7,10 @@
  */
 
 import React, { useCallback } from 'react';
-import { useSceneStore } from '../../store/sceneStore';
+import { useSceneStore, sceneStoreActions } from '../../store/sceneStore';
 import { useExpressionStore } from '../../store/expressionStore';
 import { commandRegistry } from '../../commands/CommandRegistry';
-import { uiStoreActions } from '../../store/uiStore';
+import { useUiStore, uiStoreActions } from '../../store/uiStore';
 import type { SceneNode } from '../../engine/scene/SceneNode';
 import { NODE_TYPES } from '../../engine/scene/SceneNode';
 import type { Operator } from '../../engine/expression/types';
@@ -48,20 +48,30 @@ const OP_TYPE_STYLES: Record<string, { label: string; class: string }> = {
 // ---------------------------------------------------------------------------
 
 function OpTreeRow({ op, depth }: { op: Operator; depth: number }) {
-  const selectedNodeId = useSceneStore((s) => s.selectedNodeId);
-  // Ops don't have scene node IDs, so we use a synthetic selection check
-  const isSelected = selectedNodeId === op.id;
+  const selectedPipelineId = useUiStore((s) => s.selectedPipelineEntryId);
+  // Check if this op matches the selected pipeline entry
+  const pipelineId = op.phase === 'rule'
+    ? `rule-${op.name.replace(/^.*? – /, '').replace(/ Rule$/, '')}`
+    : op.phase === 'pre-rule'
+      ? `pre-rule-${op.name}`
+      : `post-rule-${op.name}`;
+  const isSelected = selectedPipelineId === pipelineId;
 
   const indent = depth * 16;
   const badge = OP_TYPE_STYLES[op.source] ?? OP_TYPE_STYLES.code;
 
   const handleClick = useCallback(() => {
-    // Set pipeline entry selection so Inspector shows the op detail
-    uiStoreActions.selectPipelineEntry(op.id);
-    // Also set scene selection to the op ID (Inspector's PipelineEntryDetail
-    // will pick this up via selectedPipelineEntryId)
-    commandRegistry.execute('scene.select', { id: '' }); // clear scene selection
-  }, [op.id]);
+    // Set pipeline entry selection so Inspector shows the op detail.
+    // Map op ID to the pipeline entry ID format used by getExecutionOrder().
+    const pipelineId = op.phase === 'rule'
+      ? `rule-${op.name.replace(/^.*? – /, '').replace(/ Rule$/, '')}`
+      : op.phase === 'pre-rule'
+        ? `pre-rule-${op.name}`
+        : `post-rule-${op.name}`;
+    uiStoreActions.selectPipelineEntry(pipelineId);
+    // Clear scene selection so Inspector routes to pipeline entry detail
+    sceneStoreActions.select(null);
+  }, [op.id, op.name, op.phase]);
 
   const handleToggleEnabled = useCallback(
     (e: React.MouseEvent) => {
@@ -71,11 +81,12 @@ function OpTreeRow({ op, depth }: { op: Operator; depth: number }) {
     [op.id, op.enabled],
   );
 
-  const phaseColor = op.phase === 'pre-rule'
-    ? 'text-blue-400'
+  // Match Pipeline View badge colors: pre=gray, rule=blue, post=green, visual=purple
+  const phaseBadge = op.phase === 'pre-rule'
+    ? { label: 'pre', class: 'bg-zinc-700 text-zinc-400' }
     : op.phase === 'rule'
-      ? 'text-red-400'
-      : 'text-amber-400';
+      ? { label: 'rule', class: 'bg-blue-500/15 text-blue-400' }
+      : { label: 'post', class: 'bg-green-500/15 text-green-400' };
 
   return (
     <div
@@ -93,14 +104,14 @@ function OpTreeRow({ op, depth }: { op: Operator; depth: number }) {
         {badge.label}
       </span>
 
-      {/* Name */}
+      {/* Name — strip preset prefix ("Fire – ") and " Rule" suffix for cleaner display */}
       <span className={`flex-1 truncate ${!op.enabled ? 'opacity-40' : ''}`}>
-        {op.name}
+        {op.name.replace(/^.*? – /, '').replace(/ Rule$/, '')}
       </span>
 
-      {/* Phase badge */}
-      <span className={`text-[9px] shrink-0 ${phaseColor}`}>
-        {op.phase === 'pre-rule' ? 'pre' : op.phase === 'rule' ? 'rule' : 'post'}
+      {/* Phase badge — matches Pipeline View colors */}
+      <span className={`text-[9px] px-1 rounded shrink-0 leading-tight ${phaseBadge.class}`}>
+        {phaseBadge.label}
       </span>
 
       {/* Enabled toggle */}
@@ -206,7 +217,14 @@ export const ObjectManagerNode: React.FC<ObjectManagerNodeProps> = React.memo(
             {node.name}
           </span>
 
-          {/* Tag count badge */}
+          {/* Pipeline type badge for visual nodes */}
+          {node.type === NODE_TYPES.VISUAL && (
+            <span className="text-[9px] px-1 rounded shrink-0 leading-tight bg-purple-500/15 text-purple-400">
+              visual
+            </span>
+          )}
+
+          {/* Op count badge */}
           {nodeOps.length > 0 && (
             <span className="text-[10px] text-zinc-500 bg-zinc-800 px-1 rounded">
               {nodeOps.length}
