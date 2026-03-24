@@ -1,10 +1,9 @@
 /**
  * OpRow: displays a single Operator with expand-to-edit capability.
  *
- * Collapsed state shows source badge, name, owner, phase, toggle, and delete.
- * Expanded state is always the same: name + code + phase — because once created,
- * every operator is just code regardless of how it was authored.
- * All mutations go through commandRegistry.execute() (Three Surface Doctrine).
+ * Participates in the unified selection system: click selects the op's
+ * parent scene node + focuses the op (same as Tree and Pipeline).
+ * Highlights when focusedOpId matches.
  */
 
 'use client';
@@ -12,10 +11,12 @@
 import { useState, useCallback } from 'react';
 import type { Operator } from '@/engine/expression/types';
 import { commandRegistry } from '@/commands/CommandRegistry';
+import { useSceneStore, sceneStoreActions } from '@/store/sceneStore';
+import { useUiStore, uiStoreActions } from '@/store/uiStore';
 
 const SOURCE_BADGE: Record<string, { label: string; class: string }> = {
   code: { label: '\u0192', class: 'text-green-400 bg-green-400/10' },
-  link: { label: '\u0192', class: 'text-green-400 bg-green-400/10' }, // link-wizard ops show as expressions
+  link: { label: '\u0192', class: 'text-green-400 bg-green-400/10' },
   script: { label: '\u26A1', class: 'text-amber-400 bg-amber-400/10' },
 };
 
@@ -51,30 +52,23 @@ function OpEditForm({
 
   return (
     <div className="mt-1 space-y-1" data-testid="op-row-edit-form">
-      {/* Name */}
       <input
         className="w-full bg-zinc-900 text-[11px] text-zinc-200 rounded px-1.5 py-0.5 font-mono outline-none focus:ring-1 focus:ring-green-500/50"
         value={name}
         onChange={(e) => setName(e.target.value)}
         placeholder="op name"
       />
-
-      {/* I/O info (read-only) */}
       {ioDisplay && (
         <div className="text-[9px] font-mono text-zinc-500 truncate" title={ioDisplay}>
           {ioDisplay}
         </div>
       )}
-
-      {/* Code textarea */}
       <textarea
         className="w-full h-20 bg-zinc-900 text-[11px] text-zinc-200 rounded px-1.5 py-0.5 font-mono outline-none resize-y focus:ring-1 focus:ring-green-500/50"
         value={code}
         onChange={(e) => setCode(e.target.value)}
         autoFocus
       />
-
-      {/* Phase selector + actions */}
       <div className="flex items-center gap-2 text-[9px]">
         <label className="flex items-center gap-0.5 cursor-pointer">
           <input type="radio" name={`phase-${op.id}`} checked={phase === 'pre-rule'} onChange={() => setPhase('pre-rule')} className="accent-blue-400 w-3 h-3" />
@@ -129,6 +123,20 @@ export function OpRow({ op }: OpRowProps) {
   const badge = SOURCE_BADGE[op.source] ?? SOURCE_BADGE.code;
   const owner = ownerLabel(op.owner);
 
+  // Unified selection: highlight when this op is focused
+  const focusedOpId = useUiStore((s) => s.focusedOpId);
+  const isSelected = focusedOpId === op.id;
+  const sceneNodes = useSceneStore((s) => s.nodes);
+
+  const handleSelect = useCallback(() => {
+    // Find parent scene node that has this op in its tags array
+    const parentNode = Object.values(sceneNodes).find((n) => n.tags.includes(op.id));
+    if (parentNode) {
+      sceneStoreActions.select(parentNode.id);
+    }
+    uiStoreActions.focusOp(op.id);
+  }, [op.id, sceneNodes]);
+
   const handleToggleExpand = useCallback(() => {
     setExpanded((prev) => !prev);
   }, []);
@@ -159,7 +167,13 @@ export function OpRow({ op }: OpRowProps) {
   }, [op.id]);
 
   return (
-    <div className="bg-zinc-800 rounded px-1.5 py-1 group" data-testid="op-row">
+    <div
+      className={`bg-zinc-800 rounded px-1.5 py-1 group cursor-pointer ${
+        isSelected ? 'ring-1 ring-green-500/30 bg-green-500/5' : ''
+      }`}
+      data-testid="op-row"
+      onClick={handleSelect}
+    >
       {/* --- Collapsed row (always visible) --- */}
       <div className="flex items-center gap-1">
         {/* Source badge */}
@@ -167,17 +181,17 @@ export function OpRow({ op }: OpRowProps) {
           {badge.label}
         </span>
 
-        {/* Link indicator (for ops created via link wizard) */}
+        {/* Link indicator */}
         {op.linkMeta && (
           <span className="text-[8px] text-blue-400/60" title="Created via link wizard">
             {'\u21C4'}
           </span>
         )}
 
-        {/* Name (click to expand) */}
+        {/* Name (click to expand editor) */}
         <button
           className="text-[11px] font-mono text-zinc-300 truncate text-left flex-1 min-w-0 cursor-pointer hover:text-zinc-100"
-          onClick={handleToggleExpand}
+          onClick={(e) => { e.stopPropagation(); handleToggleExpand(); }}
           data-testid="op-row-toggle"
         >
           {op.name}
@@ -196,7 +210,7 @@ export function OpRow({ op }: OpRowProps) {
             op.phase === 'pre-rule'
               ? 'bg-blue-500/10 text-blue-400'
               : op.phase === 'rule'
-                ? 'bg-red-500/10 text-red-400'
+                ? 'bg-blue-500/10 text-blue-400'
                 : 'bg-amber-500/10 text-amber-400'
           }`}
         >
@@ -205,7 +219,7 @@ export function OpRow({ op }: OpRowProps) {
 
         {/* Open in Node Editor */}
         <button
-          onClick={handleOpenNodeEditor}
+          onClick={(e) => { e.stopPropagation(); handleOpenNodeEditor(); }}
           className="text-[9px] text-cyan-400/60 hover:text-cyan-400 cursor-pointer shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
           title="Open in Node Editor"
           data-testid="op-row-node-editor"
@@ -215,7 +229,7 @@ export function OpRow({ op }: OpRowProps) {
 
         {/* ON/OFF toggle */}
         <button
-          onClick={handleToggleEnabled}
+          onClick={(e) => { e.stopPropagation(); handleToggleEnabled(); }}
           className={`text-[9px] px-1 rounded cursor-pointer shrink-0 leading-tight ${
             op.enabled
               ? 'bg-green-500/20 text-green-400'
@@ -226,9 +240,9 @@ export function OpRow({ op }: OpRowProps) {
           {op.enabled ? 'ON' : 'OFF'}
         </button>
 
-        {/* Delete button (hover-visible) */}
+        {/* Delete button */}
         <button
-          onClick={handleDelete}
+          onClick={(e) => { e.stopPropagation(); handleDelete(); }}
           className="text-zinc-600 hover:text-red-400 text-[9px] cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
           title="Remove op"
           data-testid="op-row-delete"
@@ -237,7 +251,7 @@ export function OpRow({ op }: OpRowProps) {
         </button>
       </div>
 
-      {/* --- Expanded edit form (uniform for all sources) --- */}
+      {/* --- Expanded edit form --- */}
       {expanded && (
         <OpEditForm op={op} onApply={handleApply} onCancel={handleCancel} />
       )}
