@@ -43,6 +43,11 @@ visual_mappings:
       "0": "#ffffff"
       "1": "#000000"
 
+initial_state:
+  type: "script"
+  code: |
+    buffers.state[Math.floor(width / 2)] = 1;
+
 ai_context:
   description: "Elementary cellular automaton Rule 110"
   hints:

@@ -76,6 +76,14 @@ visual_mappings:
     mapping:
       "1": "#ff0000"
 
+initial_state:
+  type: "script"
+  code: |
+    const cx = Math.floor(width / 2);
+    const cy = Math.floor(height / 2);
+    buffers.ant[cy * width + cx] = 1;
+    buffers.ant_dir[cy * width + cx] = 0;
+
 ai_context:
   description: "Langton's Ant — a 2D Turing machine on a grid"
   hints:

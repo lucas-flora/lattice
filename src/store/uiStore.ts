@@ -14,7 +14,7 @@ export type PlaybackMode = 'loop' | 'endless' | 'once';
 export interface UiState {
   /** Whether the hotkey help overlay is visible */
   isHotkeyHelpOpen: boolean;
-  /** Current brush size for drawing (1, 3, 5, 7) */
+  /** Current brush size for drawing (1-50) */
   brushSize: number;
   /** Whether grid lines are displayed */
   gridLinesVisible: boolean;

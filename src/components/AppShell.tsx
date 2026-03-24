@@ -40,6 +40,7 @@ import { MetricsPanel } from '@/components/panels/MetricsPanel';
 import { useSceneStore } from '@/store/sceneStore';
 import { registerPanels } from '@/layout/registerPanels';
 import { logMin, logDbg } from '@/lib/debugLog';
+import { runInitialStateScript } from '@/engine/preset/initialStateRunner';
 
 // Register all panel types so PanelHost can resolve them
 registerPanels();
@@ -54,135 +55,27 @@ export function getController(): SimulationController | null {
 }
 
 /**
- * Initialize simulation with appropriate starting state per preset.
+ * Initialize simulation with starting state from YAML initial_state script,
+ * or generic random fill as fallback for presets without one.
  */
 function initializeSimulation(controller: SimulationController): void {
   const sim = controller.getSimulation();
   if (!sim) return;
-  logMin('ctrl', `initializeSimulation("${sim.preset.meta.name}") — tags=${sim.tagRegistry.getAll().length}, needsAsync=${sim.needsAsyncTick()}`);
+  logMin('ctrl', `initializeSimulation("${sim.preset.meta.name}")`);
 
-  const presetName = sim.preset.meta.name;
+  // If the preset has an initial_state script, run it
+  if (sim.preset.initial_state?.code) {
+    runInitialStateScript(sim, sim.preset.initial_state.code);
+    return;
+  }
+
+  // Fallback for presets without initial_state: generic fill
   const dim = sim.preset.grid.dimensionality;
-  const firstProp = sim.preset.cell_properties[0].name;
-  const w = sim.preset.grid.width;
-  const h = sim.preset.grid.height ?? 1;
-
-  if (presetName.startsWith('Gray-Scott')) {
-    const uBuf = sim.grid.getCurrentBuffer('u');
-    const vBuf = sim.grid.getCurrentBuffer('v');
-    uBuf.fill(1.0);
-    vBuf.fill(0.0);
-    const cx = Math.floor(w / 2);
-    const cy = Math.floor(h / 2);
-    const r = Math.max(4, Math.floor(w / 16));
-    for (let y = cy - r; y <= cy + r; y++) {
-      for (let x = cx - r; x <= cx + r; x++) {
-        if (x >= 0 && x < w && y >= 0 && y < h) {
-          const idx = y * w + x;
-          uBuf[idx] = 0.5 + (Math.random() - 0.5) * 0.1;
-          vBuf[idx] = 0.25 + (Math.random() - 0.5) * 0.1;
-        }
-      }
-    }
-    return;
-  }
-
-  if (presetName.startsWith('Navier-Stokes')) {
-    const densityBuf = sim.grid.getCurrentBuffer('density');
-    densityBuf.fill(0.0);
-    const cx = Math.floor(w / 2);
-    const cy = Math.floor(h / 2);
-    const r = Math.max(3, Math.floor(w / 8));
-    for (let y = cy - r; y <= cy + r; y++) {
-      for (let x = cx - r; x <= cx + r; x++) {
-        if (x >= 0 && x < w && y >= 0 && y < h) {
-          densityBuf[y * w + x] = 1.0;
-        }
-      }
-    }
-    try {
-      const vxBuf = sim.grid.getCurrentBuffer('vx');
-      const vyBuf = sim.grid.getCurrentBuffer('vy');
-      for (let y = cy - r; y <= cy + r; y++) {
-        for (let x = cx - r; x <= cx + r; x++) {
-          if (x >= 0 && x < w && y >= 0 && y < h) {
-            const idx = y * w + x;
-            vxBuf[idx] = (Math.random() - 0.5) * 0.1;
-            vyBuf[idx] = (Math.random() - 0.5) * 0.1;
-          }
-        }
-      }
-    } catch { /* velocity properties may not exist */ }
-    return;
-  }
-
-  if (presetName === 'Fire') {
-    const fuelBuf = sim.grid.getCurrentBuffer('fuel');
-    const tempBuf = sim.grid.getCurrentBuffer('temperature');
-    fuelBuf.fill(0.0);
-    tempBuf.fill(0.0);
-
-    // Thick fuel bed across the bottom 30% of the grid
-    const bedTop = Math.floor(h * 0.30);
-    for (let y = 0; y < bedTop; y++) {
-      for (let x = 0; x < w; x++) {
-        // Irregular top edge — use simple hash for variation
-        const edgeNoise = Math.sin(x * 0.15) * 3 + Math.sin(x * 0.07) * 5;
-        if (y < bedTop + edgeNoise - 4) {
-          fuelBuf[y * w + x] = 0.6 + Math.random() * 0.4;
-        }
-      }
-    }
-
-    // Dense log piles scattered across the bed (extra fuel concentration)
-    const numPiles = 6 + Math.floor(w / 80);
-    for (let p = 0; p < numPiles; p++) {
-      const px = Math.floor(w * 0.05 + Math.random() * w * 0.9);
-      const py = Math.floor(Math.random() * bedTop * 0.7);
-      const pw = Math.floor(8 + Math.random() * (w * 0.08));
-      const ph = Math.floor(4 + Math.random() * (h * 0.04));
-      for (let by = 0; by < ph; by++) {
-        for (let bx = 0; bx < pw; bx++) {
-          const gx = px + bx - Math.floor(pw / 2);
-          const gy = py + by;
-          if (gx >= 0 && gx < w && gy >= 0 && gy < h) {
-            fuelBuf[gy * w + gx] = Math.min(1.0, fuelBuf[gy * w + gx] + 0.3 + Math.random() * 0.2);
-          }
-        }
-      }
-    }
-
-    // Multiple ignition points along the top of the fuel bed
-    const numIgnitions = 3 + Math.floor(w / 100);
-    for (let i = 0; i < numIgnitions; i++) {
-      const ix = Math.floor(w * 0.1 + (w * 0.8) * (i / (numIgnitions - 1)));
-      const iy = bedTop - 2;
-      const igRadius = Math.max(2, Math.floor(w / 100));
-      for (let dy = -igRadius; dy <= igRadius; dy++) {
-        for (let dx = -igRadius; dx <= igRadius; dx++) {
-          if (dx * dx + dy * dy <= igRadius * igRadius) {
-            const gx = ix + dx;
-            const gy = iy + dy;
-            if (gx >= 0 && gx < w && gy >= 0 && gy < h) {
-              tempBuf[gy * w + gx] = 0.4 + Math.random() * 0.2;
-            }
-          }
-        }
-      }
-    }
-    return;
-  }
-
-  if (presetName === "Langton's Ant") {
-    const cx = Math.floor(w / 2);
-    const cy = Math.floor(h / 2);
-    sim.setCellDirect('ant', cy * w + cx, 1);
-    sim.setCellDirect('ant_dir', cy * w + cx, 0);
-    return;
-  }
+  const firstProp = sim.preset.cell_properties[0]?.name;
+  if (!firstProp) return;
 
   if (dim === '1d') {
-    sim.setCellDirect(firstProp, Math.floor(w / 2), 1);
+    sim.setCellDirect(firstProp, Math.floor(sim.preset.grid.width / 2), 1);
   } else if (dim === '2d') {
     for (let i = 0; i < sim.grid.cellCount; i++) {
       if (Math.random() < 0.2) sim.setCellDirect(firstProp, i, 1);

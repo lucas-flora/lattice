@@ -82,6 +82,13 @@ visual_mappings:
     mapping:
       "0": "#000000"
       "1": "#00ff00"
+initial_state:
+  type: "script"
+  code: |
+    const buf = buffers.alive;
+    for (let i = 0; i < width * height; i++) {
+      if (Math.random() < 0.2) buf[i] = 1;
+    }
 `,
   'conways-advanced': `
 schema_version: "1"
@@ -156,6 +163,13 @@ visual_mappings:
     mapping:
       "0": "#000000"
       "1": "#00ff00"
+initial_state:
+  type: "script"
+  code: |
+    const buf = buffers.alive;
+    for (let i = 0; i < width * height; i++) {
+      if (Math.random() < 0.2) buf[i] = 1;
+    }
 `,
   'rule-110': `
 schema_version: "1"
@@ -194,6 +208,10 @@ visual_mappings:
     mapping:
       "0": "#ffffff"
       "1": "#000000"
+initial_state:
+  type: "script"
+  code: |
+    buffers.state[Math.floor(width / 2)] = 1;
 `,
   'langtons-ant': `
 schema_version: "1"
@@ -265,6 +283,13 @@ visual_mappings:
     channel: "color"
     mapping:
       "1": "#ff0000"
+initial_state:
+  type: "script"
+  code: |
+    const cx = Math.floor(width / 2);
+    const cy = Math.floor(height / 2);
+    buffers.ant[cy * width + cx] = 1;
+    buffers.ant_dir[cy * width + cx] = 0;
 `,
   'brians-brain': `
 schema_version: "1"
@@ -315,6 +340,13 @@ visual_mappings:
       "0": "#000000"
       "1": "#ffffff"
       "2": "#0066ff"
+initial_state:
+  type: "script"
+  code: |
+    const buf = buffers.state;
+    for (let i = 0; i < width * height; i++) {
+      if (Math.random() < 0.2) buf[i] = 1;
+    }
 `,
   'gray-scott': `
 schema_version: "1"
@@ -394,6 +426,25 @@ visual_mappings:
       - { t: 0.7, color: "#ffffff" }
       - { t: 0.85, color: "#ff6600" }
       - { t: 1.0, color: "#ff3300" }
+initial_state:
+  type: "script"
+  code: |
+    const u = buffers.u;
+    const v = buffers.v;
+    u.fill(1.0);
+    v.fill(0.0);
+    const cx = Math.floor(width / 2);
+    const cy = Math.floor(height / 2);
+    const r = Math.max(4, Math.floor(width / 16));
+    for (let y = cy - r; y <= cy + r; y++) {
+      for (let x = cx - r; x <= cx + r; x++) {
+        if (x >= 0 && x < width && y >= 0 && y < height) {
+          const idx = y * width + x;
+          u[idx] = 0.5 + (Math.random() - 0.5) * 0.1;
+          v[idx] = 0.25 + (Math.random() - 0.5) * 0.1;
+        }
+      }
+    }
 `,
   'navier-stokes': `
 schema_version: "1"
@@ -464,17 +515,36 @@ rule:
     new_d = clamp(density + env_dt * (env_diffusion * lap_d - density * div_v * 0.01), 0.0, 10.0)
     self.density = new_d
     self.pressure = clamp(pressure + env_dt * (-div_v * 0.5), -10.0, 10.0)
-    d = clamp(new_d, 0.0, 2.0) * 0.5
-    spd = clamp(sqrt(new_vx * new_vx + new_vy * new_vy) * 3.0, 0.0, 1.0)
-    self.colorR = d * spd * 0.6
-    self.colorG = d * (0.7 + spd * 0.3)
-    self.colorB = d
+draw_property: "density"
 visual_mappings:
-  - property: "density"
-    channel: "color"
-    mapping:
-      min: "#000033"
-      max: "#00ccff"
+  - type: "script"
+    code: |
+      d = clamp(density, 0.0, 2.0) * 0.5
+      spd = clamp(sqrt(vx * vx + vy * vy) * 3.0, 0.0, 1.0)
+      self.colorR = d * spd * 0.6
+      self.colorG = d * (0.7 + spd * 0.3)
+      self.colorB = d
+      self.alpha = clamp(d * 2.0, 0.0, 1.0)
+initial_state:
+  type: "script"
+  code: |
+    const d = buffers.density;
+    const vx = buffers.vx;
+    const vy = buffers.vy;
+    d.fill(0.0);
+    const cx = Math.floor(width / 2);
+    const cy = Math.floor(height / 2);
+    const r = Math.max(3, Math.floor(width / 8));
+    for (let y = cy - r; y <= cy + r; y++) {
+      for (let x = cx - r; x <= cx + r; x++) {
+        if (x >= 0 && x < width && y >= 0 && y < height) {
+          const idx = y * width + x;
+          d[idx] = 1.0;
+          vx[idx] = (Math.random() - 0.5) * 0.1;
+          vy[idx] = (Math.random() - 0.5) * 0.1;
+        }
+      }
+    }
 `,
   'fire': `
 schema_version: "1"
@@ -591,6 +661,55 @@ visual_mappings:
       self.colorG = fg + fuel_show * 0.11 + smoke_show * gray
       self.colorB = fb + fuel_show * 0.03 + smoke_show * (gray + 0.02)
       self.alpha = clamp(t * 4.0 + smoke_show + fuel_show, 0.0, 1.0)
+initial_state:
+  type: "script"
+  code: |
+    const fuel = buffers.fuel;
+    const temp = buffers.temperature;
+    fuel.fill(0.0);
+    temp.fill(0.0);
+    const bedTop = Math.floor(height * 0.30);
+    for (let y = 0; y < bedTop; y++) {
+      for (let x = 0; x < width; x++) {
+        const edgeNoise = Math.sin(x * 0.15) * 3 + Math.sin(x * 0.07) * 5;
+        if (y < bedTop + edgeNoise - 4) {
+          fuel[y * width + x] = 0.6 + Math.random() * 0.4;
+        }
+      }
+    }
+    const numPiles = 6 + Math.floor(width / 80);
+    for (let p = 0; p < numPiles; p++) {
+      const px = Math.floor(width * 0.05 + Math.random() * width * 0.9);
+      const py = Math.floor(Math.random() * bedTop * 0.7);
+      const pw = Math.floor(8 + Math.random() * (width * 0.08));
+      const ph = Math.floor(4 + Math.random() * (height * 0.04));
+      for (let by = 0; by < ph; by++) {
+        for (let bx = 0; bx < pw; bx++) {
+          const gx = px + bx - Math.floor(pw / 2);
+          const gy = py + by;
+          if (gx >= 0 && gx < width && gy >= 0 && gy < height) {
+            fuel[gy * width + gx] = Math.min(1.0, fuel[gy * width + gx] + 0.3 + Math.random() * 0.2);
+          }
+        }
+      }
+    }
+    const numIgnitions = 3 + Math.floor(width / 100);
+    for (let i = 0; i < numIgnitions; i++) {
+      const ix = Math.floor(width * 0.1 + (width * 0.8) * (i / (numIgnitions - 1)));
+      const iy = bedTop - 2;
+      const igRadius = Math.max(2, Math.floor(width / 100));
+      for (let dy = -igRadius; dy <= igRadius; dy++) {
+        for (let dx = -igRadius; dx <= igRadius; dx++) {
+          if (dx * dx + dy * dy <= igRadius * igRadius) {
+            const gx = ix + dx;
+            const gy = iy + dy;
+            if (gx >= 0 && gx < width && gy >= 0 && gy < height) {
+              temp[gy * width + gx] = 0.4 + Math.random() * 0.2;
+            }
+          }
+        }
+      }
+    }
 `,
   'link-testbed': `
 schema_version: "1"
@@ -668,6 +787,13 @@ visual_mappings:
     mapping:
       "0": "#000000"
       "1": "#00ff00"
+initial_state:
+  type: "script"
+  code: |
+    const buf = buffers.alive;
+    for (let i = 0; i < width * height; i++) {
+      if (Math.random() < 0.2) buf[i] = 1;
+    }
 `,
   'seeds': `
 schema_version: "1"
@@ -700,6 +826,13 @@ visual_mappings:
     mapping:
       "0": "#0a0a1a"
       "1": "#ff6633"
+initial_state:
+  type: "script"
+  code: |
+    const buf = buffers.alive;
+    for (let i = 0; i < width * height; i++) {
+      if (Math.random() < 0.2) buf[i] = 1;
+    }
 `,
 };
 

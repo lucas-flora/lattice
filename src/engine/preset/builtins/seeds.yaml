@@ -39,6 +39,14 @@ visual_mappings:
       "0": "#0a0a1a"
       "1": "#ff6633"
 
+initial_state:
+  type: "script"
+  code: |
+    const buf = buffers.alive;
+    for (let i = 0; i < width * height; i++) {
+      if (Math.random() < 0.2) buf[i] = 1;
+    }
+
 ai_context:
   description: "Seeds automaton — B2/S rule creates explosive expanding patterns"
   hints:

@@ -36,6 +36,14 @@ visual_mappings:
       "0": "#000000"
       "1": "#00ff00"
 
+initial_state:
+  type: "script"
+  code: |
+    const buf = buffers.alive;
+    for (let i = 0; i < width * height; i++) {
+      if (Math.random() < 0.2) buf[i] = 1;
+    }
+
 ai_context:
   description: "Conway's Game of Life with standard B3/S23 rules"
   hints:

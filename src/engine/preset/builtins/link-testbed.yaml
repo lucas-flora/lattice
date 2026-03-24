@@ -82,3 +82,11 @@ visual_mappings:
     mapping:
       "0": "#000000"
       "1": "#00ff00"
+
+initial_state:
+  type: "script"
+  code: |
+    const buf = buffers.alive;
+    for (let i = 0; i < width * height; i++) {
+      if (Math.random() < 0.2) buf[i] = 1;
+    }

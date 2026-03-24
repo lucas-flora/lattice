@@ -245,6 +245,56 @@ visual_mappings:
       self.colorB = fb + fuel_show * 0.03 + smoke_show * (gray + 0.02)
       self.alpha = clamp(t * 4.0 + smoke_show + fuel_show, 0.0, 1.0)
 
+initial_state:
+  type: "script"
+  code: |
+    const fuel = buffers.fuel;
+    const temp = buffers.temperature;
+    fuel.fill(0.0);
+    temp.fill(0.0);
+    const bedTop = Math.floor(height * 0.30);
+    for (let y = 0; y < bedTop; y++) {
+      for (let x = 0; x < width; x++) {
+        const edgeNoise = Math.sin(x * 0.15) * 3 + Math.sin(x * 0.07) * 5;
+        if (y < bedTop + edgeNoise - 4) {
+          fuel[y * width + x] = 0.6 + Math.random() * 0.4;
+        }
+      }
+    }
+    const numPiles = 6 + Math.floor(width / 80);
+    for (let p = 0; p < numPiles; p++) {
+      const px = Math.floor(width * 0.05 + Math.random() * width * 0.9);
+      const py = Math.floor(Math.random() * bedTop * 0.7);
+      const pw = Math.floor(8 + Math.random() * (width * 0.08));
+      const ph = Math.floor(4 + Math.random() * (height * 0.04));
+      for (let by = 0; by < ph; by++) {
+        for (let bx = 0; bx < pw; bx++) {
+          const gx = px + bx - Math.floor(pw / 2);
+          const gy = py + by;
+          if (gx >= 0 && gx < width && gy >= 0 && gy < height) {
+            fuel[gy * width + gx] = Math.min(1.0, fuel[gy * width + gx] + 0.3 + Math.random() * 0.2);
+          }
+        }
+      }
+    }
+    const numIgnitions = 3 + Math.floor(width / 100);
+    for (let i = 0; i < numIgnitions; i++) {
+      const ix = Math.floor(width * 0.1 + (width * 0.8) * (i / (numIgnitions - 1)));
+      const iy = bedTop - 2;
+      const igRadius = Math.max(2, Math.floor(width / 100));
+      for (let dy = -igRadius; dy <= igRadius; dy++) {
+        for (let dx = -igRadius; dx <= igRadius; dx++) {
+          if (dx * dx + dy * dy <= igRadius * igRadius) {
+            const gx = ix + dx;
+            const gy = iy + dy;
+            if (gx >= 0 && gx < width && gy >= 0 && gy < height) {
+              temp[gy * width + gx] = 0.4 + Math.random() * 0.2;
+            }
+          }
+        }
+      }
+    }
+
 ai_context:
   description: "Fire: staged fluid-combustion with velocity field and GPU visual mapping"
   hints:

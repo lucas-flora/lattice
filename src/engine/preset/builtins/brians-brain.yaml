@@ -54,6 +54,14 @@ visual_mappings:
       "1": "#ffffff"
       "2": "#0066ff"
 
+initial_state:
+  type: "script"
+  code: |
+    const buf = buffers.state;
+    for (let i = 0; i < width * height; i++) {
+      if (Math.random() < 0.2) buf[i] = 1;
+    }
+
 ai_context:
   description: "Brian's Brain with 3 states: off (0), on (1), dying (2)"
   hints:

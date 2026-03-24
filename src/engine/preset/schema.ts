@@ -188,6 +188,11 @@ export const PresetSchema = z
     visual_mappings: z.array(VisualMappingSchema).optional(),
     /** Which cell property the draw tool should paint. Defaults to the color-mapped property. */
     draw_property: z.string().optional(),
+    /** Initial state seeding script (JS, runs on CPU once at load) */
+    initial_state: z.object({
+      type: z.literal('script'),
+      code: z.string().min(1),
+    }).optional(),
     ai_context: AiContextSchema.optional(),
   })
   .refine(

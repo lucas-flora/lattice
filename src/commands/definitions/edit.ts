@@ -43,7 +43,7 @@ const EraseParams = z.object({
 }).describe('{ x: number, y: number }');
 
 const BrushSizeParams = z.object({
-  size: z.number().int().min(1).max(7),
+  size: z.number().int().min(1).max(50),
 }).describe('{ size: number }');
 
 export function registerEditCommands(
@@ -185,7 +185,7 @@ export function registerEditCommands(
 
   registry.register({
     name: 'edit.brushSize',
-    description: 'Set brush size for drawing (1, 3, 5, or 7)',
+    description: 'Set brush size for drawing (1-50)',
     category: 'edit',
     params: BrushSizeParams,
     execute: async (params) => {

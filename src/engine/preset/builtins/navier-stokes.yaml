@@ -73,18 +73,39 @@ rule:
     new_d = clamp(density + env_dt * (env_diffusion * lap_d - density * div_v * 0.01), 0.0, 10.0)
     self.density = new_d
     self.pressure = clamp(pressure + env_dt * (-div_v * 0.5), -10.0, 10.0)
-    d = clamp(new_d, 0.0, 2.0) * 0.5
-    spd = clamp(sqrt(new_vx * new_vx + new_vy * new_vy) * 3.0, 0.0, 1.0)
-    self.colorR = d * spd * 0.6
-    self.colorG = d * (0.7 + spd * 0.3)
-    self.colorB = d
+
+draw_property: "density"
 
 visual_mappings:
-  - property: "density"
-    channel: "color"
-    mapping:
-      min: "#000033"
-      max: "#00ccff"
+  - type: "script"
+    code: |
+      d = clamp(density, 0.0, 2.0) * 0.5
+      spd = clamp(sqrt(vx * vx + vy * vy) * 3.0, 0.0, 1.0)
+      self.colorR = d * spd * 0.6
+      self.colorG = d * (0.7 + spd * 0.3)
+      self.colorB = d
+      self.alpha = clamp(d * 2.0, 0.0, 1.0)
+
+initial_state:
+  type: "script"
+  code: |
+    const d = buffers.density;
+    const vx = buffers.vx;
+    const vy = buffers.vy;
+    d.fill(0.0);
+    const cx = Math.floor(width / 2);
+    const cy = Math.floor(height / 2);
+    const r = Math.max(3, Math.floor(width / 8));
+    for (let y = cy - r; y <= cy + r; y++) {
+      for (let x = cx - r; x <= cx + r; x++) {
+        if (x >= 0 && x < width && y >= 0 && y < height) {
+          const idx = y * width + x;
+          d[idx] = 1.0;
+          vx[idx] = (Math.random() - 0.5) * 0.1;
+          vy[idx] = (Math.random() - 0.5) * 0.1;
+        }
+      }
+    }
 
 ai_context:
   description: "Simplified 2D Navier-Stokes fluid simulation"

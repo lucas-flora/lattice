@@ -84,6 +84,26 @@ visual_mappings:
       - { t: 0.85, color: "#ff6600" }
       - { t: 1.0, color: "#ff3300" }
 
+initial_state:
+  type: "script"
+  code: |
+    const u = buffers.u;
+    const v = buffers.v;
+    u.fill(1.0);
+    v.fill(0.0);
+    const cx = Math.floor(width / 2);
+    const cy = Math.floor(height / 2);
+    const r = Math.max(4, Math.floor(width / 16));
+    for (let y = cy - r; y <= cy + r; y++) {
+      for (let x = cx - r; x <= cx + r; x++) {
+        if (x >= 0 && x < width && y >= 0 && y < height) {
+          const idx = y * width + x;
+          u[idx] = 0.5 + (Math.random() - 0.5) * 0.1;
+          v[idx] = 0.25 + (Math.random() - 0.5) * 0.1;
+        }
+      }
+    }
+
 ai_context:
   description: "Gray-Scott reaction-diffusion with chemicals U and V"
   hints:
