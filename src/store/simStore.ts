@@ -41,8 +41,12 @@ export interface SimState {
   generation: number;
   /** Whether the simulation is currently running */
   isRunning: boolean;
-  /** Name of the currently loaded preset, or null */
+  /** Name of the currently loaded preset (may be forked name like "Fire-r1"), or null */
   activePreset: string | null;
+  /** Original preset name before any modifications */
+  originalPresetName: string | null;
+  /** Whether the preset has been modified since loading */
+  presetModified: boolean;
   /** Grid width in cells */
   gridWidth: number;
   /** Grid height in cells */
@@ -82,6 +86,8 @@ const initialSimState: SimState = {
   generation: 0,
   isRunning: false,
   activePreset: null,
+  originalPresetName: null,
+  presetModified: false,
   gridWidth: 0,
   gridHeight: 0,
   liveCellCount: 0,
@@ -124,7 +130,16 @@ export const simStoreActions = {
     useSimStore.setState({ isRunning });
   },
   setActivePreset: (name: string, width: number, height: number): void => {
-    useSimStore.setState({ activePreset: name, gridWidth: width, gridHeight: height });
+    useSimStore.setState({ activePreset: name, originalPresetName: name, presetModified: false, gridWidth: width, gridHeight: height });
+  },
+  /** Mark the preset as modified. On first modify, forks the name to <original>-r1. */
+  markPresetModified: (): void => {
+    const s = useSimStore.getState();
+    if (s.presetModified || !s.originalPresetName) return;
+    // Compute forked name: strip existing -rN suffix, then append -r1
+    const base = s.originalPresetName.replace(/-r\d+$/, '');
+    const forkedName = `${base}-r1`;
+    useSimStore.setState({ presetModified: true, activePreset: forkedName });
   },
   setComputedGeneration: (computedGeneration: number): void => {
     useSimStore.setState({ computedGeneration });

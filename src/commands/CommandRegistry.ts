@@ -9,6 +9,22 @@
  */
 
 import type { CommandDefinition, CommandResult, CommandCatalogEntry } from './types';
+import { simStoreActions } from '../store/simStore';
+
+/** Commands that mutate the preset configuration (trigger fork-on-modify). */
+const CONFIG_MUTATING_COMMANDS = new Set([
+  'op.add', 'op.remove', 'op.edit', 'op.enable', 'op.disable',
+  'tag.add', 'tag.remove', 'tag.edit', 'tag.enable', 'tag.disable',
+  'param.set', 'param.add', 'param.remove', 'param.reset',
+  'cell.addProperty', 'cell.removeProperty', 'cell.setDefault',
+  'var.set', 'var.delete', 'var.clear',
+  'scene.enable', 'scene.disable',
+  'link.add', 'link.remove', 'link.edit', 'link.clear',
+  'expr.set', 'expr.clear', 'expr.clearAll',
+  'script.add', 'script.remove', 'script.enable', 'script.disable', 'script.clear',
+  'grid.resize',
+  'rule.edit',
+]);
 
 export class CommandRegistry {
   private commands: Map<string, CommandDefinition> = new Map();
@@ -70,7 +86,12 @@ export class CommandRegistry {
     }
 
     try {
-      return await command.execute(parseResult.data);
+      const result = await command.execute(parseResult.data);
+      // Fork-on-modify: if a config-mutating command succeeded, mark the preset as modified
+      if (result.success && CONFIG_MUTATING_COMMANDS.has(name)) {
+        simStoreActions.markPresetModified();
+      }
+      return result;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       return { success: false, error: `Command "${name}" failed: ${message}` };

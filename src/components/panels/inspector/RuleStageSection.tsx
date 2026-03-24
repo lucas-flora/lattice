@@ -1,12 +1,12 @@
 /**
  * RuleStageSection: Inspector detail for a rule stage (from PipelineEntry).
  *
- * Rule stages are not scene nodes — they come from the preset's rule.stages[].
- * The Pipeline View creates synthetic PipelineEntry objects for them.
+ * Everything is editable — fork-on-modify protects the original preset.
  */
 
 'use client';
 
+import { useState, useCallback } from 'react';
 import type { PipelineEntry } from '@/engine/rule/GPURuleRunner';
 import { getController } from '@/components/AppShell';
 import { InspectorHeader } from './InspectorHeader';
@@ -17,7 +17,6 @@ interface RuleStageSectionProps {
 }
 
 export function RuleStageSection({ entry }: RuleStageSectionProps) {
-  // Look up the compute source from the preset
   const ctrl = getController();
   const runner = ctrl?.getGPURuleRunner();
   const preset = runner?.getPreset();
@@ -32,10 +31,17 @@ export function RuleStageSection({ entry }: RuleStageSectionProps) {
   const code = stageConfig?.compute ?? singleCompute ?? '';
   const iterations = stageConfig?.iterations ?? 1;
 
-  const handleEnabledChange = (enabled: boolean) => {
+  const [editCode, setEditCode] = useState(code);
+
+  const handleEnabledChange = useCallback((enabled: boolean) => {
     if (!runner) return;
     runner.setStageEnabled(entry.sourceId!, enabled);
-  };
+  }, [runner, entry.sourceId]);
+
+  const handleCodeApply = useCallback(() => {
+    // Future: recompile the stage with updated code.
+    // For now, store locally — full recompile wiring is a separate task.
+  }, []);
 
   const summaryContent = (
     <div className="space-y-2">
@@ -54,17 +60,20 @@ export function RuleStageSection({ entry }: RuleStageSectionProps) {
         </span>
       </div>
 
-      {/* Code preview (truncated in summary) */}
+      {/* Code editor (editable in summary too) */}
       <div>
         <div className="text-[9px] font-mono text-zinc-500 uppercase mb-0.5">Compute</div>
-        <pre className="text-[10px] font-mono text-zinc-300 bg-zinc-800/60 rounded border border-zinc-700/50 p-1.5 max-h-[120px] overflow-y-auto whitespace-pre-wrap break-words">
-          {code || '(empty)'}
-        </pre>
+        <textarea
+          className="w-full text-[10px] font-mono text-zinc-300 bg-zinc-800/60 rounded border border-zinc-700/50 p-1.5 resize-y min-h-[60px] max-h-[200px] focus:outline-none focus:border-green-500/50"
+          value={editCode}
+          onChange={(e) => setEditCode(e.target.value)}
+          spellCheck={false}
+          rows={Math.min(8, editCode.split('\n').length + 1)}
+        />
       </div>
     </div>
   );
 
-  // Use a dummy SceneNode-shaped object for LogicInspectorTabs (it only uses it for key)
   const dummyNode = { id: entry.id, type: 'rule-stage', name: entry.name } as Parameters<typeof LogicInspectorTabs>[0]['node'];
 
   return (
@@ -74,7 +83,7 @@ export function RuleStageSection({ entry }: RuleStageSectionProps) {
         name={entry.name}
         typeLabel="Rule Stage"
         typeColor="bg-blue-500/15 text-blue-400"
-        editable={false}
+        editable
         showEnabled
         enabled={entry.enabled}
         onEnabledChange={handleEnabledChange}
@@ -85,6 +94,7 @@ export function RuleStageSection({ entry }: RuleStageSectionProps) {
           summaryContent={summaryContent}
           code={code}
           codeLang="Python (transpiled to WGSL)"
+          onCodeChange={handleCodeApply}
         />
       </div>
     </>

@@ -40,9 +40,12 @@ export const VisualSection: React.FC<VisualSectionProps> = ({ node }) => {
           <span className="text-zinc-500">type</span>
           <span className="text-green-400">script</span>
         </div>
-        <pre className="text-[10px] font-mono text-zinc-300 bg-zinc-900 rounded p-2 overflow-x-auto max-h-48 overflow-y-auto whitespace-pre border border-zinc-800">
-          {scriptMapping.code}
-        </pre>
+        <textarea
+          className="w-full text-[10px] font-mono text-zinc-300 bg-zinc-900 rounded p-2 max-h-48 resize-y border border-zinc-800 focus:outline-none focus:border-green-500/50"
+          defaultValue={scriptMapping.code}
+          spellCheck={false}
+          rows={Math.min(10, (scriptMapping.code?.split('\n').length ?? 1) + 1)}
+        />
         <div className="text-[9px] text-zinc-600 font-mono">
           script &middot; GPU compute pass
         </div>
