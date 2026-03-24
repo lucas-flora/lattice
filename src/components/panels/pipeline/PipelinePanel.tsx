@@ -16,6 +16,7 @@ import { eventBus } from '@/engine/core/EventBus';
 import { useSimStore } from '@/store/simStore';
 import { useExpressionStore } from '@/store/expressionStore';
 import { useSceneStore, sceneStoreActions } from '@/store/sceneStore';
+import { uiStoreActions } from '@/store/uiStore';
 import { NODE_TYPES } from '@/engine/scene/SceneNode';
 import { PipelineSection } from './PipelineSection';
 
@@ -29,6 +30,7 @@ function PipelineContent() {
   const sceneNodes = useSceneStore((s) => s.nodes);
 
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
+  // Also push to uiStore so Inspector can read it
   const [revision, setRevision] = useState(0);
 
   useEffect(() => {
@@ -66,12 +68,15 @@ function PipelineContent() {
 
   const handleSelectEntry = useCallback((entry: PipelineEntry) => {
     setSelectedEntryId(entry.id);
+    uiStoreActions.selectPipelineEntry(entry.id);
 
     // Cross-select into scene graph where possible
     if (entry.type === 'visual-mapping' && visualNodeId) {
       sceneStoreActions.select(visualNodeId);
+    } else {
+      // Clear scene selection so Inspector shows pipeline entry instead
+      sceneStoreActions.select(null);
     }
-    // Future: rule stages and ops will become scene nodes too
   }, [visualNodeId]);
 
   const handleToggleEnabled = useCallback((entry: PipelineEntry) => {
