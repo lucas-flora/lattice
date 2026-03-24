@@ -5,7 +5,7 @@
  * property dropdown, and range inputs.
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import type { SceneNode } from '../../../engine/scene/SceneNode';
 import { GradientBar, type GradientStop } from '../../ui/GradientBar';
 import { commandRegistry } from '../../../commands/CommandRegistry';
@@ -124,6 +124,19 @@ interface StopRowProps {
 const StopRow: React.FC<StopRowProps> = ({ index, stop, isEditing, onEdit, nodeId }) => {
   const [colorValue, setColorValue] = useState(stop.color ?? '#000000');
   const [posValue, setPosValue] = useState(String(stop.t));
+  const editRef = useRef<HTMLDivElement>(null);
+
+  // Close on click outside
+  useEffect(() => {
+    if (!isEditing) return;
+    const handler = (e: MouseEvent) => {
+      if (editRef.current && !editRef.current.contains(e.target as Node)) {
+        onEdit(); // toggle off
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [isEditing, onEdit]);
 
   const handleColorCommit = useCallback(() => {
     commandRegistry.execute('visual.updateStop', {
@@ -145,7 +158,7 @@ const StopRow: React.FC<StopRowProps> = ({ index, stop, isEditing, onEdit, nodeI
   }, [nodeId, index, posValue]);
 
   return (
-    <div className="group flex items-center gap-1.5 py-0.5 text-[11px] font-mono">
+    <div ref={editRef} className="group relative flex items-center gap-1.5 py-0.5 text-[11px] font-mono">
       {/* Color swatch */}
       <button
         onClick={onEdit}
