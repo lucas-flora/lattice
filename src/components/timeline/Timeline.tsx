@@ -383,7 +383,7 @@ export function Timeline() {
       uiStoreActions.setTimelineZoom(newStart, newStart + span);
     }
     // Auto-grow duration so minimap always has space ahead of playhead
-    if (generation >= duration - span) {
+    if (generation > 0 && generation >= duration - span) {
       uiStoreActions.setTimelineDuration(generation + span * 2);
     }
   }, [generation, isRunning, zoomStart, zoomEnd, duration]);
