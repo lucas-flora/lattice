@@ -1,22 +1,22 @@
 /**
  * PropertyRow: displays a single cell property with name, type badge, default value,
- * and optional expression tag indicator.
+ * and optional operator indicator.
  *
- * When an ExpressionTag writes to this property, shows a `f` badge:
- *   - Green = active tag
- *   - Gray = disabled tag
- * Clicking the badge expands an inline editor for the tag.
+ * When an Operator writes to this property, shows a `f` badge:
+ *   - Green = active op
+ *   - Gray = disabled op
+ * Clicking the badge expands an inline editor for the op.
  *
- * When no tag exists, shows a `+` button on hover to create one inline.
+ * When no op exists, shows a `+` button on hover to create one inline.
  */
 
 'use client';
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import type { CellPropertyType } from '@/engine/cell/types';
-import type { ExpressionTag } from '@/engine/expression/types';
+import type { Operator } from '@/engine/expression/types';
 import { commandRegistry } from '@/commands/CommandRegistry';
-import { TagAddForm } from './TagAddForm';
+import { OpAddForm } from './OpAddForm';
 
 const TYPE_COLORS: Record<CellPropertyType, string> = {
   bool: 'text-blue-400 bg-blue-400/10',
@@ -39,9 +39,9 @@ interface PropertyRowProps {
   defaultValue: number | number[];
   role?: string;
   isInherent?: boolean;
-  /** ExpressionTag that writes to this property (if any) */
-  expression?: ExpressionTag;
-  /** Cell type name for tag creation (sets owner) */
+  /** Operator that writes to this property (if any) */
+  expression?: Operator;
+  /** Cell type name for op creation (sets owner) */
   cellTypeName?: string;
 }
 
@@ -86,19 +86,19 @@ export function PropertyRow({ name, type, defaultValue, role, isInherent, expres
 
   const handleToggleEnabled = useCallback(() => {
     if (!expression) return;
-    const cmd = expression.enabled ? 'tag.disable' : 'tag.enable';
+    const cmd = expression.enabled ? 'op.disable' : 'op.enable';
     commandRegistry.execute(cmd, { id: expression.id });
   }, [expression]);
 
   const handleSave = useCallback(() => {
     if (!expression || !dirty) return;
-    commandRegistry.execute('tag.edit', { id: expression.id, code: editCode });
+    commandRegistry.execute('op.edit', { id: expression.id, code: editCode });
     setDirty(false);
   }, [expression, editCode, dirty]);
 
   const handleDelete = useCallback(() => {
     if (!expression) return;
-    commandRegistry.execute('tag.remove', { id: expression.id });
+    commandRegistry.execute('op.remove', { id: expression.id });
     setExpanded(false);
   }, [expression]);
 
@@ -118,7 +118,7 @@ export function PropertyRow({ name, type, defaultValue, role, isInherent, expres
           )}
         </span>
 
-        {/* Expression tag indicator OR add button */}
+        {/* Operator indicator OR add button */}
         {expression ? (
           <button
             onClick={() => setExpanded(!expanded)}
@@ -136,8 +136,8 @@ export function PropertyRow({ name, type, defaultValue, role, isInherent, expres
           <button
             onClick={() => setShowAddForm(!showAddForm)}
             className="text-[9px] text-zinc-600 hover:text-green-400 opacity-0 group-hover:opacity-100 cursor-pointer transition-opacity"
-            title="Add tag"
-            data-testid="property-add-tag"
+            title="Add op"
+            data-testid="property-add-op"
           >
             +
           </button>
@@ -191,7 +191,7 @@ export function PropertyRow({ name, type, defaultValue, role, isInherent, expres
         )}
       </div>
 
-      {/* Expanded tag editor */}
+      {/* Expanded op editor */}
       {expanded && expression && (
         <div className="ml-1 mb-0.5 px-1.5 py-1 bg-zinc-800/80 rounded border border-zinc-700/50">
           <div className="flex items-center justify-between mb-0.5">
@@ -258,10 +258,10 @@ export function PropertyRow({ name, type, defaultValue, role, isInherent, expres
         </div>
       )}
 
-      {/* Inline tag creation form */}
+      {/* Inline op creation form */}
       {showAddForm && !expression && (
         <div className="ml-1 mb-0.5">
-          <TagAddForm
+          <OpAddForm
             onClose={() => setShowAddForm(false)}
             defaultSource="code"
             defaultTarget={`cell.${name}`}

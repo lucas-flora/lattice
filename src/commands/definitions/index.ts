@@ -22,6 +22,7 @@ import { registerVariableCommands } from './variable';
 import { registerExpressionCommands } from './expression';
 import { registerScriptCommands } from './script';
 import { registerLinkCommands } from './link';
+import { registerOpCommands } from './op';
 import { registerTagCommands } from './tag';
 import { registerSceneCommands } from './scene';
 import { registerCellCommands } from './cell';
@@ -31,6 +32,7 @@ import { registerBenchCommands } from './bench';
 import { registerGpuCommands } from './gpu';
 import { registerIrCommands } from './ir';
 import { registerVisualCommands } from './visual';
+import { registerPipelineCommands } from './pipeline';
 
 /**
  * Register all commands in the registry.
@@ -54,7 +56,8 @@ export function registerAllCommands(
   registerExpressionCommands(registry, controller, eventBus);
   registerScriptCommands(registry, controller, eventBus);
   registerLinkCommands(registry, controller, eventBus);
-  registerTagCommands(registry, controller, eventBus);
+  registerOpCommands(registry, controller, eventBus);
+  registerTagCommands(registry);
   registerSceneCommands(registry, controller, eventBus);
   registerCellCommands(registry, controller, eventBus);
   registerNodeCommands(registry, controller, eventBus);
@@ -63,4 +66,5 @@ export function registerAllCommands(
   registerGpuCommands(registry);
   registerIrCommands(registry);
   registerVisualCommands(registry, controller, eventBus);
+  registerPipelineCommands(registry, controller, eventBus);
 }

@@ -12,7 +12,7 @@ import { useScriptStore } from '@/store/scriptStore';
 import { useLayoutStore, layoutStoreActions } from '@/store/layoutStore';
 import { commandRegistry } from '@/commands/CommandRegistry';
 import { ResizeHandle } from '@/components/ui/ResizeHandle';
-import { UnifiedTagsSection } from './UnifiedTagsSection';
+import { UnifiedOpsSection } from './UnifiedOpsSection';
 
 /** Parse a numeric string with a fallback that handles "0" correctly. */
 function parseNum(s: string, fallback: number): number {
@@ -291,7 +291,7 @@ export function ScriptPanel({ docked = false }: ScriptPanelProps) {
       </div>
       <PyodideStatus />
       <VariablesSection />
-      <UnifiedTagsSection />
+      <UnifiedOpsSection />
     </div>
   );
 

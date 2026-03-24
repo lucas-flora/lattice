@@ -27,6 +27,8 @@ interface SimRootSectionProps {
 
 export const SimRootSection: React.FC<SimRootSectionProps> = ({ node }) => {
   const activePreset = useSimStore((s) => s.activePreset);
+  const originalName = useSimStore((s) => s.originalPresetName);
+  const presetModified = useSimStore((s) => s.presetModified);
   const gridWidth = useSimStore((s) => s.gridWidth);
   const gridHeight = useSimStore((s) => s.gridHeight);
   const speed = useSimStore((s) => s.speed);
@@ -52,7 +54,26 @@ export const SimRootSection: React.FC<SimRootSectionProps> = ({ node }) => {
     <div className="space-y-3">
       {/* Preset Selector */}
       <div>
-        <div className="text-zinc-400 text-[10px] uppercase tracking-wide mb-1">Preset</div>
+        <div className="flex items-center gap-1 mb-1">
+          <span className="text-zinc-400 text-[10px] uppercase tracking-wide">Preset</span>
+          {presetModified && (
+            <>
+              <span className="text-amber-400 text-[9px]" title="Preset has been modified">&bull;</span>
+              <button
+                onClick={() => {
+                  if (originalName) {
+                    const key = Object.entries(PRESET_DISPLAY_NAMES).find(([, v]) => originalName.includes(v))?.[0];
+                    if (key) commandRegistry.execute('preset.load', { name: key });
+                  }
+                }}
+                className="text-[9px] font-mono text-zinc-500 hover:text-zinc-300 cursor-pointer"
+                title={`Reload ${originalName}`}
+              >
+                reload
+              </button>
+            </>
+          )}
+        </div>
         <select
           value={Object.entries(PRESET_DISPLAY_NAMES).find(
             ([, displayName]) => activePreset?.includes(displayName)

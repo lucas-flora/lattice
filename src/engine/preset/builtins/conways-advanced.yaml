@@ -1,4 +1,4 @@
-# Conway's Advanced — GoL with tag-driven visual effects.
+# Conway's Advanced — GoL with operator-driven visual effects.
 # GPU-native via Python transpiler → IR → WGSL.
 
 schema_version: "1"
@@ -6,8 +6,8 @@ schema_version: "1"
 meta:
   name: "Conway's Advanced"
   author: "Lattice Engine"
-  description: "GoL with age-fading, position-based color, and death-by-age tags."
-  tags: ["2d", "tags", "visual", "advanced"]
+  description: "GoL with age-fading, position-based color, and death-by-age operators."
+  tags: ["2d", "ops", "visual", "advanced"]
 
 grid:
   dimensionality: "2d"
@@ -74,7 +74,7 @@ initial_state:
     }
 
 ai_context:
-  description: "Conway's GoL with tag-driven visual effects: age fading, position-based color, death-by-age"
+  description: "Conway's GoL with operator-driven visual effects: age fading, position-based color, death-by-age"
   hints:
     - "Expression tags run as post-rule Python via Pyodide"
     - "colorR/G/B are inherent properties read by the renderer"

@@ -11,7 +11,9 @@ import type { CommandRegistry } from '../CommandRegistry';
 import type { SimulationController } from '../SimulationController';
 import type { EventBus } from '../../engine/core/EventBus';
 import { SceneGraph } from '../../engine/scene/SceneGraph';
+import { generateNodeId } from '../../engine/scene/SceneNode';
 import { sceneStoreActions, useSceneStore } from '../../store/sceneStore';
+import { expressionStoreActions, useExpressionStore } from '../../store/expressionStore';
 
 export function registerSceneCommands(
   registry: CommandRegistry,
@@ -366,6 +368,125 @@ export function registerSceneCommands(
           })),
         },
       };
+    },
+  });
+
+  // --- scene.duplicate ---
+  registry.register({
+    name: 'scene.duplicate',
+    description: 'Duplicate a scene node, optionally including children and ops',
+    category: 'scene',
+    params: z.object({
+      id: z.string(),
+      deep: z.boolean().optional().default(false),
+    }),
+    execute: async (params) => {
+      const { id, deep } = params as { id: string; deep: boolean };
+      const state = useSceneStore.getState();
+      const original = state.nodes[id];
+      if (!original) return { success: false, error: `Node '${id}' not found` };
+
+      // Singleton nodes that shouldn't be duplicated
+      const singletons = ['sim-root', 'environment', 'globals'];
+      if (singletons.includes(original.type)) {
+        return { success: false, error: `Cannot duplicate ${original.type} node` };
+      }
+
+      // Generate copy name: "Foo" → "Foo (copy)", "Foo (copy)" → "Foo (copy 2)"
+      const genCopyName = (name: string): string => {
+        const siblings = Object.values(state.nodes).filter((n) => n.parentId === original.parentId);
+        const siblingNames = new Set(siblings.map((n) => n.name));
+        const baseName = name.replace(/ \(copy(?: \d+)?\)$/, '');
+        let candidate = `${baseName} (copy)`;
+        if (!siblingNames.has(candidate)) return candidate;
+        let n = 2;
+        while (siblingNames.has(`${baseName} (copy ${n})`)) n++;
+        return `${baseName} (copy ${n})`;
+      };
+
+      const allOps = useExpressionStore.getState().tags;
+
+      // Clone a single node (returns new ID)
+      const cloneNode = (
+        srcId: string,
+        parentId: string | null,
+        renameFn?: (name: string) => string,
+      ): string => {
+        const src = state.nodes[srcId];
+        if (!src) return '';
+        const newId = generateNodeId();
+        const name = renameFn ? renameFn(src.name) : src.name;
+
+        sceneStoreActions.addNode({
+          id: newId,
+          type: src.type,
+          name,
+          parentId,
+          childIds: [],
+          enabled: src.enabled,
+          properties: JSON.parse(JSON.stringify(src.properties)),
+          tags: [],
+        });
+
+        // If deep, clone ops attached to this node
+        if (deep) {
+          const nodeOps = allOps.filter((op) => src.tags.includes(op.id));
+          for (const op of nodeOps) {
+            // Use op.copy to clone to same owner type
+            registry.execute('op.copy', {
+              id: op.id,
+              ownerType: op.owner.type,
+              ownerId: op.owner.id,
+            });
+          }
+        }
+
+        return newId;
+      };
+
+      // Clone the root node
+      const newRootId = cloneNode(id, original.parentId, genCopyName);
+      if (!newRootId) return { success: false, error: 'Failed to clone node' };
+
+      // Deep: recursively clone children
+      if (deep && original.childIds.length > 0) {
+        const cloneChildren = (srcParentId: string, dstParentId: string) => {
+          const srcNode = state.nodes[srcParentId];
+          if (!srcNode) return;
+          for (const childId of srcNode.childIds) {
+            const newChildId = cloneNode(childId, dstParentId);
+            if (newChildId) {
+              cloneChildren(childId, newChildId);
+            }
+          }
+        };
+        cloneChildren(id, newRootId);
+      }
+
+      // Sync engine graph if available
+      const graph = controller.getSceneGraph?.();
+      if (graph) {
+        // Rebuild from store since we modified store directly
+        const currentState = useSceneStore.getState();
+        const allNodes = Object.values(currentState.nodes);
+        // Re-sync graph from store
+        for (const n of allNodes) {
+          if (!graph.getNode(n.id)) {
+            graph.addNode({ ...n });
+          }
+        }
+      }
+
+      // Auto-select the new node
+      sceneStoreActions.select(newRootId);
+      eventBus.emit('scene:nodeAdded', {
+        id: newRootId,
+        type: original.type,
+        name: genCopyName(original.name),
+        parentId: original.parentId,
+      });
+
+      return { success: true, data: { id: newRootId } };
     },
   });
 

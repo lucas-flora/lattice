@@ -15,6 +15,7 @@ import { ObjectManagerPanel } from '../components/panels/ObjectManagerPanel';
 import { InspectorPanel } from '../components/panels/InspectorPanel';
 import { CardViewPanel } from '../components/panels/CardViewPanel';
 import { NodeEditorPanel } from '../components/panels/NodeEditorPanel';
+import { PipelinePanel } from '../components/panels/pipeline/PipelinePanel';
 
 export function registerPanels(): void {
   panelRegistry.register({
@@ -71,6 +72,13 @@ export function registerPanels(): void {
     label: 'Card View',
     component: CardViewPanel,
     allowMultiple: true,
+  });
+
+  panelRegistry.register({
+    type: 'pipeline',
+    label: 'Pipeline',
+    component: PipelinePanel,
+    allowMultiple: false,
   });
 
   panelRegistry.register({

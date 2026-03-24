@@ -51,7 +51,7 @@ Lattice is a universal simulation substrate. Cellular automata, reaction-diffusi
 │  │  <!-- Grid is a rank-3 tensor (W, H, P). Vec properties occupy consecutive channel slots. See Glossary. -->
 │  │                                                         │        │
 │  │  CellTypeRegistry (types, inheritance, property union)   │        │
-│  │  RuleRunner (perceive → expressions → links → rule → tags)│       │
+│  │  RuleRunner (perceive → expressions → links → rule → ops) │       │
 │  │  CommandHistory (undo/redo snapshots)                     │        │
 │  └──────────────────────────────────────────────────────────┘        │
 │                                                                      │
@@ -67,7 +67,7 @@ Lattice is a universal simulation substrate. Cellular automata, reaction-diffusi
 │  ┌─ Data ───────────────────────────────────────────────────┐        │
 │  │  PropertyAddress (dot-path resolution)                    │        │
 │  │  LinkRegistry (source → target with range + easing)       │        │
-│  │  TagRegistry + TagRunner (stackable behaviors)            │        │
+│  │  OpRegistry + OpRunner (stackable behaviors)              │        │
 │  │  PresetSchema (Zod validation, YAML ↔ config)             │        │
 │  │  Serializer (state → YAML) + URLCodec (YAML ↔ hash)      │        │
 │  └──────────────────────────────────────────────────────────┘        │
@@ -118,7 +118,7 @@ Lattice is a universal simulation substrate. Cellular automata, reaction-diffusi
 ┌───────────────┬───────────────────────┬──────────────┬────────┐
 │ Drawer 1 (L)  │  Center               │ Drawer 3 (R) │ D4 (R) │
 │ ObjMgr (35%)  │  (viewports)          │ Card View    │ Metrics│
-│ ─────────────│                       │ tags+globals  │        │
+│ ─────────────│                       │ ops+globals   │        │
 │ Inspector(65%)│                       │              │        │
 ├───────────────┤                       ├──────────────┤        │
 │ Drawer 2 (L)  │                       │              │        │
@@ -138,7 +138,7 @@ Lattice is a universal simulation substrate. Cellular automata, reaction-diffusi
 | `` ` `` | Terminal | CLI terminal | Bottom | 250px |
 | `1` | Drawer 1 | Object Manager (top) + Inspector (bottom), draggable split | Left | 320px |
 | `2` | Drawer 2 | Card View, `defaultFilters=['cells']` | Left | 300px |
-| `3` | Drawer 3 | Card View, `defaultFilters=['tags', 'globals']` | Right | 300px |
+| `3` | Drawer 3 | Card View, `defaultFilters=['ops', 'globals']` | Right | 300px |
 | `4` | Drawer 4 | Metrics (sparkline graphs, tick rate) | Right | 280px |
 
 **Zone rules:**
@@ -149,7 +149,7 @@ Lattice is a universal simulation substrate. Cellular automata, reaction-diffusi
 - Grip dots appear at viewport edges when drawers are closed.
 - Drawer 1 has a draggable vertical split between Object Manager and Inspector (`drawer1SplitRatio` in layoutStore).
 
-**Unified Card View:** Drawers 2 and 3 render the same `CardViewPanel` component with different `defaultFilters`. Registered in the panel registry as `'cardView'` with `allowMultiple: true`. Multi-select type filters (Cells, Env, Vars, Tags). Collapsible sections with per-section + buttons. Tag cards use TagRow for rich editing. Variable cards have inline value editing.
+**Unified Card View:** Drawers 2 and 3 render the same `CardViewPanel` component with different `defaultFilters`. Registered in the panel registry as `'cardView'` with `allowMultiple: true`. Multi-select type filters (Cells, Env, Vars, Ops). Collapsible sections with per-section + buttons. Operator cards use OpRow for rich editing. Variable cards have inline value editing.
 
 **Interactive property editing:** CellCard and CellTypeSection (Inspector) support full CRUD on cell properties:
 - Click-to-edit default values (PropertyRow) — click value → inline input, Enter/blur commits via `cell.setDefault`, Escape cancels.
@@ -194,7 +194,7 @@ interface CellTypeDefinition {
   color: string;           // display color (hex)
   properties: CellPropertyConfig[];
   rule?: string;           // Python rule function (overrides global rule for this type)
-  tags?: TagInstance[];     // stackable behavior modifiers
+  tags?: TagInstance[];     // stackable behavior modifiers (operators)
 }
 ```
 
@@ -339,9 +339,9 @@ Addresses are used in: expressions, scripts, links, commands, serialization.
 
 > Full spec: `docs/SCENE_GRAPH.md`
 
-The simulation IS a scoped object tree. Every object — SimRoot, CellType, Environment, Globals, Group — is a `SceneNode`, one generic data structure. Type is metadata, not a different class. Tags attach computation to nodes. Panels are filtered views of the tree. Multiple roots enable independent simulations.
+The simulation IS a scoped object tree. Every object — SimRoot, CellType, Environment, Globals, Group — is a `SceneNode`, one generic data structure. Type is metadata, not a different class. Operators attach computation to nodes. Panels are filtered views of the tree. Multiple roots enable independent simulations.
 
-The `SceneNode` primitive replaces the flat stores as the foundational data model. Variable resolution walks up the tree. Rule is a tag (`phase: 'rule'`). Links are a creation wizard, not a source type. The Object Manager panel shows the raw tree; the Inspector shows the selected node's details.
+The `SceneNode` primitive replaces the flat stores as the foundational data model. Variable resolution walks up the tree. Rule is an operator (`phase: 'rule'`). Links are a creation wizard, not a source type. The Object Manager panel shows the raw tree; the Inspector shows the selected node's details.
 
 ### Scene Graph Phases
 
@@ -355,7 +355,7 @@ All SG phases (SG-0 through SG-9) are **complete**. Post-SG UI alignment also co
 | SG-3 | Object Manager | Done | Tree view panel in drawer 1 (top) |
 | SG-4 | Inspector | Done | Context-sensitive detail panel in drawer 1 (bottom) |
 | SG-5 | Link Wizard | Done | `source: 'link'` → `source: 'code'` + `linkMeta` |
-| SG-6 | Rule-as-Tag | Done | Preset loading creates `phase: 'rule'` tag on root |
+| SG-6 | Rule-as-Op | Done | Preset loading creates `phase: 'rule'` operator on root |
 | SG-7 | Scope Resolution | Done | `ScopeResolver` walks up ancestors, stops at SimRoot |
 | SG-8 | Multi-Sim | Done | `SimulationManager` with `sim.addRoot/removeRoot/setRoot` |
 | SG-9 | YAML v2 | Done | v2 schema + `loadPresetV2()` + backward compat |
@@ -367,8 +367,8 @@ All SG phases (SG-0 through SG-9) are **complete**. Post-SG UI alignment also co
 - `initial-state` scene nodes persist grid snapshots as the canonical reset state
 - 6 `state.*` commands (capture, restore, setInitial, clearInitial, list, delete)
 - `SimulationController.syncInitialStateToScene()` syncs in-memory snapshots to sceneStore
-- All tag-mutating command paths (`script.*`, `expr.*`) now call `controller.onTagChanged()`
-- `onTagChanged()` resets playhead to 0, restoring clean initial state
+- All operator-mutating command paths (`script.*`, `expr.*`) now call `controller.onOpChanged()`
+- `onOpChanged()` resets playhead to 0, restoring clean initial state
 - State commands operate on `sceneStore` directly (not `SceneGraph` instance) — same pattern as `scene.*` commands
 
 **Remaining architectural work:**
@@ -378,14 +378,15 @@ All SG phases (SG-0 through SG-9) are **complete**. Post-SG UI alignment also co
 
 ---
 
-## Unified Expression System
+## Unified Operator System
 
 > Full spec: `docs/EXPRESSION_SYSTEM.md`
 
-All computation logic — links, per-property expressions, global scripts, and future node graphs — is unified under the **ExpressionTag** primitive. An ExpressionTag lives on an object in the hierarchy, has a code body, declares inputs/outputs, and evaluates in a specific pipeline phase.
+All computation logic — links, per-property expressions, global scripts, and future node graphs — is unified under the **Operator** (formerly ExpressionTag) primitive. An Operator lives on an object in the hierarchy, has a code body, declares inputs/outputs, and evaluates in a specific pipeline phase.
 
 ```typescript
-interface ExpressionTag {
+// UI name: "Operator" / "Op". TypeScript interface retains ExpressionTag for now.
+interface ExpressionTag {  // aliased as Operator in UI and docs
   id: string;
   name: string;
   owner: TagOwner;        // { type: 'cell-type'|'environment'|'global'|'root', id?: string }
@@ -395,22 +396,22 @@ interface ExpressionTag {
   source: ExpressionSource; // 'code' | 'link' | 'script'
   inputs: string[];       // declared input addresses
   outputs: string[];      // declared output addresses
-  linkMeta?: LinkMeta;    // range mapping data (only for link-sourced tags)
+  linkMeta?: LinkMeta;    // range mapping data (only for link-sourced operators)
 }
 ```
 
-**Tag CRUD commands** (primary interface):
-- `tag.add { source: 'code'|'link'|'script', ... }` — create a tag (routes to legacy system + tag registry)
-- `tag.remove { id }` — remove a tag and clean up legacy system
-- `tag.edit { id, code?, phase?, ... }` — update tag and mirror changes to legacy
+**Operator CRUD commands** (primary interface):
+- `op.add { source: 'code'|'link'|'script', ... }` — create an operator (routes to legacy system + op registry)
+- `op.remove { id }` — remove an operator and clean up legacy system
+- `op.edit { id, code?, phase?, ... }` — update operator and mirror changes to legacy
 
-**Sugar commands** (create tags as side effect):
-- `link.add cell.age cell.alpha` → creates an ExpressionTag with `source: 'link'` and JS fast-path resolution
-- `expr.set alpha "age / 100"` → creates an ExpressionTag with `source: 'code'` and Python evaluation
-- `script.add monitor "..."` → creates an ExpressionTag with `source: 'script'`
-- All three produce the same underlying ExpressionTag. The `tag.*` commands operate on all tags directly.
+**Sugar commands** (create operators as side effect):
+- `link.add cell.age cell.alpha` → creates an Operator with `source: 'link'` and JS fast-path resolution
+- `expr.set alpha "age / 100"` → creates an Operator with `source: 'code'` and Python evaluation
+- `script.add monitor "..."` → creates an Operator with `source: 'script'`
+- All three produce the same underlying Operator. The `op.*` commands operate on all operators directly.
 
-**UI**: Card View (drawer 3, `defaultFilters=['tags', 'globals']`) shows tag cards with TagRow editing + variable cards with inline editing. Multi-select filters allow viewing any combination. Tags use rich expand-to-edit forms (name, code, phase). Variables have inline value editing. TagAddForm supports expression, link wizard, and script creation modes. `expressionStore` is the canonical tag data source; `scriptStore` holds global variables.
+**UI**: Card View (drawer 3, `defaultFilters=['ops', 'globals']`) shows operator cards with OpRow editing + variable cards with inline editing. Multi-select filters allow viewing any combination. Operators use rich expand-to-edit forms (name, code, phase). Variables have inline value editing. OpAddForm supports expression, link wizard, and script creation modes. `expressionStore` (UI name: operator store) is the canonical operator data source; `scriptStore` holds global variables.
 
 **Cell property commands:**
 - `cell.addProperty { type, name, propType, default? }` — add a new property to a cell type
@@ -428,7 +429,7 @@ interface ExpressionTag {
 
 User-added params (`param.add`) are stored in `SimulationController.userParamDefs` and merged with preset params in `getParamDefs()`. They are cleared on preset load. The store marks them with `isUser: true` so the UI can distinguish removable vs. protected params.
 
-**Fast-path optimization:** Link-sourced tags with `linkMeta` use JS rangeMap — no Pyodide needed. Performance parity with the legacy LinkRegistry.
+**Fast-path optimization:** Link-sourced operators with `linkMeta` use JS rangeMap — no Pyodide needed. Performance parity with the legacy LinkRegistry.
 
 ---
 
@@ -493,12 +494,12 @@ GPU tick pipeline (per frame):
   1. Rule stages (1..N compute dispatches, buffer swap after each)
      - Single-pass: 1 dispatch
      - Multi-stage: N dispatches (fire = 8 stages, 17 dispatches incl. Jacobi x10)
-  2. Expression tag passes (post-rule GPU compute, buffer swap after each)
+  2. Operator passes (post-rule GPU compute, buffer swap after each)
   3. Visual mapping pass (ramp or script → GPU compute, writes colorR/G/B/alpha)
   4. Fragment shader reads colorR/G/B/alpha → render to canvas
 ```
-Tags within each phase are evaluated in dependency order (topological sort).
-Pre-rule link tags use JS rangeMap for speed. Post-rule code tags go through
+Operators within each phase are evaluated in dependency order (topological sort).
+Pre-rule link operators use JS rangeMap for speed. Post-rule code operators go through
 the Pyodide Python harness.
 
 ### Compute-Ahead Pipeline
@@ -758,7 +759,7 @@ A GitHub Actions workflow hits the Lattice REST API: loads each built-in preset,
 | 4     | Pyodide Integration      | Python runtime in Web Worker. Lazy loading. Grid transfer.  |
 | 5     | Python Scripting         | Expressions, global scripts, global variable store.         |
 | 6     | Parameter Linking        | C4D-style property-to-property links with range + easing.   |
-| 7     | Multi-Cell Types + Tags  | Multiple types per grid. Stackable behavior tags.           |
+| 7     | Multi-Cell Types + Ops   | Multiple types per grid. Stackable behavior operators.      |
 | SG-0–9| Scene Graph              | C4D object tree. SceneNode primitive. See `docs/SCENE_GRAPH.md`. |
 | 8     | Node-Based Scripting     | Visual node editor as panel type. Compiles to Python.       |
 | 9     | Independent Viewports    | Each viewport can be its own SimulationInstance.             |
@@ -793,7 +794,7 @@ P11 (MCP) can begin any time after P10 — it only needs the command registry an
 | **Expression**    | Python one-liner attached to a property, evaluated per-tick.     |
 | **Global script** | Free-standing Python that can read/write any parameter per-frame.|
 | **Global variable** | Named value in a shared store, addressable as `global.*`.     |
-| **Tag**           | Stackable behavior modifier attached to a cell type.             |
+| **Operator (Op)** | Stackable computation unit attached to a scene node (formerly "Tag"). |
 | **Link**          | Property-to-property connection with range mapping and easing.   |
 | **Panel**         | A registered UI component (viewport, terminal, cellPanel, etc.). |
 | **Zone**          | Layout area: left drawer, center, right drawer, bottom drawer.   |

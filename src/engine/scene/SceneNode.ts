@@ -34,7 +34,7 @@ export interface SceneNode {
   enabled: boolean;
   /** Generic property bag (color, gridConfig, paramDefs, etc.) */
   properties: Record<string, unknown>;
-  /** IDs of ExpressionTags attached to this node */
+  /** Operator IDs attached to this node. UI: "Ops" */
   tags: string[];
 }
 

@@ -95,8 +95,8 @@ schema_version: "1"
 meta:
   name: "Conway's Advanced"
   author: "Lattice Engine"
-  description: "GoL with age-fading, position-based color, and death-by-age tags."
-  tags: ["2d", "tags", "visual", "advanced"]
+  description: "GoL with age-fading, position-based color, and death-by-age operators."
+  tags: ["2d", "ops", "visual", "advanced"]
 grid:
   dimensionality: "2d"
   width: 128

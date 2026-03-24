@@ -31,6 +31,7 @@ interface ExpressionPass {
   name: string;
   pipeline: GPUComputePipeline;
   bindGroups: [GPUBindGroup, GPUBindGroup];
+  enabled: boolean;
 }
 
 /** A compiled rule stage with iteration count */
@@ -40,6 +41,30 @@ interface RuleStage {
   bindGroups: [GPUBindGroup, GPUBindGroup];
   /** Number of times to dispatch this stage per tick (default 1) */
   iterations: number;
+  enabled: boolean;
+}
+
+/** A single entry in the pipeline execution order */
+export interface PipelineEntry {
+  /** Unique ID (stage name for rules, pass name for ops, 'visual-ramp'/'visual-script' for visual) */
+  id: string;
+  /** Display name */
+  name: string;
+  /** Pipeline category */
+  type: 'pre-rule-op' | 'rule-stage' | 'post-rule-op' | 'visual-mapping';
+  /** Pipeline phase */
+  phase: 'pre-rule' | 'rule' | 'post-rule' | 'visual';
+  enabled: boolean;
+  /** CPU for pre-rule link ops, GPU for everything else */
+  executionContext: 'cpu' | 'gpu';
+  /** Cross-reference ID (op ID, stage name) */
+  sourceId?: string;
+  /** Expression store operator ID (tag_N) for cross-selection with Tree/CardView */
+  opId?: string;
+  /** For rule stages with iterations > 1 */
+  iterations?: number;
+  /** Position in the full pipeline (0-based) */
+  index: number;
 }
 
 export class GPURuleRunner {
@@ -167,6 +192,7 @@ export class GPURuleRunner {
           pipeline,
           bindGroups: [bg0, bg1],
           iterations: stage.iterations,
+          enabled: true,
         });
 
         logGPU(`Transpiled "${presetName}/${stage.name}" → IR (${irProgram.statements.length} stmts)${stage.iterations > 1 ? ` ×${stage.iterations}` : ''}`);
@@ -280,7 +306,7 @@ export class GPURuleRunner {
         const bg0 = this.createBindGroup(readBuf, writeBuf, paramsBuf);
         const bg1 = this.createBindGroup(writeBuf, readBuf, paramsBuf);
 
-        this.expressionPasses.push({ name: tag.name, pipeline, bindGroups: [bg0, bg1] });
+        this.expressionPasses.push({ name: tag.name, pipeline, bindGroups: [bg0, bg1], enabled: true });
         logGPU(`Expression tag "${tag.name}" compiled to GPU`);
       } catch (e) {
         logGPU(`Expression tag "${tag.name}" transpile failed: ${e instanceof Error ? e.message : e}`);
@@ -359,7 +385,7 @@ export class GPURuleRunner {
             const pipeline = this.createPipelineWithLayout(wgsl, 'visual-ramp');
             const bg0 = this.createBindGroup(readBuf, writeBuf, paramsBuf);
             const bg1 = this.createBindGroup(writeBuf, readBuf, paramsBuf);
-            this.expressionPasses.push({ name: 'visual-ramp', pipeline, bindGroups: [bg0, bg1] });
+            this.expressionPasses.push({ name: 'visual-ramp', pipeline, bindGroups: [bg0, bg1], enabled: true });
             this._hasVisualMappingPass = true;
             logGPU(`Visual mapping ramp compiled to GPU (${rampMappings.length} ramp(s))`);
           }
@@ -400,7 +426,7 @@ export class GPURuleRunner {
         const pipeline = this.createPipelineWithLayout(wgsl, 'visual-script');
         const bg0 = this.createBindGroup(readBuf, writeBuf, paramsBuf);
         const bg1 = this.createBindGroup(writeBuf, readBuf, paramsBuf);
-        this.expressionPasses.push({ name: 'visual-script', pipeline, bindGroups: [bg0, bg1] });
+        this.expressionPasses.push({ name: 'visual-script', pipeline, bindGroups: [bg0, bg1], enabled: true });
         this._hasVisualMappingPass = true;
         logGPU(`Visual mapping script compiled to GPU`);
       } catch (e) {
@@ -429,6 +455,7 @@ export class GPURuleRunner {
     this.bufferManager.updateParams(this.getEnvParamsObject());
 
     for (const pass of this.expressionPasses) {
+      if (!pass.enabled) continue;
       this.computeDispatcher.dispatchAndSubmit(
         pass.pipeline,
         pass.bindGroups[this.currentBindGroup],
@@ -461,6 +488,7 @@ export class GPURuleRunner {
 
     // Rule stages (each dispatches N iterations with buffer swaps)
     for (const stage of this.ruleStages) {
+      if (!stage.enabled) continue;
       for (let i = 0; i < stage.iterations; i++) {
         this.computeDispatcher.dispatchAndSubmit(
           stage.pipeline,
@@ -474,6 +502,7 @@ export class GPURuleRunner {
 
     // Expression tag passes (each reads current, writes to other, then swaps)
     for (const pass of this.expressionPasses) {
+      if (!pass.enabled) continue;
       this.computeDispatcher.dispatchAndSubmit(
         pass.pipeline,
         pass.bindGroups[this.currentBindGroup],
@@ -543,6 +572,177 @@ export class GPURuleRunner {
 
   /** Get the generated WGSL source (for debugging / ir.show) */
   getWGSL(): string { return this.wgsl; }
+
+  /** Get the preset (for pipeline introspection) */
+  getPreset(): PresetConfig { return this.preset; }
+
+  /**
+   * Return the full dispatch sequence as an ordered list.
+   * Matches the actual execution order in tick():
+   *   pre-rule ops (CPU) → rule stages (GPU) → post-rule expression passes (GPU) → visual mapping (GPU)
+   */
+  getExecutionOrder(): PipelineEntry[] {
+    const entries: PipelineEntry[] = [];
+    let idx = 0;
+
+    // 1. Pre-rule ops — link-sourced fast-path evaluations (CPU)
+    const tags = this.preset.expression_tags;
+    if (tags) {
+      for (const tag of tags) {
+        if (tag.phase === 'pre-rule') {
+          entries.push({
+            id: `pre-rule-${tag.name}`,
+            name: tag.name,
+            type: 'pre-rule-op',
+            phase: 'pre-rule',
+            enabled: tag.enabled !== false,
+            executionContext: 'cpu',
+            sourceId: tag.name,
+            index: idx++,
+          });
+        }
+      }
+    }
+
+    // 2. Rule stages (GPU)
+    for (const stage of this.ruleStages) {
+      entries.push({
+        id: `rule-${stage.name}`,
+        name: stage.name,
+        type: 'rule-stage',
+        phase: 'rule',
+        enabled: stage.enabled,
+        executionContext: 'gpu',
+        sourceId: stage.name,
+        iterations: stage.iterations > 1 ? stage.iterations : undefined,
+        index: idx++,
+      });
+    }
+
+    // 3. Post-rule expression passes + visual mapping passes (GPU)
+    // expressionPasses contains both post-rule ops AND visual mapping passes in order
+    for (const pass of this.expressionPasses) {
+      const isVisual = pass.name === 'visual-ramp' || pass.name === 'visual-script';
+      entries.push({
+        id: isVisual ? pass.name : `post-rule-${pass.name}`,
+        name: isVisual ? (pass.name === 'visual-ramp' ? 'Color Ramp' : 'Color Script') : pass.name,
+        type: isVisual ? 'visual-mapping' : 'post-rule-op',
+        phase: isVisual ? 'visual' : 'post-rule',
+        enabled: pass.enabled,
+        executionContext: 'gpu',
+        sourceId: pass.name,
+        index: idx++,
+      });
+    }
+
+    return entries;
+  }
+
+  /**
+   * Enable or disable a rule stage by name. No recompilation — just skips at dispatch time.
+   */
+  setStageEnabled(name: string, enabled: boolean): void {
+    const stage = this.ruleStages.find((s) => s.name === name);
+    if (stage) stage.enabled = enabled;
+  }
+
+  /**
+   * Enable or disable an expression/visual pass by name. No recompilation.
+   */
+  setPassEnabled(name: string, enabled: boolean): void {
+    const pass = this.expressionPasses.find((p) => p.name === name);
+    if (pass) pass.enabled = enabled;
+  }
+
+  /**
+   * Reorder a rule stage within the compiled ruleStages array.
+   * Changes actual GPU dispatch order — no recompilation needed.
+   * Also reorders the preset config stages array to stay in sync.
+   */
+  reorderStage(name: string, newIndex: number): boolean {
+    const curIdx = this.ruleStages.findIndex((s) => s.name === name);
+    if (curIdx < 0 || newIndex < 0 || newIndex >= this.ruleStages.length || curIdx === newIndex) return false;
+    const [moved] = this.ruleStages.splice(curIdx, 1);
+    this.ruleStages.splice(newIndex, 0, moved);
+    // Keep preset config in sync
+    if (this.preset.rule.stages) {
+      const presetIdx = this.preset.rule.stages.findIndex((s) => s.name === name);
+      if (presetIdx >= 0) {
+        const [presetMoved] = this.preset.rule.stages.splice(presetIdx, 1);
+        this.preset.rule.stages.splice(newIndex, 0, presetMoved);
+      }
+    }
+    return true;
+  }
+
+  /**
+   * Reorder an expression/visual pass within the compiled expressionPasses array.
+   * Changes actual GPU dispatch order — no recompilation needed.
+   * Constrains reorder to non-visual passes only (visual passes stay at the end).
+   * Also reorders the preset config expression_tags array to stay in sync.
+   */
+  reorderPass(name: string, newIndex: number): boolean {
+    // Find all non-visual passes (the reorderable set)
+    const nonVisualIndices: number[] = [];
+    for (let i = 0; i < this.expressionPasses.length; i++) {
+      const p = this.expressionPasses[i];
+      if (p.name !== 'visual-ramp' && p.name !== 'visual-script') {
+        nonVisualIndices.push(i);
+      }
+    }
+    const curLocalIdx = nonVisualIndices.findIndex(
+      (gi) => this.expressionPasses[gi].name === name,
+    );
+    if (curLocalIdx < 0 || newIndex < 0 || newIndex >= nonVisualIndices.length || curLocalIdx === newIndex) return false;
+
+    // Remove from current global position
+    const curGlobalIdx = nonVisualIndices[curLocalIdx];
+    const [moved] = this.expressionPasses.splice(curGlobalIdx, 1);
+
+    // Recompute non-visual indices after removal
+    const updatedIndices: number[] = [];
+    for (let i = 0; i < this.expressionPasses.length; i++) {
+      const p = this.expressionPasses[i];
+      if (p.name !== 'visual-ramp' && p.name !== 'visual-script') {
+        updatedIndices.push(i);
+      }
+    }
+    // Insert at new local position
+    const insertGlobal = newIndex < updatedIndices.length
+      ? updatedIndices[newIndex]
+      : (updatedIndices.length > 0 ? updatedIndices[updatedIndices.length - 1] + 1 : this.expressionPasses.length);
+    this.expressionPasses.splice(insertGlobal, 0, moved);
+
+    // Keep preset config expression_tags in sync (same-phase reorder)
+    if (this.preset.expression_tags) {
+      const phase = 'post-rule';
+      const phaseIndices: number[] = [];
+      for (let i = 0; i < this.preset.expression_tags.length; i++) {
+        if (this.preset.expression_tags[i].phase === phase) {
+          phaseIndices.push(i);
+        }
+      }
+      const presetLocalIdx = phaseIndices.findIndex(
+        (gi) => this.preset.expression_tags![gi].name === name,
+      );
+      if (presetLocalIdx >= 0) {
+        const presetGlobalIdx = phaseIndices[presetLocalIdx];
+        const [presetMoved] = this.preset.expression_tags.splice(presetGlobalIdx, 1);
+        // Recompute after removal
+        const updatedPhaseIndices: number[] = [];
+        for (let i = 0; i < this.preset.expression_tags.length; i++) {
+          if (this.preset.expression_tags[i].phase === phase) {
+            updatedPhaseIndices.push(i);
+          }
+        }
+        const presetInsert = newIndex < updatedPhaseIndices.length
+          ? updatedPhaseIndices[newIndex]
+          : (updatedPhaseIndices.length > 0 ? updatedPhaseIndices[updatedPhaseIndices.length - 1] + 1 : this.preset.expression_tags.length);
+        this.preset.expression_tags.splice(presetInsert, 0, presetMoved);
+      }
+    }
+    return true;
+  }
 
   /**
    * Upload new cell data from CPU. Used for cell editing and state restore.

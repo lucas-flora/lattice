@@ -1,45 +1,52 @@
 /**
- * InspectorPanel: context-sensitive property panel for the selected scene node.
+ * InspectorPanel: context-sensitive property panel for the selected scene node
+ * or pipeline entry.
  *
- * Shows different content based on the selected node's type:
- * - sim-root: grid config, preset info
- * - cell-type: color, property list, tags
- * - environment: parameter sliders
- * - globals: variable editor
- * - group: name, shared properties
- * - nothing: placeholder
- *
- * Supports floating and docked modes (like ScriptPanel / ParamPanel).
- * Toggle with key 4, dock with Ctrl+4.
+ * Routes based on:
+ * 1. Selected scene node (from sceneStore.selectedNodeId)
+ * 2. Selected pipeline entry (from uiStore.selectedPipelineEntryId) — for rule
+ *    stages and ops that don't have scene nodes
+ * 3. Nothing selected — empty state
  */
 
-import React, { useCallback } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import type { PanelProps } from '../../layout/types';
 import { useSceneStore } from '../../store/sceneStore';
 import { useExpressionStore } from '../../store/expressionStore';
+import { useUiStore } from '../../store/uiStore';
 import { useLayoutStore, layoutStoreActions } from '../../store/layoutStore';
 import { commandRegistry } from '../../commands/CommandRegistry';
 import { ResizeHandle } from '../ui/ResizeHandle';
 import { NODE_TYPES } from '../../engine/scene/SceneNode';
+import type { SceneNode } from '../../engine/scene/SceneNode';
+import { InspectorHeader } from './inspector/InspectorHeader';
 import { SimRootSection } from './inspector/SimRootSection';
 import { CellTypeSection } from './inspector/CellTypeSection';
 import { EnvironmentSection } from './inspector/EnvironmentSection';
 import { GlobalsSection } from './inspector/GlobalsSection';
 import { StateSection } from './inspector/StateSection';
 import { VisualSection } from './inspector/VisualSection';
-import { TagRow } from './TagRow';
+import { LogicInspectorTabs } from './inspector/LogicInspectorTabs';
+import { RuleStageSection } from './inspector/RuleStageSection';
+import { OperatorSection } from './inspector/OperatorSection';
+import { OpRow } from './OpRow';
+import { getController } from '../AppShell';
 
-/** Type icon map */
-const TYPE_LABELS: Record<string, string> = {
-  [NODE_TYPES.SIM_ROOT]: 'Simulation Root',
-  [NODE_TYPES.CELL_TYPE]: 'Cell Type',
-  [NODE_TYPES.ENVIRONMENT]: 'Environment',
-  [NODE_TYPES.GLOBALS]: 'Globals',
-  [NODE_TYPES.GROUP]: 'Group',
-  [NODE_TYPES.INITIAL_STATE]: 'Initial State',
-  [NODE_TYPES.SHARED]: 'Shared',
-  [NODE_TYPES.VISUAL]: 'Color Mapping',
-};
+/** Extract code from a visual node's properties for the Code tab */
+function getVisualCode(node: SceneNode): string | undefined {
+  // Scene graph stores mappings at node.properties.mappings (not visual_mappings)
+  const mappings = (node.properties.mappings ?? node.properties.visual_mappings) as Array<{ type?: string; code?: string }> | undefined;
+  if (!mappings) return undefined;
+  const scriptMapping = mappings.find((m) => m.type === 'script' && m.code);
+  return scriptMapping?.code;
+}
+
+function getVisualCodeLang(node: SceneNode): string {
+  const mappings = (node.properties.mappings ?? node.properties.visual_mappings) as Array<{ type?: string }> | undefined;
+  if (!mappings) return 'Config';
+  const hasScript = mappings.some((m) => m.type === 'script');
+  return hasScript ? 'Python (transpiled to WGSL)' : 'Ramp Config';
+}
 
 /** Inner content — used by both the registered panel and the shell wrapper */
 export const InspectorPanel: React.FC<PanelProps> = () => {
@@ -52,65 +59,188 @@ function InspectorContent() {
     s.selectedNodeId ? s.nodes[s.selectedNodeId] : null,
   );
   const tags = useExpressionStore((s) => s.tags);
+  const selectedPipelineEntryId = useUiStore((s) => s.selectedPipelineEntryId);
+  const focusedOpId = useUiStore((s) => s.focusedOpId);
 
-  if (!node) {
-    return (
-      <div className="flex-1 flex items-center justify-center px-4">
-        <span className="text-zinc-500 text-[11px] text-center">
-          Select an object in the Object Manager (1)
-        </span>
-      </div>
-    );
+  // If a scene node is selected AND an op is focused, show the op detail
+  if (node && focusedOpId) {
+    const focusedOp = tags.find((t) => t.id === focusedOpId);
+    if (focusedOp) {
+      return <OperatorSection op={focusedOp} />;
+    }
   }
 
-  const typeLabel = TYPE_LABELS[node.type] ?? node.type;
+  // If a scene node is selected, show its detail
+  if (node) {
+    return <SceneNodeDetail node={node} nodeId={selectedNodeId!} tags={tags} />;
+  }
+
+  // Pipeline entry selected (for rule stages that aren't scene nodes)
+  if (selectedPipelineEntryId) {
+    return <PipelineEntryDetail entryId={selectedPipelineEntryId} tags={tags} />;
+  }
+
+  return (
+    <div className="flex-1 flex items-center justify-center px-4">
+      <span className="text-zinc-500 text-[11px] text-center">
+        Select an object to inspect
+      </span>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Scene node detail (existing routing, now with InspectorHeader)
+// ---------------------------------------------------------------------------
+
+function SceneNodeDetail({ node, nodeId, tags }: { node: SceneNode; nodeId: string; tags: import('../../engine/expression/types').Operator[] }) {
   const nodeTags = tags.filter((t) => node.tags.includes(t.id));
+
+  const handleDelete = useCallback(() => {
+    commandRegistry.execute('scene.remove', { id: nodeId });
+  }, [nodeId]);
+
+  const handleEnabledChange = useCallback((enabled: boolean) => {
+    commandRegistry.execute(enabled ? 'scene.enable' : 'scene.disable', { id: nodeId });
+  }, [nodeId]);
+
+  // Determine header props based on node type
+  const isLogicNode = node.type === NODE_TYPES.VISUAL;
+  const typeLabel = {
+    [NODE_TYPES.SIM_ROOT]: 'Sim Root',
+    [NODE_TYPES.CELL_TYPE]: 'Cell Type',
+    [NODE_TYPES.ENVIRONMENT]: 'Environment',
+    [NODE_TYPES.GLOBALS]: 'Globals',
+    [NODE_TYPES.GROUP]: 'Group',
+    [NODE_TYPES.INITIAL_STATE]: 'Initial State',
+    [NODE_TYPES.VISUAL]: 'Visual Mapping',
+  }[node.type] ?? node.type;
+
+  const typeColor = {
+    [NODE_TYPES.VISUAL]: 'bg-purple-500/15 text-purple-400',
+  }[node.type] ?? 'bg-zinc-800 text-zinc-500';
+
+  const canDelete = node.type !== NODE_TYPES.SIM_ROOT
+    && node.type !== NODE_TYPES.ENVIRONMENT
+    && node.type !== NODE_TYPES.GLOBALS;
 
   return (
     <>
-      {/* Node header */}
-      <div className="px-2 py-1.5 border-b border-zinc-700/50">
-        <div className="flex items-center justify-between">
-          <span className="text-green-400 text-[11px] font-mono">{node.name}</span>
-          <span className="text-[9px] px-1 rounded bg-zinc-800 text-zinc-500 font-mono leading-tight">
-            {typeLabel}
-          </span>
-        </div>
-      </div>
+      <InspectorHeader
+        nodeId={nodeId}
+        name={node.name}
+        typeLabel={typeLabel}
+        typeColor={typeColor}
+        editable={node.type !== NODE_TYPES.SIM_ROOT}
+        showEnabled={isLogicNode}
+        enabled={node.enabled}
+        onEnabledChange={handleEnabledChange}
+        showDelete={canDelete}
+        onDelete={handleDelete}
+      />
 
-      {/* Content */}
       <div className="flex-1 overflow-y-auto px-2 py-1.5 space-y-2">
-        {/* Type-specific section */}
         {node.type === NODE_TYPES.SIM_ROOT && <SimRootSection node={node} />}
         {node.type === NODE_TYPES.CELL_TYPE && <CellTypeSection node={node} />}
         {node.type === NODE_TYPES.ENVIRONMENT && <EnvironmentSection node={node} />}
         {node.type === NODE_TYPES.GLOBALS && <GlobalsSection node={node} />}
         {node.type === NODE_TYPES.INITIAL_STATE && <StateSection node={node} />}
-        {node.type === NODE_TYPES.VISUAL && <VisualSection node={node} />}
+        {node.type === NODE_TYPES.VISUAL && (
+          <LogicInspectorTabs
+            node={node}
+            summaryContent={<VisualSection node={node} />}
+            code={getVisualCode(node)}
+            codeLang={getVisualCodeLang(node)}
+            noCodeMessage="No source code — this mapping uses a ramp/discrete configuration. See the Summary tab."
+          />
+        )}
         {node.type === NODE_TYPES.GROUP && (
           <div className="text-zinc-500 text-[11px]">
             Organizational container. {node.childIds.length} children.
           </div>
         )}
 
-        {/* Tags section (all node types) — uses real TagRow for edit/toggle */}
+        {/* Attached ops */}
         {nodeTags.length > 0 && (
           <div className="space-y-1">
             <div className="text-zinc-400 text-[9px] uppercase tracking-wide font-mono">
-              Tags ({nodeTags.length})
+              Ops ({nodeTags.length})
             </div>
             {nodeTags.map((tag) => (
-              <TagRow key={tag.id} tag={tag} />
+              <OpRow key={tag.id} op={tag} />
             ))}
           </div>
         )}
 
-        {/* ID (debug) */}
+        {/* Debug ID */}
         <div className="text-[9px] text-zinc-600 pt-1 border-t border-zinc-800 font-mono">
-          {selectedNodeId}
+          {nodeId}
         </div>
       </div>
     </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Pipeline entry detail (for rule stages and ops selected from Pipeline View)
+// ---------------------------------------------------------------------------
+
+function PipelineEntryDetail({ entryId, tags }: { entryId: string; tags: import('../../engine/expression/types').Operator[] }) {
+  // Look up the pipeline entry by ID
+  const ctrl = getController();
+  const runner = ctrl?.getGPURuleRunner();
+  const entries = useMemo(() => runner?.getExecutionOrder() ?? [], [runner]);
+  const entry = entries.find((e) => e.id === entryId);
+
+  // If not found as a pipeline entry, check if it's an expression store op ID
+  // (ops selected from the Object Manager tree use their store ID directly)
+  const directOp = !entry ? tags.find((t) => t.id === entryId) : null;
+  if (directOp) {
+    return <OperatorSection op={directOp} />;
+  }
+
+  if (!entry) {
+    return (
+      <div className="flex-1 flex items-center justify-center px-4">
+        <span className="text-zinc-500 text-[11px] text-center">
+          Select an object to inspect
+        </span>
+      </div>
+    );
+  }
+
+  // Rule stages: check if there's a matching op in the expression store (rule tags),
+  // otherwise show the RuleStageSection with preset data
+  if (entry.type === 'rule-stage') {
+    const op = tags.find((t) => t.phase === 'rule' && t.name.includes(entry.sourceId!));
+    if (op) {
+      return <OperatorSection op={op} />;
+    }
+    return <RuleStageSection entry={entry} />;
+  }
+
+  // Post/pre-rule operators: find matching op from the expression store
+  if (entry.type === 'post-rule-op' || entry.type === 'pre-rule-op') {
+    const op = tags.find((t) => t.name === entry.sourceId || t.name.includes(entry.sourceId!));
+    if (op) {
+      return <OperatorSection op={op} />;
+    }
+  }
+
+  // Visual mapping entries — these should have selected the visual scene node instead
+  // but handle gracefully
+  return (
+    <div className="px-2 py-1.5">
+      <InspectorHeader
+        nodeId={entry.id}
+        name={entry.name}
+        typeLabel={entry.type.replace(/-/g, ' ')}
+        editable={false}
+      />
+      <div className="text-[11px] text-zinc-500 mt-2">
+        Select this entry in the Tree tab to see full details.
+      </div>
+    </div>
   );
 }
 

@@ -1,9 +1,9 @@
 /**
  * CardViewPanel: unified filtered card view of the scene graph.
  *
- * One component powers both drawer 2 (default: cells) and drawer 3 (default: tags+globals).
+ * One component powers both drawer 2 (default: cells) and drawer 3 (default: ops+globals).
  * Multi-select type filters. Collapsible sections per type with per-section + buttons.
- * Tag cards use TagRow for rich editing. Variable cards have inline editing.
+ * Op cards use OpRow for rich editing. Variable cards have inline editing.
  * All mutations via commandRegistry.execute() (Three Surface Doctrine).
  */
 
@@ -17,8 +17,8 @@ import { useScriptStore } from '@/store/scriptStore';
 import { useExpressionStore } from '@/store/expressionStore';
 import { commandRegistry } from '@/commands/CommandRegistry';
 import { CellCard } from './CellCard';
-import { TagRow } from './TagRow';
-import { TagAddForm } from './TagAddForm';
+import { OpRow } from './OpRow';
+import { OpAddForm } from './OpAddForm';
 import { NODE_TYPES } from '@/engine/scene/SceneNode';
 import type { SceneNode } from '@/engine/scene/SceneNode';
 
@@ -26,17 +26,22 @@ import type { SceneNode } from '@/engine/scene/SceneNode';
 // Types
 // ---------------------------------------------------------------------------
 
-type FilterKey = 'cells' | 'env' | 'globals' | 'tags';
+type FilterKey = 'cells' | 'env' | 'globals' | 'ops' | 'visual' | 'state' | 'groups';
 
+/** Filter definitions ordered by pipeline execution position:
+ * data definitions first, then computation pipeline, then structural. */
 const FILTER_DEFS: { key: FilterKey; label: string; icon: string }[] = [
   { key: 'cells', label: 'Cells', icon: '\u25A3' },
   { key: 'env', label: 'Env', icon: '\u2699' },
+  { key: 'ops', label: 'Ops', icon: '\u0192' },
+  { key: 'visual', label: 'Visual', icon: '\u25D0' },
   { key: 'globals', label: 'Vars', icon: 'x' },
-  { key: 'tags', label: 'Tags', icon: '\u0192' },
+  { key: 'state', label: 'State', icon: '\u23F5' },
+  { key: 'groups', label: 'Groups', icon: '\u25E7' },
 ];
 
 interface CardViewPanelProps extends Partial<PanelProps> {
-  /** Which filters are active by default */
+  /** Which filters are active by default. If omitted, defaults based on panelId. */
   defaultFilters?: FilterKey[];
 }
 
@@ -334,82 +339,112 @@ function CellCards({
   const cellTypes = useSimStore((s) => s.cellTypes);
   const cellProperties = useSimStore((s) => s.cellProperties);
 
-  if (cellTypes.length > 0) {
-    return (
-      <>
-        {cellTypes.map((ct) => {
-          const sceneNode = nodes.find(
-            (n) => n.name === ct.name || (n.properties as Record<string, unknown>).cellTypeId === ct.id,
-          );
-          const nodeId = sceneNode?.id ?? ct.id;
-          const isSelected = selectedNodeId === nodeId;
-          return (
-            <div
-              key={ct.id}
-              onClick={() => onSelect(nodeId)}
-              className={`cursor-pointer rounded transition-colors ${isSelected ? 'ring-1 ring-green-500/60' : ''}`}
-              data-testid={`card-cell-${ct.id}`}
-            >
-              <CellCard
-                typeName={ct.name}
-                typeId={ct.id}
-                color={ct.color}
-                properties={ct.properties.map((p) => ({
-                  name: p.name,
-                  type: p.type,
-                  default: p.default,
-                  role: p.role,
-                  isInherent: p.isInherent,
-                }))}
-              />
-            </div>
-          );
-        })}
-      </>
-    );
-  }
+  // Track which scene nodes are already represented by simStore cellTypes
+  const matchedNodeIds = new Set<string>();
 
-  if (cellProperties.length > 0) {
+  const engineCards = cellTypes.length > 0 ? cellTypes.map((ct) => {
+    const sceneNode = nodes.find(
+      (n) => n.name === ct.name || (n.properties as Record<string, unknown>).cellTypeId === ct.id,
+    );
+    if (sceneNode) matchedNodeIds.add(sceneNode.id);
+    const nodeId = sceneNode?.id ?? ct.id;
+    const isSelected = selectedNodeId === nodeId;
     return (
       <div
-        onClick={() => nodes[0] && onSelect(nodes[0].id)}
-        className={`cursor-pointer rounded transition-colors ${
-          nodes[0] && selectedNodeId === nodes[0].id ? 'ring-1 ring-green-500/60' : ''
-        }`}
+        key={ct.id}
+        onClick={() => onSelect(nodeId)}
+        className={`cursor-pointer rounded transition-colors ${isSelected ? 'ring-1 ring-green-500/60' : ''}`}
+        data-testid={`card-cell-${ct.id}`}
       >
         <CellCard
-          typeName="Cell"
-          typeId="default"
-          color="#4ade80"
-          properties={cellProperties.map((p) => ({
+          typeName={ct.name}
+          typeId={ct.id}
+          color={ct.color}
+          properties={ct.properties.map((p) => ({
             name: p.name,
             type: p.type,
             default: p.default,
             role: p.role,
+            isInherent: p.isInherent,
           }))}
         />
       </div>
     );
-  }
+  }) : cellProperties.length > 0 ? [(
+    <div
+      key="default-cell"
+      onClick={() => nodes[0] && onSelect(nodes[0].id)}
+      className={`cursor-pointer rounded transition-colors ${
+        nodes[0] && selectedNodeId === nodes[0].id ? 'ring-1 ring-green-500/60' : ''
+      }`}
+    >
+      <CellCard
+        typeName="Cell"
+        typeId="default"
+        color="#4ade80"
+        properties={cellProperties.map((p) => ({
+          name: p.name,
+          type: p.type,
+          default: p.default,
+          role: p.role,
+        }))}
+      />
+    </div>
+  )] : [];
+
+  // Show scene-only cell nodes (created via + but not yet in engine typeRegistry)
+  const sceneOnlyCards = nodes
+    .filter((n) => !matchedNodeIds.has(n.id))
+    .map((n) => {
+      const props = n.properties as Record<string, unknown>;
+      const color = (props.color as string) ?? '#888888';
+      const cellProps = (props.cellProperties as Array<{ name: string; type: string; default: number | number[]; role?: string; isInherent?: boolean }>) ?? [];
+      const isSelected = selectedNodeId === n.id;
+      return (
+        <div
+          key={n.id}
+          onClick={() => onSelect(n.id)}
+          className={`cursor-pointer rounded transition-colors ${isSelected ? 'ring-1 ring-green-500/60' : ''}`}
+          data-testid={`card-cell-${n.id}`}
+        >
+          <CellCard
+            typeName={n.name}
+            typeId={n.id}
+            color={color}
+            properties={cellProps.map((p) => ({
+              name: p.name,
+              type: p.type as 'bool' | 'int' | 'float' | 'vec2' | 'vec3' | 'vec4',
+              default: p.default,
+              role: p.role,
+              isInherent: p.isInherent,
+            }))}
+          />
+        </div>
+      );
+    });
+
+  if (engineCards.length === 0 && sceneOnlyCards.length === 0) return null;
+
+  return <>{[...engineCards, ...sceneOnlyCards]}</>;
 
   return null;
 }
 
 // ---------------------------------------------------------------------------
-// Tag cards (using TagRow for rich editing)
+// Op cards (using OpRow for rich editing)
 // ---------------------------------------------------------------------------
 
-function TagCards() {
+function OpCards() {
   const tags = useExpressionStore((s) => s.tags);
 
   if (tags.length === 0) {
-    return <p className="text-[10px] font-mono text-zinc-600 italic px-1">No tags</p>;
+    return <p className="text-[10px] font-mono text-zinc-600 italic px-1">No operators</p>;
   }
 
   return (
     <div className="space-y-1.5">
-      {tags.map((tag) => (
-        <TagRow key={tag.id} tag={tag} />
+      {tags.map((op) => (
+        <OpRow key={op.id} op={op} />
       ))}
     </div>
   );
@@ -478,19 +513,23 @@ export function CardViewPanel({ defaultFilters }: CardViewPanelProps) {
   const initFilters = defaultFilters ?? ['cells'];
   const [activeFilters, setActiveFilters] = useState<Set<FilterKey>>(new Set(initFilters));
   const [collapsedSections, setCollapsedSections] = useState<Set<FilterKey>>(new Set());
-  const [showTagAddForm, setShowTagAddForm] = useState(false);
+  const [showOpAddForm, setShowOpAddForm] = useState(false);
   const [showVarAddForm, setShowVarAddForm] = useState(false);
 
   const nodes = useSceneStore((s) => s.nodes);
   const selectedNodeId = useSceneStore((s) => s.selectedNodeId);
   const tags = useExpressionStore((s) => s.tags);
   const variables = useScriptStore((s) => s.globalVariables);
+  const cellTypes = useSimStore((s) => s.cellTypes);
 
   const allNodes = useMemo(() => Object.values(nodes), [nodes]);
 
   // Nodes per section
   const cellNodes = useMemo(() => allNodes.filter((n) => n.type === NODE_TYPES.CELL_TYPE), [allNodes]);
   const envNodes = useMemo(() => allNodes.filter((n) => n.type === NODE_TYPES.ENVIRONMENT), [allNodes]);
+  const visualNodes = useMemo(() => allNodes.filter((n) => n.type === NODE_TYPES.VISUAL), [allNodes]);
+  const stateNodes = useMemo(() => allNodes.filter((n) => n.type === NODE_TYPES.INITIAL_STATE), [allNodes]);
+  const groupNodes = useMemo(() => allNodes.filter((n) => n.type === NODE_TYPES.GROUP), [allNodes]);
 
   const handleSelect = useCallback((id: string) => {
     commandRegistry.execute('scene.select', { id });
@@ -535,30 +574,48 @@ export function CardViewPanel({ defaultFilters }: CardViewPanelProps) {
       cells: cellNodes.length,
       env: envNodes.length,
       globals: Object.keys(variables).length,
-      tags: tags.length,
+      ops: tags.length,
+      visual: visualNodes.length,
+      state: stateNodes.length,
+      groups: groupNodes.length,
     }),
-    [cellNodes, envNodes, variables, tags],
+    [cellNodes, envNodes, variables, tags, visualNodes, stateNodes, groupNodes],
   );
 
   const totalCount = activeSections.reduce((sum, key) => sum + sectionCounts[key], 0);
 
-  // Show pyodide status when tags or globals are in the view
-  const showPyodide = activeFilters.has('tags') || activeFilters.has('globals');
+  // Show pyodide status when ops or globals are in the view
+  const showPyodide = activeFilters.has('ops') || activeFilters.has('globals') || activeFilters.has('visual');
 
   // Add handler per section
   const handleAddForSection = useCallback((key: FilterKey) => {
     switch (key) {
-      case 'tags':
-        setShowTagAddForm(true);
+      case 'ops':
+        setShowOpAddForm(true);
         break;
       case 'globals':
         setShowVarAddForm(true);
         break;
-      case 'cells':
-        commandRegistry.execute('scene.add', { type: 'cell-type', name: 'New Cell Type' });
+      case 'cells': {
+        // Find the sim-root node to parent the new cell type under it
+        const simRoot = allNodes.find((n) => n.type === NODE_TYPES.SIM_ROOT);
+        // Copy properties from first existing cell type (inherits base properties)
+        const baseProps = cellTypes.length > 0
+          ? { cellProperties: cellTypes[0].properties.map((p) => ({ name: p.name, type: p.type, default: p.default, role: p.role, isInherent: p.isInherent })) }
+          : {};
+        commandRegistry.execute('scene.add', {
+          type: 'cell-type',
+          name: 'New Cell Type',
+          parentId: simRoot?.id ?? null,
+          properties: { color: '#888888', ...baseProps },
+        });
         break;
+      }
       case 'env':
-        // Environment is usually singleton
+      case 'visual':
+      case 'state':
+      case 'groups':
+        // These types don't have an inline add form
         break;
     }
   }, []);
@@ -589,12 +646,30 @@ export function CardViewPanel({ defaultFilters }: CardViewPanelProps) {
               <VariablesCards />
             </>
           );
-        case 'tags':
+        case 'ops':
           return (
             <>
-              {showTagAddForm && <TagAddForm onClose={() => setShowTagAddForm(false)} />}
-              <TagCards />
+              {showOpAddForm && <OpAddForm onClose={() => setShowOpAddForm(false)} />}
+              <OpCards />
             </>
+          );
+        case 'visual':
+          return visualNodes.length > 0 ? (
+            <GenericCards nodes={visualNodes} selectedNodeId={selectedNodeId} onSelect={handleSelect} />
+          ) : (
+            <p className="text-[10px] font-mono text-zinc-600 italic px-1">No visual mappings</p>
+          );
+        case 'state':
+          return stateNodes.length > 0 ? (
+            <GenericCards nodes={stateNodes} selectedNodeId={selectedNodeId} onSelect={handleSelect} />
+          ) : (
+            <p className="text-[10px] font-mono text-zinc-600 italic px-1">No state snapshots</p>
+          );
+        case 'groups':
+          return groupNodes.length > 0 ? (
+            <GenericCards nodes={groupNodes} selectedNodeId={selectedNodeId} onSelect={handleSelect} />
+          ) : (
+            <p className="text-[10px] font-mono text-zinc-600 italic px-1">No groups</p>
           );
         default:
           return null;
@@ -603,7 +678,7 @@ export function CardViewPanel({ defaultFilters }: CardViewPanelProps) {
 
     if (multiSection) {
       const def = FILTER_DEFS.find((f) => f.key === key)!;
-      const canAdd = key === 'tags' || key === 'globals' || key === 'cells';
+      const canAdd = key === 'ops' || key === 'globals' || key === 'cells';
       return (
         <div key={key} className="mb-1">
           <SectionHeader
@@ -629,7 +704,7 @@ export function CardViewPanel({ defaultFilters }: CardViewPanelProps) {
   return (
     <div className="h-full bg-zinc-900/95 overflow-y-auto" data-testid="card-view-panel">
       {/* Filter bar */}
-      <div className="flex items-center gap-1 px-2 py-1.5 border-b border-zinc-800/50">
+      <div className="flex flex-wrap items-center gap-1 px-2 py-1.5 border-b border-zinc-800/50">
         {FILTER_DEFS.map((f) => {
           const active = activeFilters.has(f.key);
           return (
@@ -654,7 +729,7 @@ export function CardViewPanel({ defaultFilters }: CardViewPanelProps) {
         {!multiSection && activeSections.length === 1 && (
           (() => {
             const key = activeSections[0];
-            const canAdd = key === 'tags' || key === 'globals' || key === 'cells';
+            const canAdd = key === 'ops' || key === 'globals' || key === 'cells';
             if (!canAdd) return null;
             return (
               <button
@@ -676,7 +751,7 @@ export function CardViewPanel({ defaultFilters }: CardViewPanelProps) {
       <div className="px-2 py-1.5">
         {activeSections.map(renderSection)}
 
-        {totalCount === 0 && !showTagAddForm && !showVarAddForm && (
+        {totalCount === 0 && !showOpAddForm && !showVarAddForm && (
           <p className="text-[10px] font-mono text-zinc-600 italic px-1 py-2">
             No items
           </p>
