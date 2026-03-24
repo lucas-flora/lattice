@@ -41,6 +41,10 @@ export function wireStores(eventBus: EventBus): () => void {
     // Reset generation/playback state on preset load
     simStoreActions.resetState();
     simStoreActions.setActivePreset(payload.name, payload.width, payload.height);
+    // Reset timeline to starting position for live mode
+    const defaultSpan = 256;
+    uiStoreActions.setTimelineDuration(defaultSpan);
+    uiStoreActions.setTimelineZoom(0, defaultSpan);
     if (payload.cellProperties) {
       simStoreActions.setCellProperties(payload.cellProperties as Array<{ name: string; type: 'bool' | 'int' | 'float' | 'vec2' | 'vec3' | 'vec4'; default: number | number[]; role?: string; isInherent?: boolean }>);
     }
@@ -51,6 +55,10 @@ export function wireStores(eventBus: EventBus): () => void {
 
   const onReset = () => {
     simStoreActions.resetState();
+    // Reset timeline to starting position — live mode starts fresh from frame 0
+    const defaultSpan = 256;
+    uiStoreActions.setTimelineDuration(defaultSpan);
+    uiStoreActions.setTimelineZoom(0, defaultSpan);
   };
 
   const onSpeedChange = (payload: { fps: number }) => {
