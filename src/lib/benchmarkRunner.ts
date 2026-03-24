@@ -9,6 +9,7 @@
  */
 
 import { Simulation } from '../engine/rule/Simulation';
+import { runInitialStateScript } from '../engine/preset/initialStateRunner';
 import { loadBuiltinPresetClient, type BuiltinPresetNameClient } from '../engine/preset/builtinPresetsClient';
 import type { PresetConfig } from '../engine/preset/types';
 import { supabase } from './supabaseClient';
@@ -84,34 +85,9 @@ function createBenchmarkSimulation(config: BenchmarkConfig): Simulation {
 
   const sim = new Simulation(overridden);
 
-  // Seed random initial state (~25% density)
-  const cellCount = config.gridWidth * config.gridHeight;
-  const colorMapping = presetConfig.visual_mappings?.find(m => m.channel === 'color');
-  const primaryProp = colorMapping?.property
-    ?? presetConfig.cell_properties?.[0]?.name ?? 'alive';
-
-  if (sim.grid.hasProperty(primaryProp)) {
-    for (let i = 0; i < cellCount; i++) {
-      if (Math.random() < 0.25) {
-        sim.setCellDirect(primaryProp, i, 1);
-      }
-    }
-  }
-
-  // For Gray-Scott, seed a central square of V concentration
-  if (config.presetName === 'gray-scott' && sim.grid.hasProperty('v')) {
-    const w = config.gridWidth;
-    const h = config.gridHeight;
-    const cx = Math.floor(w / 2);
-    const cy = Math.floor(h / 2);
-    const r = Math.floor(Math.min(w, h) / 8);
-    for (let y = cy - r; y <= cy + r; y++) {
-      for (let x = cx - r; x <= cx + r; x++) {
-        const idx = y * w + x;
-        sim.setCellDirect('u', idx, 0.5 + Math.random() * 0.02);
-        sim.setCellDirect('v', idx, 0.25 + Math.random() * 0.02);
-      }
-    }
+  // Seed initial state from YAML script
+  if (overridden.initial_state?.code) {
+    runInitialStateScript(sim, overridden.initial_state.code);
   }
 
   return sim;

@@ -35,12 +35,14 @@ rule:
             self.state = 0.0
 
 visual_mappings:
-  - property: "state"
-    channel: "color"
-    mapping:
-      "0": "#000000"
-      "1": "#ffffff"
-      "2": "#0066ff"
+  - type: "script"
+    code: |
+      on = step(0.5, state) * step(state, 1.5)
+      dying = step(1.5, state)
+      self.colorR = on
+      self.colorG = on
+      self.colorB = on + dying * 0.4
+      self.alpha = on + dying
 
 initial_state:
   type: "script"

@@ -133,23 +133,6 @@ rule:
         self.alive = 0.0
         self.age = 0.0
 expression_tags:
-  - name: "fade-on-age"
-    owner: { type: "cell-type", id: "default" }
-    code: "self.alpha = max(0.1, 1.0 - self.age / env_fadeDuration) * self.alive"
-    phase: "post-rule"
-    source: "code"
-    outputs: ["cell.alpha"]
-    inputs: ["cell.age", "cell.alive"]
-  - name: "position-color"
-    owner: { type: "cell-type", id: "default" }
-    code: |
-      self.colorR = float(x) / float(width) * self.alive
-      self.colorG = max(0.0, 1.0 - self.age / 100.0) * self.alive
-      self.colorB = float(y) / float(height) * self.alive
-    phase: "post-rule"
-    source: "code"
-    outputs: ["cell.colorR", "cell.colorG", "cell.colorB"]
-    inputs: ["cell.age", "cell.alive"]
   - name: "death-by-age"
     owner: { type: "cell-type", id: "default" }
     code: "self.alive = np.where(self.age > env_maxAge, 0.0, self.alive)"
@@ -158,11 +141,12 @@ expression_tags:
     outputs: ["cell.alive"]
     inputs: ["cell.age"]
 visual_mappings:
-  - property: "alive"
-    channel: "color"
-    mapping:
-      "0": "#000000"
-      "1": "#00ff00"
+  - type: "script"
+    code: |
+      self.colorR = float(x) / float(width) * alive
+      self.colorG = max(0.0, 1.0 - age / 100.0) * alive
+      self.colorB = float(y) / float(height) * alive
+      self.alpha = max(0.1, 1.0 - age / env_fadeDuration) * alive
 initial_state:
   type: "script"
   code: |
@@ -322,12 +306,14 @@ rule:
         else:
             self.state = 0.0
 visual_mappings:
-  - property: "state"
-    channel: "color"
-    mapping:
-      "0": "#000000"
-      "1": "#ffffff"
-      "2": "#0066ff"
+  - type: "script"
+    code: |
+      on = step(0.5, state) * step(state, 1.5)
+      dying = step(1.5, state)
+      self.colorR = on
+      self.colorG = on
+      self.colorB = on + dying * 0.4
+      self.alpha = on + dying
 initial_state:
   type: "script"
   code: |

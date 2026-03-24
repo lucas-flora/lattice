@@ -25,7 +25,7 @@ export function parseVisualMappingColors(mapping?: Record<string, unknown>): {
   deadColor: [number, number, number];
   aliveColor: [number, number, number];
 } {
-  if (!mapping) return { mode: 'binary', deadColor: [0, 0, 0], aliveColor: [0, 1, 0] };
+  if (!mapping) return { mode: 'binary', deadColor: [0, 0, 0], aliveColor: [1, 1, 1] };
 
   // Continuous gradient: has min/max keys
   if ('min' in mapping && 'max' in mapping) {
@@ -42,7 +42,7 @@ export function parseVisualMappingColors(mapping?: Record<string, unknown>): {
   return {
     mode: 'binary',
     deadColor: deadHex ? hexToRgb01(deadHex) : [0, 0, 0],
-    aliveColor: aliveHex ? hexToRgb01(aliveHex) : [0, 1, 0],
+    aliveColor: aliveHex ? hexToRgb01(aliveHex) : [1, 1, 1],
   };
 }
 

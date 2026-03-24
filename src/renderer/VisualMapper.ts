@@ -28,8 +28,6 @@ export class VisualMapper {
 
     const mappings = preset.visual_mappings;
     if (!mappings || mappings.length === 0) {
-      // No mappings defined -- create default: first bool property -> green/black
-      this.createDefaultMapping(preset);
       return;
     }
 
