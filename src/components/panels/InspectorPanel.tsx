@@ -34,14 +34,15 @@ import { getController } from '../AppShell';
 
 /** Extract code from a visual node's properties for the Code tab */
 function getVisualCode(node: SceneNode): string | undefined {
-  const mappings = node.properties.visual_mappings as Array<{ type?: string; code?: string }> | undefined;
+  // Scene graph stores mappings at node.properties.mappings (not visual_mappings)
+  const mappings = (node.properties.mappings ?? node.properties.visual_mappings) as Array<{ type?: string; code?: string }> | undefined;
   if (!mappings) return undefined;
   const scriptMapping = mappings.find((m) => m.type === 'script' && m.code);
   return scriptMapping?.code;
 }
 
 function getVisualCodeLang(node: SceneNode): string {
-  const mappings = node.properties.visual_mappings as Array<{ type?: string }> | undefined;
+  const mappings = (node.properties.mappings ?? node.properties.visual_mappings) as Array<{ type?: string }> | undefined;
   if (!mappings) return 'Config';
   const hasScript = mappings.some((m) => m.type === 'script');
   return hasScript ? 'Python (transpiled to WGSL)' : 'Ramp Config';
