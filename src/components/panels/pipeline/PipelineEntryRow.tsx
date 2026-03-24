@@ -1,8 +1,8 @@
 /**
  * PipelineEntryRow: a single row in the pipeline execution order.
  *
- * Shows index, name, type badge, iterations badge, and enabled toggle.
- * Click selects in sceneStore so the Inspector shows detail.
+ * Shows index, name, type badge, iterations badge, enabled toggle.
+ * Click selects the entry; for visual-mapping entries, also selects the scene node.
  */
 
 'use client';
@@ -21,18 +21,20 @@ interface PipelineEntryRowProps {
   entry: PipelineEntry;
   isSelected: boolean;
   onSelect: () => void;
+  onToggleEnabled?: () => void;
 }
 
-export function PipelineEntryRow({ entry, isSelected, onSelect }: PipelineEntryRowProps) {
+export function PipelineEntryRow({ entry, isSelected, onSelect, onToggleEnabled }: PipelineEntryRowProps) {
   const style = TYPE_STYLES[entry.type];
 
-  const handleClick = useCallback(() => {
-    onSelect();
-  }, [onSelect]);
+  const handleToggle = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    onToggleEnabled?.();
+  }, [onToggleEnabled]);
 
   return (
     <button
-      onClick={handleClick}
+      onClick={onSelect}
       className={`w-full flex items-center gap-1.5 px-2 py-1 text-left transition-colors cursor-pointer rounded ${
         isSelected
           ? 'bg-green-500/10 ring-1 ring-green-500/30'
@@ -62,9 +64,16 @@ export function PipelineEntryRow({ entry, isSelected, onSelect }: PipelineEntryR
         {style.label}
       </span>
 
-      {/* Context badge */}
-      <span className="text-[8px] font-mono text-zinc-600 shrink-0 uppercase">
-        {entry.executionContext}
+      {/* Enabled toggle */}
+      <span
+        onClick={handleToggle}
+        className={`text-[9px] px-1 rounded shrink-0 leading-tight cursor-pointer ${
+          entry.enabled
+            ? 'bg-green-500/20 text-green-400'
+            : 'bg-zinc-700 text-zinc-500'
+        }`}
+      >
+        {entry.enabled ? 'ON' : 'OFF'}
       </span>
     </button>
   );

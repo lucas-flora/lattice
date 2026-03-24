@@ -15,6 +15,8 @@ import { getController } from '@/components/AppShell';
 import { eventBus } from '@/engine/core/EventBus';
 import { useSimStore } from '@/store/simStore';
 import { useExpressionStore } from '@/store/expressionStore';
+import { useSceneStore, sceneStoreActions } from '@/store/sceneStore';
+import { NODE_TYPES } from '@/engine/scene/SceneNode';
 import { PipelineSection } from './PipelineSection';
 
 export const PipelinePanel: React.FC<PanelProps> = () => {
@@ -23,20 +25,17 @@ export const PipelinePanel: React.FC<PanelProps> = () => {
 
 function PipelineContent() {
   const activePreset = useSimStore((s) => s.activePreset);
-  // Subscribe to expression store changes so pipeline updates when ops change
   const opCount = useExpressionStore((s) => s.tags.length);
+  const sceneNodes = useSceneStore((s) => s.nodes);
 
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
-  // Revision counter — bumped when pipeline may have changed
   const [revision, setRevision] = useState(0);
 
-  // Bump on store changes
   useEffect(() => {
     setRevision((r) => r + 1);
   }, [activePreset, opCount]);
 
   // GPURuleRunner initializes asynchronously AFTER the preset store update.
-  // Subscribe to the gpu:ruleRunnerReady event so we re-derive once it's live.
   useEffect(() => {
     const bump = () => setRevision((r) => r + 1);
     eventBus.on('gpu:ruleRunnerReady', bump);
@@ -52,6 +51,14 @@ function PipelineContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [revision]);
 
+  // Find the visual scene node (for cross-selection when clicking visual-mapping entries)
+  const visualNodeId = useMemo(() => {
+    for (const node of Object.values(sceneNodes)) {
+      if (node.type === NODE_TYPES.VISUAL) return node.id;
+    }
+    return null;
+  }, [sceneNodes]);
+
   const preRuleOps = useMemo(() => entries.filter((e) => e.type === 'pre-rule-op'), [entries]);
   const ruleStages = useMemo(() => entries.filter((e) => e.type === 'rule-stage'), [entries]);
   const postRuleOps = useMemo(() => entries.filter((e) => e.type === 'post-rule-op'), [entries]);
@@ -59,9 +66,17 @@ function PipelineContent() {
 
   const handleSelectEntry = useCallback((entry: PipelineEntry) => {
     setSelectedEntryId(entry.id);
-    // For now, pipeline entries don't map 1:1 to scene nodes.
-    // Selection is local to the pipeline panel. When rule stages become
-    // scene nodes (future), this will call sceneStoreActions.select().
+
+    // Cross-select into scene graph where possible
+    if (entry.type === 'visual-mapping' && visualNodeId) {
+      sceneStoreActions.select(visualNodeId);
+    }
+    // Future: rule stages and ops will become scene nodes too
+  }, [visualNodeId]);
+
+  const handleToggleEnabled = useCallback((_entry: PipelineEntry) => {
+    // M3 will wire this to actually skip the dispatch.
+    // For now it's a no-op — the visual dimming already reflects entry.enabled.
   }, []);
 
   if (!activePreset) {
@@ -106,6 +121,7 @@ function PipelineContent() {
           executionContext="cpu"
           selectedId={selectedEntryId}
           onSelectEntry={handleSelectEntry}
+          onToggleEnabled={handleToggleEnabled}
         />
         <PipelineSection
           title="Rule Stages"
@@ -113,6 +129,7 @@ function PipelineContent() {
           executionContext="gpu"
           selectedId={selectedEntryId}
           onSelectEntry={handleSelectEntry}
+          onToggleEnabled={handleToggleEnabled}
         />
         <PipelineSection
           title="Post-Rule Ops"
@@ -120,6 +137,7 @@ function PipelineContent() {
           executionContext="gpu"
           selectedId={selectedEntryId}
           onSelectEntry={handleSelectEntry}
+          onToggleEnabled={handleToggleEnabled}
         />
         <PipelineSection
           title="Visual Mapping"
@@ -127,6 +145,7 @@ function PipelineContent() {
           executionContext="gpu"
           selectedId={selectedEntryId}
           onSelectEntry={handleSelectEntry}
+          onToggleEnabled={handleToggleEnabled}
         />
       </div>
     </div>

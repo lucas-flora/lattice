@@ -14,6 +14,7 @@ interface PipelineSectionProps {
   executionContext: 'cpu' | 'gpu';
   selectedId: string | null;
   onSelectEntry: (entry: PipelineEntry) => void;
+  onToggleEnabled?: (entry: PipelineEntry) => void;
   defaultExpanded?: boolean;
 }
 
@@ -23,6 +24,7 @@ export function PipelineSection({
   executionContext,
   selectedId,
   onSelectEntry,
+  onToggleEnabled,
   defaultExpanded = true,
 }: PipelineSectionProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
@@ -61,6 +63,7 @@ export function PipelineSection({
               entry={entry}
               isSelected={selectedId === entry.id}
               onSelect={() => onSelectEntry(entry)}
+              onToggleEnabled={onToggleEnabled ? () => onToggleEnabled(entry) : undefined}
             />
           ))}
         </div>
