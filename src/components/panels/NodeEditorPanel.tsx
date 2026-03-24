@@ -1,13 +1,13 @@
 /**
- * NodeEditorPanel: visual node editor for ExpressionTag code.
+ * NodeEditorPanel: visual node editor for Operator code.
  *
  * Registered as 'nodeEditor' in PanelRegistry. Config can carry `tagId`
- * to focus on a specific ExpressionTag's node graph.
+ * to focus on a specific Operator's node graph.
  *
  * Features:
  * - React Flow canvas with custom nodes/edges
  * - Add-node menu (right-click or Tab)
- * - Toolbar with compile, layout, fit, tag selector
+ * - Toolbar with compile, layout, fit, op selector
  * - Optional code preview side panel
  */
 

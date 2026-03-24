@@ -27,7 +27,7 @@ import { EnvironmentSection } from './inspector/EnvironmentSection';
 import { GlobalsSection } from './inspector/GlobalsSection';
 import { StateSection } from './inspector/StateSection';
 import { VisualSection } from './inspector/VisualSection';
-import { TagRow } from './TagRow';
+import { OpRow } from './OpRow';
 
 /** Type icon map */
 const TYPE_LABELS: Record<string, string> = {
@@ -93,14 +93,14 @@ function InspectorContent() {
           </div>
         )}
 
-        {/* Tags section (all node types) — uses real TagRow for edit/toggle */}
+        {/* Ops section (all node types) — uses OpRow for edit/toggle */}
         {nodeTags.length > 0 && (
           <div className="space-y-1">
             <div className="text-zinc-400 text-[9px] uppercase tracking-wide font-mono">
-              Tags ({nodeTags.length})
+              Ops ({nodeTags.length})
             </div>
             {nodeTags.map((tag) => (
-              <TagRow key={tag.id} tag={tag} />
+              <OpRow key={tag.id} op={tag} />
             ))}
           </div>
         )}

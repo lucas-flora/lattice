@@ -71,7 +71,7 @@ export function registerNodeCommands(
   // --- node.compile ---
   registry.register({
     name: 'node.compile',
-    description: 'Compile node graph on a tag to Python code',
+    description: 'Compile node graph on an operator to Python code',
     category: 'node',
     params: CompileParams,
     execute: async (params) => {
@@ -102,7 +102,7 @@ export function registerNodeCommands(
   // --- node.addNode ---
   registry.register({
     name: 'node.addNode',
-    description: 'Add a node to a tag\'s node graph',
+    description: 'Add a node to an operator\'s node graph',
     category: 'node',
     params: AddNodeParams,
     execute: async (params) => {
@@ -138,7 +138,7 @@ export function registerNodeCommands(
   // --- node.removeNode ---
   registry.register({
     name: 'node.removeNode',
-    description: 'Remove a node from a tag\'s node graph',
+    description: 'Remove a node from an operator\'s node graph',
     category: 'node',
     params: RemoveNodeParams,
     execute: async (params) => {
@@ -163,7 +163,7 @@ export function registerNodeCommands(
   // --- node.connect ---
   registry.register({
     name: 'node.connect',
-    description: 'Connect two ports in a tag\'s node graph',
+    description: 'Connect two ports in an operator\'s node graph',
     category: 'node',
     params: ConnectParams,
     execute: async (params) => {
@@ -195,7 +195,7 @@ export function registerNodeCommands(
   // --- node.disconnect ---
   registry.register({
     name: 'node.disconnect',
-    description: 'Remove an edge from a tag\'s node graph',
+    description: 'Remove an edge from an operator\'s node graph',
     category: 'node',
     params: DisconnectParams,
     execute: async (params) => {
@@ -245,7 +245,7 @@ export function registerNodeCommands(
   // --- node.autoLayout ---
   registry.register({
     name: 'node.autoLayout',
-    description: 'Auto-arrange nodes in a tag\'s node graph',
+    description: 'Auto-arrange nodes in an operator\'s node graph',
     category: 'node',
     params: AutoLayoutParams,
     execute: async (params) => {

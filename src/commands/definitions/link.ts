@@ -101,10 +101,10 @@ export function registerLinkCommands(
         return { success: false, error: 'No simulation loaded' };
       }
 
-      // Find tag — could be by tag ID or by matching linkMeta
+      // Find op — could be by op ID or by matching linkMeta
       const tag = tagRegistry.get(id);
       if (!tag) {
-        return { success: false, error: `Link/tag "${id}" not found` };
+        return { success: false, error: `Link/op "${id}" not found` };
       }
 
       tagRegistry.remove(id);
@@ -166,7 +166,7 @@ export function registerLinkCommands(
       }
       const tag = tagRegistry.get(id);
       if (!tag) {
-        return { success: false, error: `Link/tag "${id}" not found` };
+        return { success: false, error: `Link/op "${id}" not found` };
       }
       tagRegistry.enable(id);
       eventBus.emit('tag:updated', { id, enabled: true });
@@ -188,7 +188,7 @@ export function registerLinkCommands(
       }
       const tag = tagRegistry.get(id);
       if (!tag) {
-        return { success: false, error: `Link/tag "${id}" not found` };
+        return { success: false, error: `Link/op "${id}" not found` };
       }
       tagRegistry.disable(id);
       eventBus.emit('tag:updated', { id, enabled: false });
@@ -211,7 +211,7 @@ export function registerLinkCommands(
 
       const tag = tagRegistry.get(parsed.id);
       if (!tag || !tag.linkMeta) {
-        return { success: false, error: `Link/tag "${parsed.id}" not found` };
+        return { success: false, error: `Link/op "${parsed.id}" not found` };
       }
 
       const sourceRange = parsed.sourceRange ??
@@ -232,7 +232,7 @@ export function registerLinkCommands(
 
       const updated = tagRegistry.update(parsed.id, { linkMeta: updatedMeta });
       if (!updated) {
-        return { success: false, error: `Failed to update tag "${parsed.id}"` };
+        return { success: false, error: `Failed to update op "${parsed.id}"` };
       }
 
       eventBus.emit('tag:updated', { id: parsed.id });

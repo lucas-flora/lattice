@@ -1,6 +1,6 @@
 /**
  * NodeEditorToolbar: top bar with compile, auto-layout, zoom-to-fit,
- * tag selector, and code/node view toggle.
+ * op selector, and code/node view toggle.
  */
 
 'use client';
@@ -51,13 +51,13 @@ export function NodeEditorToolbar({
 
   return (
     <div className="flex items-center px-2 py-1 border-b border-zinc-800 bg-zinc-900/95 gap-1.5 shrink-0">
-      {/* Tag selector */}
+      {/* Op selector */}
       <select
         className="bg-zinc-800 border border-zinc-700 rounded px-1.5 py-0.5 text-[10px] font-mono text-zinc-300 focus:outline-none focus:border-green-500/50 max-w-[160px]"
         value={tagId ?? ''}
         onChange={handleTagChange}
       >
-        <option value="">No tag selected</option>
+        <option value="">No op selected</option>
         {tagOptions.map((t) => (
           <option key={t.id} value={t.id}>
             {t.name}

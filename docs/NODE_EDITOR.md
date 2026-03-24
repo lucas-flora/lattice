@@ -2,7 +2,7 @@
 
 ## Overview
 
-The node editor is a visual authoring surface for ExpressionTag code. Nodes compile to Python — the graph is a view, not a runtime. The existing expression harness executes the generated code unchanged.
+The node editor is a visual authoring surface for Operator (formerly ExpressionTag) code. Nodes compile to Python — the graph is a view, not a runtime. The existing expression harness executes the generated code unchanged.
 
 ## Architecture Decisions
 
@@ -10,7 +10,7 @@ The node editor is a visual authoring surface for ExpressionTag code. Nodes comp
 
 2. **`@nodegraph` comment for round-trip.** Full bidirectional Python↔nodes is intractable. The graph is embedded as a JSON comment in generated code. Hand-written code degrades to "Code Only" mode.
 
-3. **`nodeGraph` on ExpressionTag.** Same pattern as `linkMeta` — optional metadata on the tag. No new store. The tag remains the primitive; the node graph is an authoring view.
+3. **`nodeGraph` on Operator.** Same pattern as `linkMeta` — optional metadata on the operator. No new store. The operator remains the primitive; the node graph is an authoring view.
 
 4. **Center zone via LayoutRenderer.** The center column uses the existing recursive LayoutNode tree system instead of hardcoded viewports. Default: TabsNode with viewport + node editor.
 
@@ -42,7 +42,7 @@ The node editor is a visual authoring surface for ExpressionTag code. Nodes comp
 3. **Inlining:** Single-use expressions are inlined — no temp vars. Multi-use nodes get readable variable names
 4. ObjectNode outputs read from object (`cell['prop']`), ObjectNode inputs write to object (`self.prop = expr`)
 5. Collect `inputs[]` from read addresses, `outputs[]` from write addresses
-6. `nodeGraph` is stored on the tag separately (not embedded in code)
+6. `nodeGraph` is stored on the operator separately (not embedded in code)
 7. Code feeds into the existing expression harness unchanged
 
 ### Clean Output Examples
@@ -66,7 +66,7 @@ self.colorR = age / 100
 
 ## Round-Trip Strategy
 
-- **Opening a tag:** Parse `@nodegraph` comment first → instant round-trip
+- **Opening an operator:** Parse `@nodegraph` comment first → instant round-trip
 - **Hand-written code (no `@nodegraph`):** Show "Code Only" mode with option to attempt conversion via pattern matching
 - **Pattern matcher recognizes:** `self.X = Y`, `cell['X']`, `env['X']`, `rangeMap(...)`, `clamp(...)`, `np.where(...)`, arithmetic ops, numpy functions
 - **Unrecognized fragments:** → generic "Python Expression" node with code textarea
@@ -98,7 +98,7 @@ src/components/nodes/
   CustomEdge.tsx         — Bezier curves, color-coded by port type
   PortHandle.tsx         — Small colored circles with type validation
   AddNodeMenu.tsx        — Right-click / Tab to open, searchable, categorized
-  NodeEditorToolbar.tsx  — Compile, auto-layout, zoom-to-fit, tag selector
+  NodeEditorToolbar.tsx  — Compile, auto-layout, zoom-to-fit, operator selector
   CodePreview.tsx        — Read-only Python code display
   NodeEditorWithCode.tsx — Split view: graph + code
   SyncStatus.tsx         — Sync indicator component
@@ -165,7 +165,7 @@ Port IDs: `in_{propName}` for inputs, `out_{propName}` for outputs.
 ObjectNode is special-cased in NodeCompiler:
 - **Enabled outputs (right side):** READ from object — emit `cell['{prop}']` or named var if multi-use
 - **Enabled inputs (left side):** WRITE to object — emit `self.{prop} = {incomingExpr}`
-- Properties tracked in `inputs[]`/`outputs[]` for tag declarations
+- Properties tracked in `inputs[]`/`outputs[]` for operator declarations
 - Self-connections blocked (`isValidConnection` rejects same-node wiring)
 
 ### Scene Data Resolution
@@ -198,12 +198,12 @@ Property (advanced) ▸
 
 Search flattens all items and matches object names + node labels.
 
-### Per-Tag Editor Tabs
+### Per-Operator Editor Tabs
 
-Each tag opens in its own dedicated node editor tab:
-- `ui.toggleNodeEditor({ tagId })` creates a new tab labeled `Nodes: {tagName}`
+Each operator opens in its own dedicated node editor tab:
+- `ui.toggleNodeEditor({ tagId })` creates a new tab labeled `Nodes: {opName}`
 - Dynamic tabs are closable (close button on hover)
-- Opening from PropertyRow, TagRow, or TagAddForm all use the same mechanism
+- Opening from PropertyRow, OpRow, or OpAddForm all use the same mechanism
 - Opening from a property's `+ Nodes` button seeds the canvas with an ObjectNode for that property
 - Tab contents stay mounted when switching tabs (state preserved without compiling)
 
@@ -211,7 +211,7 @@ Each tag opens in its own dedicated node editor tab:
 
 `selectedTagId` is persisted to the panel's `config` in the layout tree via
 `layoutStoreActions.updatePanelConfig(panelId, { tagId })`. Survives tab switches
-and supports multiple node editor panels with independent tag bindings.
+and supports multiple node editor panels with independent operator bindings.
 
 ### Expression Execution Order
 
@@ -222,12 +222,12 @@ can read expression A's result within the same tick (e.g., `alive` can depend on
 
 ### Cache Invalidation
 
-- **Tag code/phase edits:** Full cache invalidation from frame 0 + reset to start state
-- **Disabled tag edits:** No cache invalidation (tag isn't affecting output)
+- **Operator code/phase edits:** Full cache invalidation from frame 0 + reset to start state
+- **Disabled operator edits:** No cache invalidation (operator isn't affecting output)
 - **Metadata-only edits (name, nodeGraph):** No cache invalidation
-- **Tag enable:** Full invalidation (tag starts affecting output)
-- **Tag disable:** Full invalidation (tag stops affecting output)
-- **Removing a disabled tag:** No cache invalidation
+- **Operator enable:** Full invalidation (operator starts affecting output)
+- **Operator disable:** Full invalidation (operator stops affecting output)
+- **Removing a disabled operator:** No cache invalidation
 
 ### Future: Drag and Drop
 
@@ -238,9 +238,9 @@ Not yet implemented:
 
 ## Integration Points
 
-- **ExpressionTag:** `nodeGraph?: NodeGraph` field (optional, like `linkMeta`)
-- **tag.edit command:** Accepts `nodeGraph` in patch
-- **YAML serializer:** Handles `nodeGraph` section on TagV2
-- **EventBus:** Subscribe to `tag:updated` / `tag:removed` for external sync
+- **Operator (ExpressionTag):** `nodeGraph?: NodeGraph` field (optional, like `linkMeta`)
+- **op.edit command:** Accepts `nodeGraph` in patch
+- **YAML serializer:** Handles `nodeGraph` section on operator (TagV2)
+- **EventBus:** Subscribe to `op:updated` / `op:removed` for external sync
 - **KeyboardShortcutManager:** `E` hotkey toggles to node editor tab
 - **Center zone:** TabsNode default with viewport + node editor

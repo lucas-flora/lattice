@@ -22,6 +22,7 @@ import { registerVariableCommands } from './variable';
 import { registerExpressionCommands } from './expression';
 import { registerScriptCommands } from './script';
 import { registerLinkCommands } from './link';
+import { registerOpCommands } from './op';
 import { registerTagCommands } from './tag';
 import { registerSceneCommands } from './scene';
 import { registerCellCommands } from './cell';
@@ -54,7 +55,8 @@ export function registerAllCommands(
   registerExpressionCommands(registry, controller, eventBus);
   registerScriptCommands(registry, controller, eventBus);
   registerLinkCommands(registry, controller, eventBus);
-  registerTagCommands(registry, controller, eventBus);
+  registerOpCommands(registry, controller, eventBus);
+  registerTagCommands(registry);
   registerSceneCommands(registry, controller, eventBus);
   registerCellCommands(registry, controller, eventBus);
   registerNodeCommands(registry, controller, eventBus);

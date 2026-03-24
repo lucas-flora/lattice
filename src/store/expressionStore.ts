@@ -1,8 +1,9 @@
 /**
- * Expression tag state store.
+ * Operator state store. UI: "Operators"
  *
  * UI-facing mirror of ExpressionTagRegistry state. Updated via EventBus wiring.
  * Replaces the separate linkStore and the expressions field in scriptStore.
+ * Store name kept as expressionStore for backward compatibility.
  */
 
 import { create } from 'zustand';

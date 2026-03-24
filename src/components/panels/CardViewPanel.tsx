@@ -1,9 +1,9 @@
 /**
  * CardViewPanel: unified filtered card view of the scene graph.
  *
- * One component powers both drawer 2 (default: cells) and drawer 3 (default: tags+globals).
+ * One component powers both drawer 2 (default: cells) and drawer 3 (default: ops+globals).
  * Multi-select type filters. Collapsible sections per type with per-section + buttons.
- * Tag cards use TagRow for rich editing. Variable cards have inline editing.
+ * Op cards use OpRow for rich editing. Variable cards have inline editing.
  * All mutations via commandRegistry.execute() (Three Surface Doctrine).
  */
 
@@ -17,8 +17,8 @@ import { useScriptStore } from '@/store/scriptStore';
 import { useExpressionStore } from '@/store/expressionStore';
 import { commandRegistry } from '@/commands/CommandRegistry';
 import { CellCard } from './CellCard';
-import { TagRow } from './TagRow';
-import { TagAddForm } from './TagAddForm';
+import { OpRow } from './OpRow';
+import { OpAddForm } from './OpAddForm';
 import { NODE_TYPES } from '@/engine/scene/SceneNode';
 import type { SceneNode } from '@/engine/scene/SceneNode';
 
@@ -26,13 +26,13 @@ import type { SceneNode } from '@/engine/scene/SceneNode';
 // Types
 // ---------------------------------------------------------------------------
 
-type FilterKey = 'cells' | 'env' | 'globals' | 'tags';
+type FilterKey = 'cells' | 'env' | 'globals' | 'ops';
 
 const FILTER_DEFS: { key: FilterKey; label: string; icon: string }[] = [
   { key: 'cells', label: 'Cells', icon: '\u25A3' },
   { key: 'env', label: 'Env', icon: '\u2699' },
   { key: 'globals', label: 'Vars', icon: 'x' },
-  { key: 'tags', label: 'Tags', icon: '\u0192' },
+  { key: 'ops', label: 'Ops', icon: '\u0192' },
 ];
 
 interface CardViewPanelProps extends Partial<PanelProps> {
@@ -396,20 +396,20 @@ function CellCards({
 }
 
 // ---------------------------------------------------------------------------
-// Tag cards (using TagRow for rich editing)
+// Op cards (using OpRow for rich editing)
 // ---------------------------------------------------------------------------
 
-function TagCards() {
+function OpCards() {
   const tags = useExpressionStore((s) => s.tags);
 
   if (tags.length === 0) {
-    return <p className="text-[10px] font-mono text-zinc-600 italic px-1">No tags</p>;
+    return <p className="text-[10px] font-mono text-zinc-600 italic px-1">No operators</p>;
   }
 
   return (
     <div className="space-y-1.5">
-      {tags.map((tag) => (
-        <TagRow key={tag.id} tag={tag} />
+      {tags.map((op) => (
+        <OpRow key={op.id} op={op} />
       ))}
     </div>
   );
@@ -478,7 +478,7 @@ export function CardViewPanel({ defaultFilters }: CardViewPanelProps) {
   const initFilters = defaultFilters ?? ['cells'];
   const [activeFilters, setActiveFilters] = useState<Set<FilterKey>>(new Set(initFilters));
   const [collapsedSections, setCollapsedSections] = useState<Set<FilterKey>>(new Set());
-  const [showTagAddForm, setShowTagAddForm] = useState(false);
+  const [showOpAddForm, setShowOpAddForm] = useState(false);
   const [showVarAddForm, setShowVarAddForm] = useState(false);
 
   const nodes = useSceneStore((s) => s.nodes);
@@ -535,21 +535,21 @@ export function CardViewPanel({ defaultFilters }: CardViewPanelProps) {
       cells: cellNodes.length,
       env: envNodes.length,
       globals: Object.keys(variables).length,
-      tags: tags.length,
+      ops: tags.length,
     }),
     [cellNodes, envNodes, variables, tags],
   );
 
   const totalCount = activeSections.reduce((sum, key) => sum + sectionCounts[key], 0);
 
-  // Show pyodide status when tags or globals are in the view
-  const showPyodide = activeFilters.has('tags') || activeFilters.has('globals');
+  // Show pyodide status when ops or globals are in the view
+  const showPyodide = activeFilters.has('ops') || activeFilters.has('globals');
 
   // Add handler per section
   const handleAddForSection = useCallback((key: FilterKey) => {
     switch (key) {
-      case 'tags':
-        setShowTagAddForm(true);
+      case 'ops':
+        setShowOpAddForm(true);
         break;
       case 'globals':
         setShowVarAddForm(true);
@@ -589,11 +589,11 @@ export function CardViewPanel({ defaultFilters }: CardViewPanelProps) {
               <VariablesCards />
             </>
           );
-        case 'tags':
+        case 'ops':
           return (
             <>
-              {showTagAddForm && <TagAddForm onClose={() => setShowTagAddForm(false)} />}
-              <TagCards />
+              {showOpAddForm && <OpAddForm onClose={() => setShowOpAddForm(false)} />}
+              <OpCards />
             </>
           );
         default:
@@ -603,7 +603,7 @@ export function CardViewPanel({ defaultFilters }: CardViewPanelProps) {
 
     if (multiSection) {
       const def = FILTER_DEFS.find((f) => f.key === key)!;
-      const canAdd = key === 'tags' || key === 'globals' || key === 'cells';
+      const canAdd = key === 'ops' || key === 'globals' || key === 'cells';
       return (
         <div key={key} className="mb-1">
           <SectionHeader
@@ -654,7 +654,7 @@ export function CardViewPanel({ defaultFilters }: CardViewPanelProps) {
         {!multiSection && activeSections.length === 1 && (
           (() => {
             const key = activeSections[0];
-            const canAdd = key === 'tags' || key === 'globals' || key === 'cells';
+            const canAdd = key === 'ops' || key === 'globals' || key === 'cells';
             if (!canAdd) return null;
             return (
               <button
@@ -676,7 +676,7 @@ export function CardViewPanel({ defaultFilters }: CardViewPanelProps) {
       <div className="px-2 py-1.5">
         {activeSections.map(renderSection)}
 
-        {totalCount === 0 && !showTagAddForm && !showVarAddForm && (
+        {totalCount === 0 && !showOpAddForm && !showVarAddForm && (
           <p className="text-[10px] font-mono text-zinc-600 italic px-1 py-2">
             No items
           </p>

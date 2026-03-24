@@ -32,7 +32,7 @@ import { useUiStore } from '@/store/uiStore';
 import { useLayoutStore, layoutStoreActions } from '@/store/layoutStore';
 import { DrawerShell } from '@/components/layout/DrawerShell';
 import { ResizeHandle } from '@/components/ui/ResizeHandle';
-// ScriptPanel replaced by CardViewPanel with defaultFilters={['tags', 'globals']}
+// ScriptPanel replaced by CardViewPanel with defaultFilters={['ops', 'globals']}
 import { ObjectManagerPanel } from '@/components/panels/ObjectManagerPanel';
 import { InspectorPanel } from '@/components/panels/InspectorPanel';
 import { CardViewPanel } from '@/components/panels/CardViewPanel';
@@ -366,7 +366,7 @@ export function AppShell() {
               style={{ width: d3Width, right: d4Open ? d4Width : 0 }}
             >
               <div className="absolute inset-0 overflow-hidden bg-zinc-900/95 backdrop-blur-sm border-l border-zinc-700">
-                <CardViewPanel defaultFilters={['tags', 'globals']} />
+                <CardViewPanel defaultFilters={['ops', 'globals']} />
               </div>
             </div>
           )}
@@ -397,7 +397,7 @@ export function AppShell() {
           onResize={(size) => layoutStoreActions.setDrawer3Width(size)}
           onClose={() => layoutStoreActions.toggleDrawer3()}
         >
-          <CardViewPanel defaultFilters={['tags', 'globals']} />
+          <CardViewPanel defaultFilters={['ops', 'globals']} />
         </DrawerShell>
       )}
 

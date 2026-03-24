@@ -42,6 +42,7 @@ export interface EngineEventMap {
   'script:variableDeleted': { name: string };
   'link:updated': { id: string; enabled?: boolean; sourceRange?: [number, number]; targetRange?: [number, number]; easing?: string };
   'link:reset': Record<string, never>;
+  // Operator events (UI: "Op"). Event keys kept as tag:* for backward compatibility.
   'tag:added': { id: string; name: string; source: string; phase: string; enabled: boolean; owner: { type: string; id?: string }; inputs: string[]; outputs: string[]; code: string; linkMeta?: { sourceAddress: string; sourceRange: [number, number]; targetRange: [number, number]; easing: string } };
   'tag:removed': { id: string };
   'tag:updated': { id: string; name?: string; enabled?: boolean; phase?: string; code?: string; source?: string };

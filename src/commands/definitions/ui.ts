@@ -113,10 +113,10 @@ export function registerUiCommands(
     },
   });
 
-  // --- Node Editor (open/focus per-tag editor tab) ---
+  // --- Node Editor (open/focus per-op editor tab) ---
   registry.register({
     name: 'ui.toggleNodeEditor',
-    description: 'Open or focus node editor tab (creates per-tag tabs)',
+    description: 'Open or focus node editor tab (creates per-op tabs)',
     category: 'ui',
     params: z.object({
       tagId: z.string().optional(),
