@@ -30,6 +30,7 @@ interface PipelineSectionProps {
   onSelectEntry: (entry: PipelineEntry) => void;
   onToggleEnabled?: (entry: PipelineEntry) => void;
   onReorder?: (entryId: string, newIndex: number) => void;
+  onEntryContextMenu?: (entry: PipelineEntry, e: React.MouseEvent) => void;
   defaultExpanded?: boolean;
   /** Is this the last section in the pipeline (no outer line below) */
   isLastSection?: boolean;
@@ -45,6 +46,7 @@ export function PipelineSection({
   onSelectEntry,
   onToggleEnabled,
   onReorder,
+  onEntryContextMenu,
   defaultExpanded = true,
   isLastSection = false,
   isFirstSection = false,
@@ -164,6 +166,7 @@ export function PipelineSection({
               onDragStart={canReorder ? (e) => handleDragStart(e, i) : undefined}
               onDragEnd={canReorder ? handleDragEnd : undefined}
               onKeyReorder={canReorder ? (dir) => handleKeyReorder(i, dir) : undefined}
+              onContextMenu={onEntryContextMenu ? (e) => { e.preventDefault(); e.stopPropagation(); onEntryContextMenu(entry, e); } : undefined}
             />
           </div>
         ))}

@@ -18,7 +18,7 @@ const CONFIG_MUTATING_COMMANDS = new Set([
   'param.set', 'param.add', 'param.remove', 'param.reset',
   'cell.addProperty', 'cell.removeProperty', 'cell.setDefault',
   'var.set', 'var.delete', 'var.clear',
-  'scene.enable', 'scene.disable',
+  'scene.enable', 'scene.disable', 'scene.duplicate',
   'link.add', 'link.remove', 'link.edit', 'link.clear',
   'expr.set', 'expr.clear', 'expr.clearAll',
   'script.add', 'script.remove', 'script.enable', 'script.disable', 'script.clear',

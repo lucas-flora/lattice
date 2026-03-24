@@ -38,6 +38,8 @@ interface PipelineEntryRowProps {
   onDragEnd?: (e: React.DragEvent) => void;
   /** Keyboard reorder: Alt+Up/Down */
   onKeyReorder?: (direction: 'up' | 'down') => void;
+  /** Right-click context menu */
+  onContextMenu?: (e: React.MouseEvent) => void;
 }
 
 export function PipelineEntryRow({
@@ -51,6 +53,7 @@ export function PipelineEntryRow({
   onDragStart,
   onDragEnd,
   onKeyReorder,
+  onContextMenu: onCtxMenu,
 }: PipelineEntryRowProps) {
   const style = TYPE_STYLES[entry.type];
 
@@ -94,6 +97,7 @@ export function PipelineEntryRow({
       <button
         onClick={onSelect}
         onKeyDown={handleKeyDown}
+        onContextMenu={onCtxMenu}
         className={`flex-1 flex items-center gap-1.5 pr-2 py-0.5 text-left transition-colors cursor-pointer rounded-r ${
           isSelected
             ? 'bg-green-500/10 ring-1 ring-green-500/30'

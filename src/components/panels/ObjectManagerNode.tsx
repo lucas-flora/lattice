@@ -4,9 +4,11 @@
  * Renders a single SceneNode with indent, expand/collapse, icon, name,
  * tag badges, and enabled toggle. Recurses for children, then renders
  * attached ops (from the node's tags array) as indented rows.
+ *
+ * Right-click opens a context menu with Rename, Duplicate, Delete, etc.
  */
 
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import { useSceneStore, sceneStoreActions } from '../../store/sceneStore';
 import { useExpressionStore } from '../../store/expressionStore';
 import { commandRegistry } from '../../commands/CommandRegistry';
@@ -14,6 +16,8 @@ import { useUiStore, uiStoreActions } from '../../store/uiStore';
 import type { SceneNode } from '../../engine/scene/SceneNode';
 import { NODE_TYPES } from '../../engine/scene/SceneNode';
 import type { Operator } from '../../engine/expression/types';
+import { ContextMenu, type ContextMenuItem } from '../shared/ContextMenu';
+import { ConfirmDialog } from '../shared/ConfirmDialog';
 
 interface ObjectManagerNodeProps {
   nodeId: string;
@@ -43,6 +47,9 @@ const OP_TYPE_STYLES: Record<string, { label: string; class: string }> = {
   script: { label: '\u26A1', class: 'text-amber-400 bg-amber-400/10' },
 };
 
+const NON_DUPLICATABLE: Set<string> = new Set([NODE_TYPES.SIM_ROOT, NODE_TYPES.ENVIRONMENT, NODE_TYPES.GLOBALS]);
+const NON_DELETABLE: Set<string> = new Set([NODE_TYPES.SIM_ROOT, NODE_TYPES.ENVIRONMENT, NODE_TYPES.GLOBALS]);
+
 // ---------------------------------------------------------------------------
 // Op row (rendered under parent node in the tree)
 // ---------------------------------------------------------------------------
@@ -50,13 +57,13 @@ const OP_TYPE_STYLES: Record<string, { label: string; class: string }> = {
 function OpTreeRow({ op, depth, parentNodeId }: { op: Operator; depth: number; parentNodeId: string }) {
   const focusedOpId = useUiStore((s) => s.focusedOpId);
   const isSelected = focusedOpId === op.id;
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const indent = depth * 16;
   const badge = OP_TYPE_STYLES[op.source] ?? OP_TYPE_STYLES.code;
 
   const handleClick = useCallback(() => {
-    // Select the parent scene node (same as clicking any other node)
-    // AND focus this specific op so the Inspector shows its detail
     commandRegistry.execute('scene.select', { id: parentNodeId });
     uiStoreActions.focusOp(op.id);
   }, [op.id, parentNodeId]);
@@ -69,49 +76,70 @@ function OpTreeRow({ op, depth, parentNodeId }: { op: Operator; depth: number; p
     [op.id, op.enabled],
   );
 
-  // Match Pipeline View badge colors: pre=gray, rule=blue, post=green, visual=purple
+  const handleContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setCtxMenu({ x: e.clientX, y: e.clientY });
+  }, []);
+
   const phaseBadge = op.phase === 'pre-rule'
     ? { label: 'pre', class: 'bg-zinc-700 text-zinc-400' }
     : op.phase === 'rule'
       ? { label: 'rule', class: 'bg-blue-500/15 text-blue-400' }
       : { label: 'post', class: 'bg-green-500/15 text-green-400' };
 
+  const ctxItems: ContextMenuItem[] = [
+    {
+      label: 'Duplicate',
+      action: () => commandRegistry.execute('op.copy', { id: op.id, ownerType: op.owner.type, ownerId: op.owner.id }),
+    },
+    {
+      label: op.enabled ? 'Disable' : 'Enable',
+      action: () => commandRegistry.execute(op.enabled ? 'op.disable' : 'op.enable', { id: op.id }),
+    },
+    {
+      label: 'Delete',
+      divider: true,
+      action: () => setConfirmDelete(true),
+    },
+  ];
+
   return (
-    <div
-      onClick={handleClick}
-      className={`flex items-center gap-1 px-1 py-0.5 cursor-pointer text-xs font-mono border-l-2 border-green-500/20
-        ${isSelected ? 'bg-green-400/20 text-green-300' : 'text-zinc-400 hover:bg-zinc-700/50'}`}
-      style={{ paddingLeft: `${indent + 4}px` }}
-      data-testid={`om-op-${op.id}`}
-    >
-      {/* No chevron — ops don't have children */}
-      <span className="w-3 text-center text-transparent">{'\u00B7'}</span>
-
-      {/* Source badge */}
-      <span className={`text-[9px] px-0.5 rounded shrink-0 leading-tight ${badge.class}`}>
-        {badge.label}
-      </span>
-
-      {/* Name — strip preset prefix ("Fire – ") and " Rule" suffix for cleaner display */}
-      <span className={`flex-1 truncate ${!op.enabled ? 'opacity-40' : ''}`}>
-        {op.name.replace(/^.*? – /, '').replace(/ Rule$/, '')}
-      </span>
-
-      {/* Phase badge — matches Pipeline View colors */}
-      <span className={`text-[9px] px-1 rounded shrink-0 leading-tight ${phaseBadge.class}`}>
-        {phaseBadge.label}
-      </span>
-
-      {/* Enabled toggle */}
-      <span
-        onClick={handleToggleEnabled}
-        className={`text-[10px] cursor-pointer px-0.5 ${
-          op.enabled ? 'text-green-400' : 'text-zinc-600'
-        }`}
+    <>
+      <div
+        onClick={handleClick}
+        onContextMenu={handleContextMenu}
+        className={`flex items-center gap-1 px-1 py-0.5 cursor-pointer text-xs font-mono border-l-2 border-green-500/20
+          ${isSelected ? 'bg-green-400/20 text-green-300' : 'text-zinc-400 hover:bg-zinc-700/50'}`}
+        style={{ paddingLeft: `${indent + 4}px` }}
+        data-testid={`om-op-${op.id}`}
       >
-        {op.enabled ? 'ON' : 'OFF'}
-      </span>
-    </div>
+        <span className="w-3 text-center text-transparent">{'\u00B7'}</span>
+        <span className={`text-[9px] px-0.5 rounded shrink-0 leading-tight ${badge.class}`}>{badge.label}</span>
+        <span className={`flex-1 truncate ${!op.enabled ? 'opacity-40' : ''}`}>
+          {op.name.replace(/^.*? – /, '').replace(/ Rule$/, '')}
+        </span>
+        <span className={`text-[9px] px-1 rounded shrink-0 leading-tight ${phaseBadge.class}`}>{phaseBadge.label}</span>
+        <span
+          onClick={handleToggleEnabled}
+          className={`text-[10px] cursor-pointer px-0.5 ${op.enabled ? 'text-green-400' : 'text-zinc-600'}`}
+        >
+          {op.enabled ? 'ON' : 'OFF'}
+        </span>
+      </div>
+
+      {ctxMenu && (
+        <ContextMenu x={ctxMenu.x} y={ctxMenu.y} items={ctxItems} onClose={() => setCtxMenu(null)} />
+      )}
+      {confirmDelete && (
+        <ConfirmDialog
+          title={`Delete "${op.name}"?`}
+          message="This operator will be permanently removed."
+          onConfirm={() => { commandRegistry.execute('op.remove', { id: op.id }); setConfirmDelete(false); }}
+          onCancel={() => setConfirmDelete(false)}
+        />
+      )}
+    </>
   );
 }
 
@@ -126,10 +154,12 @@ export const ObjectManagerNode: React.FC<ObjectManagerNodeProps> = React.memo(
     const expandedNodeIds = useSceneStore((s) => s.expandedNodeIds);
     const allOps = useExpressionStore((s) => s.tags);
 
+    const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
+    const [confirmDelete, setConfirmDelete] = useState(false);
+
     const isSelected = selectedNodeId === nodeId;
     const isExpanded = expandedNodeIds.includes(nodeId);
     const hasChildren = node?.childIds.length > 0;
-    // Ops attached to this node
     const nodeOps = node ? allOps.filter((op) => node.tags.includes(op.id)) : [];
     const hasExpandableContent = hasChildren || nodeOps.length > 0;
 
@@ -162,6 +192,12 @@ export const ObjectManagerNode: React.FC<ObjectManagerNodeProps> = React.memo(
       [nodeId, node?.enabled],
     );
 
+    const handleContextMenu = useCallback((e: React.MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setCtxMenu({ x: e.clientX, y: e.clientY });
+    }, []);
+
     if (!node) return null;
 
     const indent = depth * 16;
@@ -171,79 +207,91 @@ export const ObjectManagerNode: React.FC<ObjectManagerNodeProps> = React.memo(
         ? (node.properties.color as string)
         : null;
 
+    const canDuplicate = !NON_DUPLICATABLE.has(node.type as string);
+    const canDelete = !NON_DELETABLE.has(node.type as string);
+
+    const ctxItems: ContextMenuItem[] = [
+      {
+        label: 'Duplicate',
+        action: () => commandRegistry.execute('scene.duplicate', { id: nodeId }),
+        hidden: !canDuplicate,
+      },
+      {
+        label: 'Duplicate with Children',
+        action: () => commandRegistry.execute('scene.duplicate', { id: nodeId, deep: true }),
+        hidden: !canDuplicate || !hasChildren,
+      },
+      {
+        label: node.enabled ? 'Disable' : 'Enable',
+        divider: true,
+        action: () => commandRegistry.execute(node.enabled ? 'scene.disable' : 'scene.enable', { id: nodeId }),
+      },
+      {
+        label: 'Delete',
+        divider: true,
+        action: () => setConfirmDelete(true),
+        hidden: !canDelete,
+      },
+    ];
+
     return (
       <>
         <div
           data-testid={`om-node-${nodeId}`}
           onClick={handleClick}
+          onContextMenu={handleContextMenu}
           className={`flex items-center gap-1 px-1 py-0.5 cursor-pointer text-xs font-mono
             ${isSelected ? 'bg-green-400/20 text-green-300' : 'text-zinc-300 hover:bg-zinc-700/50'}`}
           style={{ paddingLeft: `${indent + 4}px` }}
         >
-          {/* Expand/collapse chevron */}
           <span
             onClick={hasExpandableContent ? handleToggleExpand : undefined}
             className={`w-3 text-center ${hasExpandableContent ? 'cursor-pointer text-zinc-400' : 'text-transparent'}`}
           >
             {hasExpandableContent ? (isExpanded ? '\u25BE' : '\u25B8') : '\u00B7'}
           </span>
-
-          {/* Type icon */}
           <span className="w-4 text-center text-zinc-500">{icon}</span>
-
-          {/* Color swatch for cell types */}
           {colorSwatch && (
-            <span
-              className="w-2 h-2 rounded-full inline-block"
-              style={{ backgroundColor: colorSwatch }}
-            />
+            <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: colorSwatch }} />
           )}
-
-          {/* Name */}
-          <span className={`flex-1 truncate ${!node.enabled ? 'opacity-40' : ''}`}>
-            {node.name}
-          </span>
-
-          {/* Pipeline type badge for visual nodes */}
+          <span className={`flex-1 truncate ${!node.enabled ? 'opacity-40' : ''}`}>{node.name}</span>
           {node.type === NODE_TYPES.VISUAL && (
-            <span className="text-[9px] px-1 rounded shrink-0 leading-tight bg-purple-500/15 text-purple-400">
-              visual
-            </span>
+            <span className="text-[9px] px-1 rounded shrink-0 leading-tight bg-purple-500/15 text-purple-400">visual</span>
           )}
-
-          {/* Op count badge */}
           {nodeOps.length > 0 && (
-            <span className="text-[10px] text-zinc-500 bg-zinc-800 px-1 rounded">
-              {nodeOps.length}
-            </span>
+            <span className="text-[10px] text-zinc-500 bg-zinc-800 px-1 rounded">{nodeOps.length}</span>
           )}
-
-          {/* Enabled toggle */}
           <span
             onClick={handleToggleEnabled}
-            className={`text-[10px] cursor-pointer px-0.5 ${
-              node.enabled ? 'text-green-400' : 'text-zinc-600'
-            }`}
+            className={`text-[10px] cursor-pointer px-0.5 ${node.enabled ? 'text-green-400' : 'text-zinc-600'}`}
           >
             {node.enabled ? 'ON' : 'OFF'}
           </span>
         </div>
 
-        {/* Children (recursive) — structural hierarchy first */}
         {isExpanded &&
           node.childIds.map((childId) => (
-            <ObjectManagerNode
-              key={childId}
-              nodeId={childId}
-              depth={depth + 1}
-            />
+            <ObjectManagerNode key={childId} nodeId={childId} depth={depth + 1} />
           ))}
 
-        {/* Ops attached to this node — computation rows, indented like children */}
         {isExpanded &&
           nodeOps.map((op) => (
             <OpTreeRow key={op.id} op={op} depth={depth + 1} parentNodeId={nodeId} />
           ))}
+
+        {ctxMenu && (
+          <ContextMenu x={ctxMenu.x} y={ctxMenu.y} items={ctxItems} onClose={() => setCtxMenu(null)} />
+        )}
+        {confirmDelete && (
+          <ConfirmDialog
+            title={`Delete "${node.name}"?`}
+            message={hasChildren
+              ? `This will also delete ${node.childIds.length} child node(s). This cannot be undone.`
+              : 'This cannot be undone.'}
+            onConfirm={() => { commandRegistry.execute('scene.remove', { id: nodeId }); setConfirmDelete(false); }}
+            onCancel={() => setConfirmDelete(false)}
+          />
+        )}
       </>
     );
   },

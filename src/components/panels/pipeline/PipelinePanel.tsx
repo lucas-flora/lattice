@@ -6,11 +6,12 @@
  * Click an entry to select it and show detail in the Inspector.
  *
  * Two modes: List (flow diagram) and Code (combined script view).
+ * Right-click context menu on entries. "+" button opens add menu (ops only).
  */
 
 'use client';
 
-import { useMemo, useState, useCallback, useEffect } from 'react';
+import { useMemo, useState, useCallback, useEffect, useRef } from 'react';
 import type { PanelProps } from '@/layout/types';
 import type { PipelineEntry } from '@/engine/rule/GPURuleRunner';
 import { getController } from '@/components/AppShell';
@@ -24,6 +25,9 @@ import { commandRegistry } from '@/commands/CommandRegistry';
 import type { PipelineSectionMeta } from '@/commands/definitions/pipeline';
 import { PipelineSection } from './PipelineSection';
 import { PipelineCodeView } from './PipelineCodeView';
+import { ContextMenu, type ContextMenuItem } from '../../shared/ContextMenu';
+import { ConfirmDialog } from '../../shared/ConfirmDialog';
+import { AddObjectMenu } from '../../shared/AddObjectMenu';
 
 type PipelineMode = 'list' | 'code';
 
@@ -40,15 +44,20 @@ function PipelineContent() {
 
   const [revision, setRevision] = useState(0);
   const [mode, setMode] = useState<PipelineMode>('list');
-
-  // Combined code view state
   const [codeData, setCodeData] = useState<{ code: string; sections: PipelineSectionMeta[] } | null>(null);
+
+  // Context menu state
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; entry: PipelineEntry } | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<PipelineEntry | null>(null);
+
+  // Add menu state
+  const [addMenuPos, setAddMenuPos] = useState<{ x: number; y: number } | null>(null);
+  const addBtnRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     setRevision((r) => r + 1);
   }, [activePreset, ops.length]);
 
-  // GPURuleRunner initializes asynchronously AFTER the preset store update.
   useEffect(() => {
     const bump = () => setRevision((r) => r + 1);
     eventBus.on('gpu:ruleRunnerReady', bump);
@@ -61,7 +70,6 @@ function PipelineContent() {
     const runner = ctrl.getGPURuleRunner();
     if (!runner) return [];
     const raw = runner.getExecutionOrder();
-    // Enrich entries with expression store op IDs for cross-selection
     for (const entry of raw) {
       if (entry.type === 'rule-stage') {
         const match = ops.find((o) => o.phase === 'rule' && o.name.includes(entry.sourceId!));
@@ -75,7 +83,6 @@ function PipelineContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [revision, ops]);
 
-  // Find the visual scene node (for cross-selection when clicking visual-mapping entries)
   const visualNodeId = useMemo(() => {
     for (const node of Object.values(sceneNodes)) {
       if (node.type === NODE_TYPES.VISUAL) return node.id;
@@ -90,20 +97,15 @@ function PipelineContent() {
 
   const handleSelectEntry = useCallback((entry: PipelineEntry) => {
     if (entry.type === 'visual-mapping' && visualNodeId) {
-      // Visual mapping is a scene node — select it like any other node
       uiStoreActions.focusOp(null);
       uiStoreActions.selectPipelineEntry(null);
       sceneStoreActions.select(visualNodeId);
     } else if (entry.opId) {
-      // Op with expression store ID — select parent scene node + focus op
       const parentNode = Object.values(sceneNodes).find((n) => n.tags.includes(entry.opId!));
-      if (parentNode) {
-        sceneStoreActions.select(parentNode.id);
-      }
+      if (parentNode) sceneStoreActions.select(parentNode.id);
       uiStoreActions.focusOp(entry.opId);
       uiStoreActions.selectPipelineEntry(null);
     } else {
-      // Rule stages without opId — pipeline entry fallback
       sceneStoreActions.select(null);
       uiStoreActions.focusOp(null);
       uiStoreActions.selectPipelineEntry(entry.id);
@@ -115,53 +117,103 @@ function PipelineContent() {
     if (!ctrl) return;
     const runner = ctrl.getGPURuleRunner();
     if (!runner) return;
-
     const newEnabled = !entry.enabled;
-
     if (entry.type === 'rule-stage') {
       runner.setStageEnabled(entry.sourceId!, newEnabled);
     } else {
-      // post-rule-op, visual-mapping, pre-rule-op all live in expressionPasses
       runner.setPassEnabled(entry.sourceId!, newEnabled);
     }
-
-    // Re-derive so the UI updates
     setRevision((r) => r + 1);
   }, []);
 
-  // Handle reorder from drag-and-drop
   const handleReorder = useCallback((entryId: string, newIndex: number) => {
     commandRegistry.execute('op.reorder', { id: entryId, newIndex });
     setRevision((r) => r + 1);
   }, []);
 
-  // Generate code view data when switching to code mode
   const handleSetMode = useCallback(async (newMode: PipelineMode) => {
     if (newMode === 'code') {
       const result = await commandRegistry.execute('pipeline.showCode', {});
       if (result.success && result.data) {
-        const data = result.data as { code: string; sections: PipelineSectionMeta[] };
-        setCodeData(data);
+        setCodeData(result.data as { code: string; sections: PipelineSectionMeta[] });
       }
     }
     setMode(newMode);
   }, []);
 
-  // Navigate from code view section header back to list mode + select entry
   const handleNavigateToEntry = useCallback((entryId: string) => {
     const entry = entries.find((e) => e.id === entryId);
-    if (entry) {
-      handleSelectEntry(entry);
-    }
+    if (entry) handleSelectEntry(entry);
     setMode('list');
   }, [entries, handleSelectEntry]);
+
+  // Context menu for pipeline entries
+  const handleEntryContextMenu = useCallback((entry: PipelineEntry, e: React.MouseEvent) => {
+    setCtxMenu({ x: e.clientX, y: e.clientY, entry });
+  }, []);
+
+  const handleDeleteEntry = useCallback((entry: PipelineEntry) => {
+    if (entry.opId) {
+      commandRegistry.execute('op.remove', { id: entry.opId });
+    }
+    setConfirmDelete(null);
+    setRevision((r) => r + 1);
+  }, []);
+
+  const handleAddClick = useCallback(() => {
+    if (!addBtnRef.current) return;
+    const rect = addBtnRef.current.getBoundingClientRect();
+    setAddMenuPos({ x: rect.left, y: rect.bottom + 2 });
+  }, []);
+
+  // Build context menu items for an entry
+  const getCtxItems = useCallback((entry: PipelineEntry): ContextMenuItem[] => {
+    const isOp = entry.type === 'post-rule-op' || entry.type === 'pre-rule-op';
+    const phaseEntries = entries.filter((e) => e.phase === entry.phase);
+    const idxInPhase = phaseEntries.findIndex((e) => e.id === entry.id);
+
+    return [
+      {
+        label: 'Edit in Inspector',
+        action: () => handleSelectEntry(entry),
+      },
+      {
+        label: 'Duplicate',
+        hidden: !isOp || !entry.opId,
+        action: () => {
+          if (!entry.opId) return;
+          const op = ops.find((o) => o.id === entry.opId);
+          if (op) commandRegistry.execute('op.copy', { id: op.id, ownerType: op.owner.type, ownerId: op.owner.id });
+        },
+      },
+      {
+        label: entry.enabled ? 'Disable' : 'Enable',
+        divider: true,
+        action: () => handleToggleEnabled(entry),
+      },
+      {
+        label: 'Move Up',
+        hidden: idxInPhase <= 0 || entry.type === 'visual-mapping',
+        action: () => handleReorder(entry.id, idxInPhase - 1),
+      },
+      {
+        label: 'Move Down',
+        hidden: idxInPhase >= phaseEntries.length - 1 || entry.type === 'visual-mapping',
+        action: () => handleReorder(entry.id, idxInPhase + 1),
+      },
+      {
+        label: 'Delete',
+        divider: true,
+        hidden: !isOp || !entry.opId,
+        action: () => setConfirmDelete(entry),
+      },
+    ];
+  }, [entries, ops, handleSelectEntry, handleToggleEnabled, handleReorder]);
 
   if (!activePreset) {
     return (
       <div className="flex-1 flex items-center justify-center px-4">
-        <span className="text-zinc-500 text-[11px] text-center">
-          Load a preset to see the pipeline
-        </span>
+        <span className="text-zinc-500 text-[11px] text-center">Load a preset to see the pipeline</span>
       </div>
     );
   }
@@ -169,9 +221,7 @@ function PipelineContent() {
   if (entries.length === 0) {
     return (
       <div className="flex-1 flex items-center justify-center px-4">
-        <span className="text-zinc-500 text-[11px] text-center">
-          No pipeline entries
-        </span>
+        <span className="text-zinc-500 text-[11px] text-center">No pipeline entries</span>
       </div>
     );
   }
@@ -182,19 +232,24 @@ function PipelineContent() {
     <div className="flex flex-col h-full">
       {/* Header */}
       <div className="flex items-center justify-between px-2 py-1 border-b border-zinc-700/50 shrink-0">
-        <span className="text-[10px] font-mono text-zinc-500">
-          {entries.length} steps
-        </span>
+        <div className="flex items-center gap-1.5">
+          <span className="text-[10px] font-mono text-zinc-500">{entries.length} steps</span>
+          <button
+            ref={addBtnRef}
+            onClick={handleAddClick}
+            className="text-zinc-600 hover:text-green-400 text-[11px] cursor-pointer leading-none"
+            title="Add op"
+          >
+            +
+          </button>
+        </div>
 
-        {/* Mode toggle + dispatch count */}
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-0.5 bg-zinc-800/60 rounded p-0.5">
             <button
               onClick={() => handleSetMode('list')}
               className={`text-[9px] font-mono px-1.5 py-0.5 rounded cursor-pointer transition-colors ${
-                mode === 'list'
-                  ? 'bg-zinc-700 text-zinc-300'
-                  : 'text-zinc-500 hover:text-zinc-400'
+                mode === 'list' ? 'bg-zinc-700 text-zinc-300' : 'text-zinc-500 hover:text-zinc-400'
               }`}
               title="List view"
             >
@@ -203,9 +258,7 @@ function PipelineContent() {
             <button
               onClick={() => handleSetMode('code')}
               className={`text-[9px] font-mono px-1.5 py-0.5 rounded cursor-pointer transition-colors ${
-                mode === 'code'
-                  ? 'bg-zinc-700 text-zinc-300'
-                  : 'text-zinc-500 hover:text-zinc-400'
+                mode === 'code' ? 'bg-zinc-700 text-zinc-300' : 'text-zinc-500 hover:text-zinc-400'
               }`}
               title="Combined code view"
             >
@@ -229,6 +282,7 @@ function PipelineContent() {
             onSelectEntry={handleSelectEntry}
             onToggleEnabled={handleToggleEnabled}
             onReorder={handleReorder}
+            onEntryContextMenu={handleEntryContextMenu}
             isFirstSection
             isLastSection={ruleStages.length === 0 && postRuleOps.length === 0 && visualMappings.length === 0}
           />
@@ -240,6 +294,7 @@ function PipelineContent() {
             onSelectEntry={handleSelectEntry}
             onToggleEnabled={handleToggleEnabled}
             onReorder={handleReorder}
+            onEntryContextMenu={handleEntryContextMenu}
             isFirstSection={preRuleOps.length === 0}
             isLastSection={postRuleOps.length === 0 && visualMappings.length === 0}
           />
@@ -251,6 +306,7 @@ function PipelineContent() {
             onSelectEntry={handleSelectEntry}
             onToggleEnabled={handleToggleEnabled}
             onReorder={handleReorder}
+            onEntryContextMenu={handleEntryContextMenu}
             isFirstSection={preRuleOps.length === 0 && ruleStages.length === 0}
             isLastSection={visualMappings.length === 0}
           />
@@ -261,6 +317,7 @@ function PipelineContent() {
             selectedId={focusedOpId ?? selectedPipelineEntryId}
             onSelectEntry={handleSelectEntry}
             onToggleEnabled={handleToggleEnabled}
+            onEntryContextMenu={handleEntryContextMenu}
             isFirstSection={preRuleOps.length === 0 && ruleStages.length === 0 && postRuleOps.length === 0}
             isLastSection
           />
@@ -273,6 +330,36 @@ function PipelineContent() {
             onNavigateToEntry={handleNavigateToEntry}
           />
         )
+      )}
+
+      {/* Context menu */}
+      {ctxMenu && (
+        <ContextMenu
+          x={ctxMenu.x}
+          y={ctxMenu.y}
+          items={getCtxItems(ctxMenu.entry)}
+          onClose={() => setCtxMenu(null)}
+        />
+      )}
+
+      {/* Delete confirmation */}
+      {confirmDelete && (
+        <ConfirmDialog
+          title={`Delete "${confirmDelete.name}"?`}
+          message="This operator will be permanently removed from the pipeline."
+          onConfirm={() => handleDeleteEntry(confirmDelete)}
+          onCancel={() => setConfirmDelete(null)}
+        />
+      )}
+
+      {/* Add menu */}
+      {addMenuPos && (
+        <AddObjectMenu
+          variant="pipeline"
+          x={addMenuPos.x}
+          y={addMenuPos.y}
+          onClose={() => setAddMenuPos(null)}
+        />
       )}
     </div>
   );
