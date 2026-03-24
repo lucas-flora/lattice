@@ -12,11 +12,19 @@
 
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useState, useRef, useEffect } from 'react';
 import { useSimStore } from '@/store/simStore';
 import { useUiStore } from '@/store/uiStore';
 import { useLayoutStore } from '@/store/layoutStore';
 import { commandRegistry } from '@/commands/CommandRegistry';
+
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 B';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(0)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+}
 
 const SPEED_VALUES = [1, 5, 10, 30, 60, 0]; // 0 = max
 
@@ -41,6 +49,24 @@ export function ControlBar() {
   const activePreset = useSimStore((s) => s.activePreset);
   const viewportCount = useLayoutStore((s) => s.viewportCount);
   const playbackMode = useUiStore((s) => s.playbackMode);
+  const bufferSize = useSimStore((s) => s.bufferSize);
+  const bufferCapacity = useSimStore((s) => s.bufferCapacity);
+  const bufferMemoryUsage = useSimStore((s) => s.bufferMemoryUsage);
+  const bufferBytesPerFrame = useSimStore((s) => s.bufferBytesPerFrame);
+  const [showBufferSettings, setShowBufferSettings] = useState(false);
+  const [bufferSlider, setBufferSlider] = useState(bufferCapacity);
+  const bufferSettingsRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!showBufferSettings) return;
+    const handler = (e: MouseEvent) => {
+      if (bufferSettingsRef.current && !bufferSettingsRef.current.contains(e.target as Node)) {
+        setShowBufferSettings(false);
+      }
+    };
+    document.addEventListener('pointerdown', handler);
+    return () => document.removeEventListener('pointerdown', handler);
+  }, [showBufferSettings]);
 
   const handlePlayPause = useCallback(() => {
     if (isRunning) {
@@ -89,6 +115,15 @@ export function ControlBar() {
 
   const handleScreenshot = useCallback(() => {
     commandRegistry.execute('viewport.screenshot', {});
+  }, []);
+
+  const handleBufferResize = useCallback((frames: number) => {
+    commandRegistry.execute('buffer.resize', { frames });
+    setBufferSlider(frames);
+  }, []);
+
+  const handleBufferClear = useCallback(() => {
+    commandRegistry.execute('buffer.clear', {});
   }, []);
 
   const handlePlaybackMode = useCallback(() => {
@@ -208,6 +243,49 @@ export function ControlBar() {
       >
         {PLAYBACK_MODE_ICONS[playbackMode] || '\u221E'}
       </button>
+
+      {/* Buffer Settings */}
+      {bufferCapacity > 0 && (
+        <div className="relative" ref={bufferSettingsRef}>
+          <button
+            onClick={() => { setShowBufferSettings(!showBufferSettings); setBufferSlider(bufferCapacity); }}
+            className="text-zinc-400 hover:text-white px-1.5 py-0.5 text-[10px] font-mono tabular-nums"
+            title={`Buffer: ${bufferSize}/${bufferCapacity} frames (~${formatBytes(bufferMemoryUsage)})`}
+            data-testid="btn-buffer-settings"
+          >
+            {bufferSize}/{bufferCapacity}
+          </button>
+          {showBufferSettings && (
+            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 bg-zinc-800 border border-zinc-700 rounded p-2 z-30 w-56">
+              <div className="text-[10px] font-mono text-zinc-300 mb-1.5">Buffer Settings</div>
+              <div className="flex items-center gap-2 mb-1.5">
+                <input
+                  type="range"
+                  min={10}
+                  max={2000}
+                  step={10}
+                  value={bufferSlider}
+                  onChange={(e) => setBufferSlider(parseInt(e.target.value, 10))}
+                  onMouseUp={() => handleBufferResize(bufferSlider)}
+                  onTouchEnd={() => handleBufferResize(bufferSlider)}
+                  className="flex-1 h-1"
+                />
+                <span className="text-[10px] font-mono text-zinc-400 w-10 text-right">{bufferSlider}</span>
+              </div>
+              <div className="text-[9px] font-mono text-zinc-500 mb-1.5">
+                {bufferBytesPerFrame > 0 ? `${formatBytes(bufferBytesPerFrame)}/frame` : ''}{' '}
+                ~{formatBytes(bufferSlider * bufferBytesPerFrame)} total
+              </div>
+              <button
+                onClick={handleBufferClear}
+                className="text-[10px] text-zinc-400 hover:text-zinc-200 border border-zinc-600 rounded px-2 py-0.5"
+              >
+                Clear Buffer
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Screenshot */}
       <button

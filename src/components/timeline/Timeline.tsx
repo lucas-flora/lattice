@@ -80,6 +80,8 @@ function MiniMap({
   generation,
   zoomStart,
   zoomEnd,
+  bufferOldest,
+  bufferNewest,
   onSeek,
 }: {
   containerWidth: number;
@@ -88,6 +90,8 @@ function MiniMap({
   generation: number;
   zoomStart: number;
   zoomEnd: number;
+  bufferOldest: number;
+  bufferNewest: number;
   onSeek: (frame: number) => void;
 }) {
   const draggingRef = useRef<'none' | 'pan' | 'left' | 'right'>('none');
@@ -181,6 +185,17 @@ function MiniMap({
         {/* Background — dark outside zoom region */}
         <div className="absolute inset-0 bg-zinc-950" />
 
+        {/* Buffer window — cyan tint showing instantly-scrubbable range */}
+        {bufferOldest >= 0 && bufferNewest >= 0 && (
+          <div
+            className="absolute top-0 bottom-0 bg-cyan-500/15"
+            style={{
+              left: frameToX(bufferOldest),
+              width: Math.max(1, frameToX(bufferNewest) - frameToX(bufferOldest)),
+            }}
+          />
+        )}
+
         {/* Computed region — subtle green tint in the dark area */}
         <div
           className="absolute top-0 bottom-0 bg-green-500/10"
@@ -247,6 +262,8 @@ function MiniMap({
 export function TimelineCounter() {
   const generation = useSimStore((s) => s.generation);
   const speed = useSimStore((s) => s.speed);
+  const bufferSize = useSimStore((s) => s.bufferSize);
+  const bufferCapacity = useSimStore((s) => s.bufferCapacity);
   const displayMode = useUiStore((s) => s.timelineDisplayMode);
   const duration = useUiStore((s) => s.timelineDuration);
   const [editingDuration, setEditingDuration] = useState(false);
@@ -293,6 +310,11 @@ export function TimelineCounter() {
         {currentLabel}
       </button>
       <span className="text-zinc-600">/</span>
+      {bufferCapacity > 0 && (
+        <span className="text-cyan-500/60 text-[8px] mx-0.5" title={`Buffer: ${bufferSize}/${bufferCapacity} frames`}>
+          {bufferSize}/{bufferCapacity}
+        </span>
+      )}
       {editingDuration ? (
         <input
           type="number"
@@ -325,6 +347,8 @@ export function Timeline() {
   const computedGeneration = useSimStore((s) => s.computedGeneration);
   const speed = useSimStore((s) => s.speed);
   const isRunning = useSimStore((s) => s.isRunning);
+  const bufferOldestFrame = useSimStore((s) => s.bufferOldestFrame);
+  const bufferNewestFrame = useSimStore((s) => s.bufferNewestFrame);
   const displayMode = useUiStore((s) => s.timelineDisplayMode);
   const duration = useUiStore((s) => s.timelineDuration);
   const zoomStart = useUiStore((s) => s.timelineZoomStart);
@@ -496,6 +520,8 @@ export function Timeline() {
         generation={generation}
         zoomStart={zoomStart}
         zoomEnd={zoomEnd}
+        bufferOldest={bufferOldestFrame}
+        bufferNewest={bufferNewestFrame}
         onSeek={seekToFrame}
       />
 
@@ -517,6 +543,18 @@ export function Timeline() {
             style={{ left: Math.max(0, computedStartX), width: Math.max(0, computedEndX - Math.max(0, computedStartX)) }}
           />
         )}
+
+        {/* Buffer window — cyan tint showing instantly-scrubbable range */}
+        {bufferOldestFrame >= 0 && bufferNewestFrame >= 0 && (() => {
+          const bufStartX = ((Math.max(bufferOldestFrame, zoomStart) - zoomStart) / zoomSpan) * containerWidth;
+          const bufEndX = ((Math.min(bufferNewestFrame, zoomEnd) - zoomStart) / zoomSpan) * containerWidth;
+          return bufEndX > bufStartX ? (
+            <div
+              className="absolute bottom-0 h-[2px] bg-cyan-400/40 pointer-events-none"
+              style={{ left: Math.max(0, bufStartX), width: Math.max(0, bufEndX - bufStartX) }}
+            />
+          ) : null;
+        })()}
 
         {/* Tick marks and labels */}
         {ticks.map((tick, i) => (

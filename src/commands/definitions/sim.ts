@@ -185,6 +185,37 @@ export function registerSimCommands(
     },
   });
 
+  // --- Buffer commands ---
+
+  const BufferResizeParams = z.object({
+    frames: z.number().int().min(10).max(5000),
+  }).describe('{ frames: number }');
+
+  registry.register({
+    name: 'buffer.resize',
+    description: 'Resize the circular frame buffer (clears existing data)',
+    category: 'sim',
+    params: BufferResizeParams,
+    execute: async (params) => {
+      const { frames } = params as z.infer<typeof BufferResizeParams>;
+      const buf = controller.getCircularBuffer();
+      buf.resize(frames);
+      return { success: true, data: { frames, memoryUsage: buf.memoryUsage } };
+    },
+  });
+
+  registry.register({
+    name: 'buffer.clear',
+    description: 'Clear the circular frame buffer',
+    category: 'sim',
+    params: NoParams,
+    execute: async () => {
+      const buf = controller.getCircularBuffer();
+      buf.clear();
+      return { success: true };
+    },
+  });
+
   // --- SG-8: Multi-sim commands ---
   // These commands are only available when the controller is a SimulationManager.
   // When using a plain SimulationController, they gracefully return errors.

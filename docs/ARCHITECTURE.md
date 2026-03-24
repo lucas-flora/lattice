@@ -502,23 +502,35 @@ Operators within each phase are evaluated in dependency order (topological sort)
 Pre-rule link operators use JS rangeMap for speed. Post-rule code operators go through
 the Pyodide Python harness.
 
-### Compute-Ahead Pipeline
+### Live Mode & Circular Frame Buffer
 
-Frames are pre-computed into a cache so the timeline can be scrubbed instantly.
-Playback is decoupled from computation — the sim computes as fast as possible
-while playback runs at display FPS.
+The simulation runs in **live mode**: press play, the GPU ticks immediately, and a
+circular frame buffer fills behind the playhead. There is no pre-compute step.
 
-**Sync path** (TS/WASM rules, no expressions): `computeFrames()` runs entire
-chunks synchronously. The renderer never fires mid-chunk.
+**Live loop** (requestAnimationFrame-based):
+```
+  rAF callback:
+    1. Speed gate: skip if less than tickIntervalMs since last tick
+    2. GPU tick (1–4 ticks/frame depending on speed setting)
+    3. Render (GPU renderer reads directly from storage buffer — zero-copy)
+    4. Async readback → push snapshot to CircularFrameBuffer (non-blocking)
+    5. Emit sim:tick event
+    6. requestAnimationFrame → repeat
+```
 
-**Async path** (Python rules or post-rule expressions): `computeFramesAsync()`
-uses `await tickAsync()` per frame, which yields to the event loop (worker
-postMessage is a macrotask). To prevent the renderer from showing intermediate
-compute states, the grid's **display lock** (`Grid.lockDisplay()`) freezes a
-snapshot that `getDisplayBuffer()` returns while the live buffers advance freely.
+**CircularFrameBuffer** (`src/engine/buffer/CircularFrameBuffer.ts`):
+- Ring buffer of `FrameSnapshot` objects (absolute frame index + interleaved Float32Array clone)
+- Capacity auto-sized per grid: targets ~500MB RAM, clamped to [10, 2000] frames
+- Configurable via `buffer.resize` command or ControlBar slider
+- When full, oldest frame is overwritten — buffer window slides forward
+
+**Scrubbing**:
+- Within buffer window: instant restore via `uploadInterleaved()` (GPU upload of cached snapshot)
+- Beyond buffer window: restore nearest cached frame (or initial state), GPU-tick forward to target
+- Readback decimation: for large grids (>4MB/frame), readback runs every Nth tick to maintain framerate
 
 **Epoch-based cancellation**: `computeEpoch` increments on preset/resize changes.
-In-flight async loops check the epoch after each `await` and bail if stale.
+In-flight async readbacks check the epoch and discard stale results.
 
 ### Debug Logging
 

@@ -23,6 +23,7 @@ import { sceneStoreActions, useSceneStore } from '../store/sceneStore';
 import { logMin, logDbg, logGPU } from '../lib/debugLog';
 import { GPURuleRunner } from '../engine/rule/GPURuleRunner';
 import { GPUContext } from '../engine/gpu/GPUContext';
+import { CircularFrameBuffer, computeDefaultBufferSize } from '../engine/buffer/CircularFrameBuffer';
 
 export interface ParamDef {
   name: string;
@@ -32,14 +33,6 @@ export interface ParamDef {
   min?: number;
   max?: number;
   step?: number;
-}
-
-/** Snapshot of grid state at a generation for scrubbing/playback */
-interface TickSnapshot {
-  generation: number;
-  /** Map of property name -> copy of the current buffer at that generation */
-  buffers: Map<string, Float32Array>;
-  liveCellCount: number;
 }
 
 /** Round a duration to a "nice" number for smart auto-extend */
@@ -63,7 +56,7 @@ export interface ControllerStateSnapshot {
   playing: boolean;
   tickIntervalMs: number;
   activePresetName: string | null;
-  frameCache: Map<number, TickSnapshot>;
+  circularBuffer: CircularFrameBuffer;
   computedGeneration: number;
   initialSnapshot: Map<string, Float32Array> | null;
   computeAheadTarget: number;
@@ -77,13 +70,11 @@ export class SimulationController {
   protected simulation: Simulation | null = null;
   protected commandHistory: CommandHistory | null = null;
   protected playing: boolean = false;
-  protected tickInterval: ReturnType<typeof setInterval> | null = null;
   protected tickIntervalMs: number;
   protected activePresetName: string | null = null;
 
-  /** Frame cache: generation -> snapshot. Replaces the old tickHistory array. */
-  protected frameCache: Map<number, TickSnapshot> = new Map();
-  protected maxCacheSize: number = 2000;
+  /** Circular frame buffer — ring buffer of GPU readback snapshots for scrubbing. */
+  protected circularBuffer: CircularFrameBuffer = new CircularFrameBuffer(500);
 
   /** How far ahead the sim has been computed (the frontier). */
   protected computedGeneration: number = 0;
@@ -91,7 +82,7 @@ export class SimulationController {
   /** Snapshot of the grid state right after initialization (for seek/reset to replay from) */
   protected initialSnapshot: Map<string, Float32Array> | null = null;
 
-  /** Compute-ahead state */
+  /** Compute-ahead state (legacy — kept for compute-ahead target tracking) */
   protected computeAheadTimer: ReturnType<typeof setTimeout> | null = null;
   protected computeAheadTarget: number = 0;
 
@@ -118,11 +109,17 @@ export class SimulationController {
   /** Resolvers waiting for GPU sync to complete */
   private gpuSyncWaiters: (() => void)[] = [];
 
-  /** Memory budget for the frame cache in bytes (default 512MB) */
-  private static readonly CACHE_MEMORY_BUDGET = 512 * 1024 * 1024;
+  /** requestAnimationFrame handle for live playback loop */
+  private rafHandle: number | null = null;
+  /** Timestamp of last tick — used for speed control */
+  private lastTickTime: number = 0;
+  /** Whether a GPU readback is currently in-flight (non-blocking buffer push) */
+  private readbackInFlight: boolean = false;
+  /** Skip readback for large grids to maintain framerate */
+  private readbackEveryN: number = 1;
+  /** Counter for readback decimation */
+  private ticksSinceReadback: number = 0;
 
-  /** Grid byte threshold above which GPU cache fill is skipped (64MB per frame) */
-  private static readonly GPU_CACHE_FILL_THRESHOLD = 64 * 1024 * 1024;
 
   constructor(eventBus: EventBus, tickIntervalMs: number = 100) {
     this.eventBus = eventBus;
@@ -187,8 +184,8 @@ export class SimulationController {
       this.computedGeneration = this.timelineDuration;
       this.eventBus.emit('sim:computeProgress', { computedGeneration: this.computedGeneration });
 
-      // Start background cache fill (non-blocking, yields to browser)
-      void this.gpuCacheFill();
+      // Initialize circular buffer with smart default size
+      this.initCircularBuffer();
     } catch (err) {
       logGPU(`Rule runner init FAILED for "${presetName}": ${err}`);
       this.gpuRuleRunner = null;
@@ -239,101 +236,69 @@ export class SimulationController {
     }
   }
 
-  /** Epoch for GPU cache fill — incremented to cancel in-flight fills */
-  private gpuCacheFillEpoch: number = 0;
 
   /**
-   * Background GPU cache fill using a SEPARATE offscreen GPURuleRunner.
-   * The display runner's buffers are never touched — zero visual artifacts.
-   * Creates a temporary runner, seeds it with initial state, ticks + readback
-   * for each frame, stores snapshots in the frame cache, then destroys it.
+   * Initialize the circular buffer with smart default size based on grid dimensions.
    */
-  private async gpuCacheFill(): Promise<void> {
-    if (!this.gpuRuleRunner || !this.simulation) return;
-    if (this.playing) return;
-
-    // Skip cache fill for large grids — readback + double runner memory is prohibitive.
-    // The GPU live-tick path handles playback without cache.
+  private initCircularBuffer(): void {
+    if (!this.simulation) return;
     const grid = this.simulation.grid;
-    const perFrameBytes = grid.cellCount * grid.getPropertyNames().length * 4;
-    if (perFrameBytes > SimulationController.GPU_CACHE_FILL_THRESHOLD) {
-      logGPU(`Cache fill skipped: per-frame ${(perFrameBytes / 1024 / 1024).toFixed(1)}MB exceeds ${(SimulationController.GPU_CACHE_FILL_THRESHOLD / 1024 / 1024).toFixed(0)}MB threshold`);
-      return;
+    const propCount = grid.getPropertyNames().length;
+    const { frames, bytesPerFrame } = computeDefaultBufferSize(
+      grid.config.width,
+      grid.config.height ?? 1,
+      propCount,
+    );
+    this.circularBuffer.resize(frames);
+    // Determine readback decimation: skip readback if per-frame > 4MB
+    if (bytesPerFrame > 4 * 1024 * 1024) {
+      this.readbackEveryN = Math.max(1, Math.ceil(bytesPerFrame / (4 * 1024 * 1024)));
+    } else {
+      this.readbackEveryN = 1;
     }
+    logGPU(`Circular buffer: ${frames} frames, ${(bytesPerFrame / 1024).toFixed(0)}KB/frame, readback every ${this.readbackEveryN} ticks`);
+    this.emitBufferStatus();
+  }
 
-    const epoch = ++this.gpuCacheFillEpoch;
-    const target = this.timelineDuration;
+  /**
+   * Push current GPU state to the circular buffer (async, non-blocking).
+   * Skips if a readback is already in flight.
+   */
+  private pushToBuffer(frameIndex: number): void {
+    if (!this.gpuRuleRunner || this.readbackInFlight) return;
+    this.ticksSinceReadback++;
+    if (this.ticksSinceReadback < this.readbackEveryN) return;
+    this.ticksSinceReadback = 0;
 
-    // Find the first uncached frame — start fill from there
-    let startGen = 0;
-    while (startGen < target && this.frameCache.has(startGen)) startGen++;
-    if (startGen >= target) return; // All cached already
+    this.readbackInFlight = true;
+    const runner = this.gpuRuleRunner;
+    const epoch = this.computeEpoch;
+    runner.readBack().then((data) => {
+      this.readbackInFlight = false;
+      // Only store if we haven't changed preset/runner
+      if (this.computeEpoch !== epoch || this.gpuRuleRunner !== runner) return;
+      this.circularBuffer.push(frameIndex, data);
+      this.emitBufferStatus();
+    }).catch(() => {
+      this.readbackInFlight = false;
+    });
+  }
 
-    // Create offscreen runner (shader compilation is cached — instant)
-    let offscreen: GPURuleRunner;
-    try {
-      offscreen = new GPURuleRunner(this.simulation.grid, this.simulation.preset);
-      await offscreen.initialize();
-    } catch (err) {
-      logGPU(`Cache fill: offscreen runner init failed: ${err}`);
-      return;
-    }
+  /** Emit buffer status event for UI consumption */
+  private emitBufferStatus(): void {
+    this.eventBus.emit('sim:bufferStatus', {
+      size: this.circularBuffer.size,
+      capacity: this.circularBuffer.maxCapacity,
+      oldestFrame: this.circularBuffer.oldestFrame,
+      newestFrame: this.circularBuffer.newestFrame,
+      memoryUsage: this.circularBuffer.memoryUsage,
+      bytesPerFrame: this.circularBuffer.bytesPerFrame,
+    });
+  }
 
-    // Seed offscreen runner: use the cached frame just before startGen,
-    // or initial state if starting from 0. Uses Grid as temp transfer buffer.
-    const savedGridBufs = new Map<string, Float32Array>();
-    for (const propName of this.simulation.grid.getPropertyNames()) {
-      savedGridBufs.set(propName, new Float32Array(this.simulation.grid.getCurrentBuffer(propName)));
-    }
-
-    if (startGen > 0 && this.frameCache.has(startGen - 1)) {
-      this.applySnapshot(this.frameCache.get(startGen - 1)!);
-      offscreen.uploadFromGrid();
-      offscreen.setGeneration(startGen - 1);
-      offscreen.tick(); // advance to startGen
-    } else if (startGen === 0 && this.initialSnapshot) {
-      for (const [propName, buf] of this.initialSnapshot) {
-        this.simulation.grid.getCurrentBuffer(propName).set(buf);
-      }
-      offscreen.uploadFromGrid();
-      offscreen.setGeneration(0);
-    }
-
-    // Restore Grid to what it was (display path owns it)
-    for (const [propName, buf] of savedGridBufs) {
-      this.simulation.grid.getCurrentBuffer(propName).set(buf);
-    }
-
-    logGPU(`Cache fill starting: gen ${startGen} → ${target} (offscreen)`);
-
-    for (let gen = startGen; gen < target; gen++) {
-      if (this.gpuCacheFillEpoch !== epoch) break;
-
-      if (!this.frameCache.has(gen)) {
-        const buffers = await offscreen.readBackToGrid();
-        this.frameCache.set(gen, { generation: gen, buffers, liveCellCount: -1 });
-      }
-
-      offscreen.tick();
-      this.computedGeneration = Math.max(this.computedGeneration, gen + 1);
-
-      if (gen % 10 === 0) {
-        this.eventBus.emit('sim:computeProgress', { computedGeneration: this.computedGeneration });
-        await new Promise(r => setTimeout(r, 0));
-      }
-    }
-
-    // Cache the final frame
-    if (this.gpuCacheFillEpoch === epoch) {
-      const buffers = await offscreen.readBackToGrid();
-      const finalGen = offscreen.getGeneration();
-      this.frameCache.set(finalGen, { generation: finalGen, buffers, liveCellCount: -1 });
-      this.computedGeneration = Math.max(this.computedGeneration, finalGen);
-      this.eventBus.emit('sim:computeProgress', { computedGeneration: this.computedGeneration });
-      logGPU(`Cache fill complete: ${this.frameCache.size} frames cached`);
-    }
-
-    offscreen.destroy();
+  /** Get the circular buffer (for external access, e.g. buffer settings UI). */
+  getCircularBuffer(): CircularFrameBuffer {
+    return this.circularBuffer;
   }
 
   /**
@@ -369,7 +334,7 @@ export class SimulationController {
     this.simulation = new Simulation(config);
     this.commandHistory = new CommandHistory(this.simulation);
     this.activePresetName = config.meta.name;
-    this.frameCache.clear();
+    this.circularBuffer.clear();
     this.computedGeneration = 0;
     this.playbackGeneration = 0;
 
@@ -380,7 +345,7 @@ export class SimulationController {
     this.emitPresetLoaded(config);
     this.emitParamDefs();
     this.syncTagStore();
-    logMin('ctrl', `loadPreset done — computedGen=${this.computedGeneration}, cacheSize=${this.frameCache.size}, computeAheadTarget=${this.computeAheadTarget}`);
+    logMin('ctrl', `loadPreset done — computedGen=${this.computedGeneration}, bufferSize=${this.circularBuffer.size}, computeAheadTarget=${this.computeAheadTarget}`);
   }
 
   /**
@@ -397,7 +362,7 @@ export class SimulationController {
     this.simulation = new Simulation(config);
     this.commandHistory = new CommandHistory(this.simulation);
     this.activePresetName = config.meta.name;
-    this.frameCache.clear();
+    this.circularBuffer.clear();
     this.computedGeneration = 0;
     this.playbackGeneration = 0;
 
@@ -406,7 +371,7 @@ export class SimulationController {
     this.emitPresetLoaded(config);
     this.emitParamDefs();
     this.syncTagStore();
-    logMin('ctrl', `loadPresetConfig done — computedGen=${this.computedGeneration}, cacheSize=${this.frameCache.size}`);
+    logMin('ctrl', `loadPresetConfig done — computedGen=${this.computedGeneration}, bufferSize=${this.circularBuffer.size}`);
   }
 
   /**
@@ -447,14 +412,13 @@ export class SimulationController {
     this.pause();
     this.stopComputeAhead();
     // Clear all cached frames (tags changed → every frame is stale)
-    this.frameCache.clear();
+    this.circularBuffer.clear();
     this.computedGeneration = 0;
     this.playbackGeneration = 0;
     // Restore initial state BEFORE anything else touches the grid
     this.restoreInitialState();
     this.syncGridToGPU();
-    // Cache the clean initial frame
-    this.cacheCurrentFrame();
+    this.emitBufferStatus();
     // Emit targeted events: generation=0, paused, computedGeneration=0.
     // Don't use sim:reset which nukes maxGeneration (timeline needs that for scrub ceiling).
     this.eventBus.emit('sim:tick', {
@@ -462,10 +426,6 @@ export class SimulationController {
       liveCellCount: this.getLiveCellCount(),
     });
     this.eventBus.emit('sim:computeProgress', { computedGeneration: 0 });
-    // Restart compute-ahead from clean state
-    if (this.computeAheadTarget > 0) {
-      this.computeAhead(this.computeAheadTarget);
-    }
   }
 
   /**
@@ -481,11 +441,11 @@ export class SimulationController {
       const buf = this.simulation.grid.getCurrentBuffer(propName);
       this.initialSnapshot.set(propName, new Float32Array(buf));
     }
-    this.frameCache.clear();
+    this.circularBuffer.clear();
     this.computedGeneration = 0;
     this.playbackGeneration = 0;
     this.syncGridToGPU();
-    this.cacheCurrentFrame();
+    this.emitBufferStatus();
     this.eventBus.emit('sim:reset', {});
     this.eventBus.emit('sim:tick', {
       generation: 0,
@@ -510,15 +470,15 @@ export class SimulationController {
     logMin('play', `play() — already=${this.playing}, computedGen=${this.computedGeneration}, playbackGen=${this.playbackGeneration}`);
     if (this.playing || !this.simulation) return;
     this.playing = true;
-    this.gpuCacheFillEpoch++; // Cancel any in-flight GPU cache fill
 
-    // If edits were pending a debounced compute-ahead restart, flush it now
+    // If edits were pending a debounced restart, flush it now
     if (this.editDebounceTimer) {
       clearTimeout(this.editDebounceTimer);
       this.editDebounceTimer = null;
     }
 
     this.eventBus.emit('sim:play', {});
+    this.lastTickTime = performance.now();
     this.startPlaybackLoop();
   }
 
@@ -564,6 +524,10 @@ export class SimulationController {
     this.gpuRuleRunner.tick();
     this.playbackGeneration = this.gpuRuleRunner.getGeneration();
     this.simulation.setGeneration(this.playbackGeneration);
+
+    // Push to circular buffer on step (non-blocking)
+    this.pushToBuffer(this.playbackGeneration);
+
     this.eventBus.emit('sim:tick', { generation: this.playbackGeneration, liveCellCount: -1 });
   }
 
@@ -600,11 +564,12 @@ export class SimulationController {
       this.syncInitialStateToScene();
     }
 
-    this.frameCache.clear();
+    this.circularBuffer.clear();
     this.computedGeneration = 0;
     this.playbackGeneration = 0;
     this.simulation.setGeneration(0);
     this.syncGridToGPU();
+    this.emitBufferStatus();
     this.eventBus.emit('sim:clear', {});
     this.eventBus.emit('sim:tick', { generation: 0, liveCellCount: 0 });
   }
@@ -639,48 +604,71 @@ export class SimulationController {
     const targetGen = Math.max(0, generation);
 
     // No-op if already at target (prevents seek→emit→seek loops)
-    if (targetGen === this.playbackGeneration && this.frameCache.has(targetGen)) {
+    if (targetGen === this.playbackGeneration && this.circularBuffer.has(targetGen)) {
       return;
     }
     logDbg('play', `seek(${targetGen}) — playbackGen=${this.playbackGeneration}, computedGen=${this.computedGeneration}`);
 
     if (!this.gpuRuleRunner) return;
 
-    // GPU seek: restore nearest cached state and GPU-tick forward.
-    // GPU ticking is <1ms/frame so even large seeks are near-instant.
-    if (this.frameCache.has(targetGen)) {
+    // Case 1: Target frame is in the circular buffer — instant restore
+    const cached = this.circularBuffer.get(targetGen);
+    if (cached) {
       this.playbackGeneration = targetGen;
-      this.restoreFrame(targetGen);
-    } else {
-      // Find nearest cached frame at or before target
-      let nearest = targetGen;
-      while (nearest > 0 && !this.frameCache.has(nearest)) nearest--;
+      this.gpuRuleRunner.uploadInterleaved(cached.data);
+      this.gpuRuleRunner.setGeneration(targetGen);
+      // Re-run expression/visual passes to recompute colors for the restored state
+      this.gpuRuleRunner.runExpressionPasses();
+      this.simulation.setGeneration(targetGen);
+      this.eventBus.emit('sim:tick', { generation: targetGen, liveCellCount: -1 });
+      return;
+    }
 
-      // Restore the nearest point (cached frame or initial state)
-      if (nearest === 0 && !this.frameCache.has(0) && this.initialSnapshot) {
-        // Restore from initial snapshot directly
-        for (const [propName, buf] of this.initialSnapshot) {
-          this.simulation.grid.getCurrentBuffer(propName).set(buf);
+    // Case 2: Target not in buffer — find nearest cached frame and compute forward
+    // Check circular buffer for nearest frame before target
+    let nearestFrame = -1;
+    let nearestData: Float32Array | null = null;
+    if (this.circularBuffer.size > 0) {
+      // Scan buffer for the closest frame at or before target
+      for (let f = targetGen; f >= Math.max(0, this.circularBuffer.oldestFrame); f--) {
+        const snap = this.circularBuffer.get(f);
+        if (snap) {
+          nearestFrame = f;
+          nearestData = snap.data;
+          break;
         }
-        this.syncGridToGPU();
-        this.gpuRuleRunner.setGeneration(0);
-      } else if (this.frameCache.has(nearest)) {
-        this.applySnapshot(this.frameCache.get(nearest)!);
-        this.syncGridToGPU();
-        this.gpuRuleRunner.setGeneration(nearest);
       }
+    }
 
-      // GPU-tick forward to target (no readback, no cache — just compute)
-      const ticksNeeded = targetGen - nearest;
+    if (nearestFrame >= 0 && nearestData) {
+      // Restore from nearest buffered frame
+      this.gpuRuleRunner.uploadInterleaved(nearestData);
+      this.gpuRuleRunner.setGeneration(nearestFrame);
+      this.gpuRuleRunner.runExpressionPasses();
+    } else if (this.initialSnapshot) {
+      // Restore from initial state (frame 0)
+      for (const [propName, buf] of this.initialSnapshot) {
+        this.simulation.grid.getCurrentBuffer(propName).set(buf);
+      }
+      this.syncGridToGPU();
+      this.gpuRuleRunner.setGeneration(0);
+      nearestFrame = 0;
+    } else {
+      nearestFrame = 0;
+    }
+
+    // GPU-tick forward to target (no readback — just compute)
+    const ticksNeeded = targetGen - nearestFrame;
+    if (ticksNeeded > 0) {
       this.gpuRuleRunner.setEnvParams(this.simulation.getParamsObject());
       for (let i = 0; i < ticksNeeded; i++) {
         this.gpuRuleRunner.tick();
       }
-
-      this.playbackGeneration = targetGen;
-      this.simulation.setGeneration(targetGen);
-      this.eventBus.emit('sim:tick', { generation: targetGen, liveCellCount: -1 });
     }
+
+    this.playbackGeneration = targetGen;
+    this.simulation.setGeneration(targetGen);
+    this.eventBus.emit('sim:tick', { generation: targetGen, liveCellCount: -1 });
   }
 
   /**
@@ -711,14 +699,11 @@ export class SimulationController {
     } else {
       this.simulation.reset();
     }
-    this.frameCache.clear();
+    this.circularBuffer.clear();
     this.computedGeneration = 0;
     this.playbackGeneration = 0;
     this.syncGridToGPU();
-    this.cacheCurrentFrame();
-    if (this.gpuRuleRunner) {
-      void this.gpuCacheFill();
-    }
+    this.emitBufferStatus();
     this.eventBus.emit('sim:reset', {});
   }
 
@@ -837,14 +822,6 @@ export class SimulationController {
       perFrameBytes += buf.byteLength;
     }
 
-    // Dynamic cache size: cap total cache memory at the budget
-    if (perFrameBytes > 0) {
-      this.maxCacheSize = Math.max(10, Math.floor(SimulationController.CACHE_MEMORY_BUDGET / perFrameBytes));
-      logDbg('compute', `Cache size: ${this.maxCacheSize} frames (${(perFrameBytes / 1024 / 1024).toFixed(1)}MB/frame, budget=${(SimulationController.CACHE_MEMORY_BUDGET / 1024 / 1024).toFixed(0)}MB)`);
-    }
-
-    // Also cache frame 0
-    this.cacheCurrentFrame();
     // Sync to scene graph for persistence
     this.syncInitialStateToScene();
 
@@ -974,89 +951,37 @@ export class SimulationController {
     }
   }
 
-  /**
-   * Cache the current frame in the frame cache.
-   */
-  private cacheCurrentFrame(): void {
-    if (!this.simulation) return;
-
-    const generation = this.simulation.getGeneration();
-    logDbg('compute', `cacheCurrentFrame() gen=${generation}, cacheSize=${this.frameCache.size}`);
-    const buffers = new Map<string, Float32Array>();
-    for (const propName of this.simulation.grid.getPropertyNames()) {
-      const buf = this.simulation.grid.getCurrentBuffer(propName);
-      buffers.set(propName, new Float32Array(buf));
-    }
-
-    const liveCellCount = this.getLiveCellCount();
-    this.frameCache.set(generation, { generation, buffers, liveCellCount });
-
-    // Evict oldest if over capacity
-    if (this.frameCache.size > this.maxCacheSize) {
-      const firstKey = this.frameCache.keys().next().value;
-      if (firstKey !== undefined) {
-        this.frameCache.delete(firstKey);
-      }
-    }
-  }
 
   /**
-   * Compute N frames ahead on the GPU.
-   */
-  private computeFrames(count: number): void {
-    if (!this.simulation || !this.gpuRuleRunner) return;
-    logDbg('compute', `computeFrames(${count}) — simGen=${this.simulation.getGeneration()}, computedGen=${this.computedGeneration}`);
-
-    this.gpuRuleRunner.setEnvParams(this.simulation.getParamsObject());
-    for (let i = 0; i < count; i++) {
-      this.gpuRuleRunner.tick();
-      const gpuGen = this.gpuRuleRunner.getGeneration();
-      this.simulation.setGeneration(gpuGen);
-      this.computedGeneration = gpuGen;
-    }
-    logDbg('compute', `computeFrames done — computedGen=${this.computedGeneration}`);
-
-    // Emit progress
-    this.eventBus.emit('sim:computeProgress', { computedGeneration: this.computedGeneration });
-  }
-
-  /**
-   * Apply a snapshot to the live grid (for rendering).
-   */
-  private applySnapshot(snapshot: TickSnapshot): void {
-    if (!this.simulation) return;
-    logDbg('compute', `applySnapshot(gen=${snapshot.generation}) — ${snapshot.buffers.size} buffers, liveCells=${snapshot.liveCellCount}`);
-    for (const [propName, buffer] of snapshot.buffers) {
-      const currentBuf = this.simulation.grid.getCurrentBuffer(propName);
-      currentBuf.set(buffer);
-    }
-    this.simulation.setGeneration(snapshot.generation);
-  }
-
-  /**
-   * Restore a cached frame and emit events.
-   */
-  private restoreFrame(generation: number): void {
-    const snapshot = this.frameCache.get(generation);
-    if (!snapshot) {
-      logMin('play', `restoreFrame(${generation}) — MISS (not in cache, cacheSize=${this.frameCache.size})`);
-      return;
-    }
-
-    logDbg('play', `restoreFrame(${generation}) — liveCells=${snapshot.liveCellCount}`);
-    this.applySnapshot(snapshot);
-    this.syncGridToGPU();
-    this.eventBus.emit('sim:tick', { generation: snapshot.generation, liveCellCount: snapshot.liveCellCount });
-  }
-
-  /**
-   * Playback loop: advances playbackGeneration at display FPS,
-   * restoring cached frames. Also kicks off compute-ahead as needed.
+   * Live playback loop using requestAnimationFrame.
+   * Computes tick(s) → renders → pushes snapshot to circular buffer → repeats.
+   * Speed control: tickIntervalMs determines how often a tick fires.
    */
   private startPlaybackLoop(): void {
-    this.tickInterval = setInterval(() => {
-      this.playbackTick();
-    }, this.tickIntervalMs);
+    this.lastTickTime = performance.now();
+    const loop = (now: number) => {
+      if (!this.playing) return;
+
+      const elapsed = now - this.lastTickTime;
+
+      // Speed gate: only tick if enough time has elapsed
+      if (elapsed >= this.tickIntervalMs) {
+        // How many ticks to run this frame (for speed > display FPS)
+        const ticksThisFrame = this.tickIntervalMs <= 1
+          ? 4 // Max speed: 4 ticks per rAF frame
+          : Math.min(Math.floor(elapsed / this.tickIntervalMs), 4);
+
+        for (let t = 0; t < ticksThisFrame; t++) {
+          this.playbackTick();
+          if (!this.playing) return; // pause() may have been called inside playbackTick
+        }
+
+        this.lastTickTime = now;
+      }
+
+      this.rafHandle = requestAnimationFrame(loop);
+    };
+    this.rafHandle = requestAnimationFrame(loop);
   }
 
   private playbackTick(): void {
@@ -1092,11 +1017,15 @@ export class SimulationController {
         }
       }
     }
-    // Always live-tick on GPU — no cache roundtrip
+    // Live-tick on GPU — no cache roundtrip
     this.gpuRuleRunner.setEnvParams(this.simulation.getParamsObject());
     this.gpuRuleRunner.tick();
     this.playbackGeneration = this.gpuRuleRunner.getGeneration();
     this.simulation.setGeneration(this.playbackGeneration);
+
+    // Push snapshot to circular buffer (async, non-blocking)
+    this.pushToBuffer(this.playbackGeneration);
+
     this.eventBus.emit('sim:tick', {
       generation: this.playbackGeneration,
       liveCellCount: -1,
@@ -1104,12 +1033,12 @@ export class SimulationController {
   }
 
   /**
-   * Stop the playback loop.
+   * Stop the playback loop (cancels rAF).
    */
   private stopPlaybackLoop(): void {
-    if (this.tickInterval) {
-      clearInterval(this.tickInterval);
-      this.tickInterval = null;
+    if (this.rafHandle !== null) {
+      cancelAnimationFrame(this.rafHandle);
+      this.rafHandle = null;
     }
   }
 
@@ -1149,20 +1078,14 @@ export class SimulationController {
    * Invalidate cached frames from a given generation onward.
    */
   private invalidateCacheFrom(fromGeneration: number): void {
-    for (const key of this.frameCache.keys()) {
-      if (key >= fromGeneration) {
-        this.frameCache.delete(key);
-      }
-    }
+    // Circular buffer stores interleaved snapshots — parameter changes invalidate all future frames.
+    // Since the buffer is a ring and we can't selectively remove, clear it entirely when params change.
+    this.circularBuffer.clear();
     if (this.computedGeneration > fromGeneration) {
       this.computedGeneration = fromGeneration;
       this.eventBus.emit('sim:computeProgress', { computedGeneration: this.computedGeneration });
     }
-    // GPU can recompute on demand — restart cache fill if available
-    if (this.gpuRuleRunner) {
-      this.gpuCacheFillEpoch++;
-      void this.gpuCacheFill();
-    }
+    this.emitBufferStatus();
   }
 
   /**
@@ -1174,7 +1097,6 @@ export class SimulationController {
     const gen = this.playbackGeneration;
     this.simulation.setGeneration(gen);
     this.syncGridToGPU();
-    this.cacheCurrentFrame();
 
     if (gen === 0 && this.initialSnapshot) {
       for (const propName of this.simulation.grid.getPropertyNames()) {
@@ -1185,29 +1107,16 @@ export class SimulationController {
     }
 
     this.stopComputeAhead();
-    for (const key of this.frameCache.keys()) {
-      if (key > gen) {
-        this.frameCache.delete(key);
-      }
-    }
+    // Grid edit invalidates all future frames — clear the circular buffer
+    this.circularBuffer.clear();
     this.computedGeneration = gen;
     this.eventBus.emit('sim:computeProgress', { computedGeneration: gen });
+    this.emitBufferStatus();
 
     this.eventBus.emit('sim:tick', {
       generation: gen,
       liveCellCount: this.getLiveCellCount(),
     });
-
-    if (this.editDebounceTimer) {
-      clearTimeout(this.editDebounceTimer);
-    }
-    this.editDebounceTimer = setTimeout(() => {
-      this.editDebounceTimer = null;
-      if (this.gpuRuleRunner) {
-        // GPU mode: re-fill cache from the edit frame onwards
-        void this.gpuCacheFill();
-      }
-    }, 150);
   }
 
   /**
@@ -1426,7 +1335,7 @@ export class SimulationController {
     }
     this.simulation = null;
     this.commandHistory = null;
-    this.frameCache.clear();
+    this.circularBuffer.clear();
   }
 
   // --- SG-8: State snapshot methods for multi-sim root switching ---
@@ -1445,7 +1354,7 @@ export class SimulationController {
       playing: this.playing,
       tickIntervalMs: this.tickIntervalMs,
       activePresetName: this.activePresetName,
-      frameCache: this.frameCache,
+      circularBuffer: this.circularBuffer,
       computedGeneration: this.computedGeneration,
       initialSnapshot: this.initialSnapshot,
       computeAheadTarget: this.computeAheadTarget,
@@ -1458,7 +1367,7 @@ export class SimulationController {
     this.commandHistory = null;
     this.playing = false;
     this.activePresetName = null;
-    this.frameCache = new Map();
+    this.circularBuffer = new CircularFrameBuffer(500);
     this.computedGeneration = 0;
     this.initialSnapshot = null;
     this.computeAheadTarget = 0;
@@ -1482,7 +1391,7 @@ export class SimulationController {
     this.playing = snapshot.playing;
     this.tickIntervalMs = snapshot.tickIntervalMs;
     this.activePresetName = snapshot.activePresetName;
-    this.frameCache = snapshot.frameCache;
+    this.circularBuffer = snapshot.circularBuffer;
     this.computedGeneration = snapshot.computedGeneration;
     this.initialSnapshot = snapshot.initialSnapshot;
     this.computeAheadTarget = snapshot.computeAheadTarget;

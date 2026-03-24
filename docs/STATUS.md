@@ -82,6 +82,10 @@ Open terminal with backtick, then type:
 - `view split` / `view fullscreen`
 - `view grid-lines on|off` — toggle grid line overlay
 
+**Buffer:**
+- `buffer resize 500` — resize circular frame buffer (clears existing data)
+- `buffer clear` — clear the buffer without resizing
+
 **Other:**
 - `edit undo` / `edit redo` / `edit draw 5 5` / `edit erase 5 5`
 - `edit brush-size 3`
@@ -184,6 +188,7 @@ See [KNOWN-ISSUES.md](./KNOWN-ISSUES.md) for tracked bugs.
 | Undo/redo | Done | |
 | Screenshot export | Done | |
 | Timeline scrubber | Done | |
+| Circular frame buffer | Done | Live mode, rAF loop, configurable buffer size |
 | Node-based visual scripting | Done | React Flow editor, 27 node types, graph→Python compiler |
 | Center zone layout tree | Done | Tabs/splits via LayoutRenderer, replaces hardcoded viewports |
 | WASM acceleration | Not wired | Engine exists, never called in prod |
@@ -211,3 +216,28 @@ See [KNOWN-ISSUES.md](./KNOWN-ISSUES.md) for tracked bugs.
 ### Commands (8 new)
 - `node.compile`, `node.addNode`, `node.removeNode`, `node.connect`, `node.disconnect`, `node.openEditor`, `node.autoLayout`
 - `ui.toggleNodeEditor` (E hotkey)
+
+---
+
+## Interactivity Sprint
+
+### M1: Circular Buffer + Live Mode (Complete)
+
+Replaced the linear pre-compute pipeline with a circular frame buffer and live mode.
+
+**What changed:**
+- **CircularFrameBuffer** (`src/engine/buffer/CircularFrameBuffer.ts`): ring buffer of interleaved GPU readback snapshots. Configurable capacity (10–2000 frames), auto-sized per grid targeting ~500MB RAM.
+- **Live compute loop**: `requestAnimationFrame`-based (was `setInterval`). GPU ticks live each frame — no pre-compute wait. Buffer fills behind the playhead.
+- **Scrubbing**: within buffer window = instant GPU upload. Beyond buffer = recompute from nearest cached frame or initial state.
+- **Readback decimation**: large grids (>4MB/frame) skip readbacks to maintain framerate.
+- **Timeline UI**: cyan buffer window indicator on minimap and ruler. Buffer utilization counter (`size/capacity`) in TimelineCounter.
+- **Buffer settings**: ControlBar popover with size slider, RAM estimate, bytes/frame info, Clear Buffer button.
+- **New commands**: `buffer.resize { frames }`, `buffer.clear`
+- **New event**: `sim:bufferStatus` → simStore buffer fields
+- **Removed**: old `gpuCacheFill()` offscreen runner, `Map<number, TickSnapshot>` frame cache, `computeFrames()`, `cacheCurrentFrame()`, `restoreFrame()`
+
+### M2–M5: Planned
+- M2: Brush drawing during live playback
+- M3: Interaction scripts
+- M4: Loop in/out point UI (AE-style, decoupled from buffer)
+- M5: Performance profiling and optimization

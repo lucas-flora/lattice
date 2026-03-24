@@ -107,6 +107,17 @@ export function wireStores(eventBus: EventBus): () => void {
     uiStoreActions.setTimelineDuration(payload.duration);
   };
 
+  const onBufferStatus = (payload: {
+    size: number;
+    capacity: number;
+    oldestFrame: number;
+    newestFrame: number;
+    memoryUsage: number;
+    bytesPerFrame: number;
+  }) => {
+    simStoreActions.setBufferStatus(payload);
+  };
+
   // Subscribe to all events
   eventBus.on('sim:tick', onTick);
   eventBus.on('sim:play', onPlay);
@@ -120,6 +131,7 @@ export function wireStores(eventBus: EventBus): () => void {
   eventBus.on('sim:paramsReset', onParamsReset);
   eventBus.on('sim:paramDefsChanged', onParamDefsChanged);
   eventBus.on('sim:timelineExtend', onTimelineExtend);
+  eventBus.on('sim:bufferStatus', onBufferStatus);
   eventBus.on('view:change', onViewChange);
   eventBus.on('ui:change', onUiChange);
 
@@ -216,6 +228,7 @@ export function wireStores(eventBus: EventBus): () => void {
     eventBus.off('sim:paramsReset', onParamsReset);
     eventBus.off('sim:paramDefsChanged', onParamDefsChanged);
     eventBus.off('sim:timelineExtend', onTimelineExtend);
+    eventBus.off('sim:bufferStatus', onBufferStatus);
     eventBus.off('view:change', onViewChange);
     eventBus.off('ui:change', onUiChange);
     eventBus.off('pyodide:loading', onPyodideLoading);

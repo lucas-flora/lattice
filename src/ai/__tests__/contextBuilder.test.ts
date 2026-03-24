@@ -27,6 +27,18 @@ function makeSimState(overrides: Partial<SimState> = {}): SimState {
     cellTypes: [],
     activeRootId: 'default',
     rootIds: ['default'],
+    originalPresetName: null,
+    presetModified: false,
+    gpuAvailable: false,
+    gpuAdapter: null,
+    gpuMaxGridSize: 0,
+    measuredFps: 0,
+    bufferSize: 0,
+    bufferCapacity: 0,
+    bufferOldestFrame: -1,
+    bufferNewestFrame: -1,
+    bufferMemoryUsage: 0,
+    bufferBytesPerFrame: 0,
     ...overrides,
   };
 }

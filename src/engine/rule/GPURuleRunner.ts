@@ -786,6 +786,14 @@ export class GPURuleRunner {
   }
 
   /**
+   * Upload already-interleaved data directly to the GPU read buffer.
+   * Used for restoring circular buffer snapshots — skip the per-property packing step.
+   */
+  uploadInterleaved(data: Float32Array): void {
+    this.bufferManager.uploadToRead(data);
+  }
+
+  /**
    * Unpack GPU readback data into the Grid's CPU buffers.
    */
   applyToGrid(interleavedData: Float32Array): void {
