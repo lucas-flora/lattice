@@ -12,6 +12,7 @@ import { useMemo, useState, useCallback, useEffect } from 'react';
 import type { PanelProps } from '@/layout/types';
 import type { PipelineEntry } from '@/engine/rule/GPURuleRunner';
 import { getController } from '@/components/AppShell';
+import { eventBus } from '@/engine/core/EventBus';
 import { useSimStore } from '@/store/simStore';
 import { useExpressionStore } from '@/store/expressionStore';
 import { PipelineSection } from './PipelineSection';
@@ -26,12 +27,21 @@ function PipelineContent() {
   const opCount = useExpressionStore((s) => s.tags.length);
 
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
-  // Force re-derive when preset or ops change
-  const [tick, setTick] = useState(0);
+  // Revision counter — bumped when pipeline may have changed
+  const [revision, setRevision] = useState(0);
 
+  // Bump on store changes
   useEffect(() => {
-    setTick((t) => t + 1);
+    setRevision((r) => r + 1);
   }, [activePreset, opCount]);
+
+  // GPURuleRunner initializes asynchronously AFTER the preset store update.
+  // Subscribe to the gpu:ruleRunnerReady event so we re-derive once it's live.
+  useEffect(() => {
+    const bump = () => setRevision((r) => r + 1);
+    eventBus.on('gpu:ruleRunnerReady', bump);
+    return () => { eventBus.off('gpu:ruleRunnerReady', bump); };
+  }, []);
 
   const entries = useMemo(() => {
     const ctrl = getController();
@@ -40,7 +50,7 @@ function PipelineContent() {
     if (!runner) return [];
     return runner.getExecutionOrder();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activePreset, opCount, tick]);
+  }, [revision]);
 
   const preRuleOps = useMemo(() => entries.filter((e) => e.type === 'pre-rule-op'), [entries]);
   const ruleStages = useMemo(() => entries.filter((e) => e.type === 'rule-stage'), [entries]);
