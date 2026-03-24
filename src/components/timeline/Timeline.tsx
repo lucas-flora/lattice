@@ -426,7 +426,8 @@ export function Timeline() {
     const rect = el.getBoundingClientRect();
     const x = Math.max(0, Math.min(clientX - rect.left, containerWidth));
     const targetGen = Math.round(zoomStart + (x / containerWidth) * zoomSpan);
-    const clampedGen = Math.max(0, Math.min(targetGen, Math.max(computedGeneration, maxGeneration)));
+    // Live mode: GPU can compute to any frame on demand — clamp to timeline duration, not computed extent
+    const clampedGen = Math.max(0, Math.min(targetGen, duration));
 
     pendingSeekRef.current = clampedGen;
     if (seekRafRef.current === null) {
@@ -438,13 +439,13 @@ export function Timeline() {
         }
       });
     }
-  }, [containerWidth, zoomStart, zoomSpan, maxGeneration]);
+  }, [containerWidth, zoomStart, zoomSpan, duration]);
 
   // Seek from mini-map click
   const seekToFrame = useCallback((frame: number) => {
-    const clampedGen = Math.max(0, Math.min(frame, Math.max(computedGeneration, maxGeneration)));
+    const clampedGen = Math.max(0, Math.min(frame, duration));
     commandRegistry.execute('sim.seek', { generation: clampedGen });
-  }, [maxGeneration]);
+  }, [duration]);
 
   const onPointerDown = useCallback((e: React.PointerEvent) => {
     if (isRunning) return;
@@ -474,7 +475,7 @@ export function Timeline() {
     if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
       const frameDelta = Math.round((e.deltaX / containerWidth) * zoomSpan * 2);
       if (frameDelta !== 0) {
-        const target = Math.max(0, Math.min(generation + frameDelta, Math.max(computedGeneration, maxGeneration)));
+        const target = Math.max(0, Math.min(generation + frameDelta, duration));
         pendingSeekRef.current = target;
         if (seekRafRef.current === null) {
           seekRafRef.current = requestAnimationFrame(() => {

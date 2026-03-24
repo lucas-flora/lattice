@@ -50,7 +50,7 @@ export const useUiStore = create<UiState>()(
     timelineZoomStart: 0,
     timelineZoomEnd: 256,
     timelineAutoExtend: true,
-    playbackMode: 'loop' as PlaybackMode,
+    playbackMode: 'endless' as PlaybackMode,
     deadCellColor: null,
     viewportBgColor: '#161616',
     selectedPipelineEntryId: null,

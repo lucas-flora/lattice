@@ -96,7 +96,7 @@ export class SimulationController {
   protected playbackGeneration: number = 0;
 
   /** What happens when playback reaches the end of the timeline */
-  protected playbackMode: PlaybackMode = 'loop';
+  protected playbackMode: PlaybackMode = 'endless';
 
   /** Timeline duration in frames (for end-of-timeline detection) */
   protected timelineDuration: number = 256;
@@ -180,9 +180,9 @@ export class SimulationController {
       logGPU(`Rule runner active for "${presetName}"`);
       this.eventBus.emit('gpu:ruleRunnerReady', {});
 
-      // GPU can tick to any frame — unlock full timeline scrubbing immediately
-      this.computedGeneration = this.timelineDuration;
-      this.eventBus.emit('sim:computeProgress', { computedGeneration: this.computedGeneration });
+      // Live mode: GPU can compute any frame on demand — no pre-compute needed.
+      // computedGeneration tracks actual playback progress, not a pre-authorized ceiling.
+      // Timeline scrubbing is unrestricted because seek() always works (GPU-tick forward).
 
       // Initialize circular buffer with smart default size
       this.initCircularBuffer();
@@ -825,12 +825,11 @@ export class SimulationController {
     // Sync to scene graph for persistence
     this.syncInitialStateToScene();
 
-    // GPU ticks live — unlock timeline scrubbing immediately
+    // Live mode: set timeline duration but don't fake computedGeneration.
+    // Scrubbing is unrestricted (GPU computes on demand).
     if (cacheTarget && cacheTarget > 0) {
       this.timelineDuration = cacheTarget;
       this.computeAheadTarget = cacheTarget;
-      this.computedGeneration = cacheTarget;
-      this.eventBus.emit('sim:computeProgress', { computedGeneration: cacheTarget });
     }
   }
 
