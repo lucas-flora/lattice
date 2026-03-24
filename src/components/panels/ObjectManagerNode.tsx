@@ -2,14 +2,18 @@
  * ObjectManagerNode: recursive node renderer for the scene tree.
  *
  * Renders a single SceneNode with indent, expand/collapse, icon, name,
- * tag badges, and enabled toggle. Recurses for children.
+ * tag badges, and enabled toggle. Recurses for children, then renders
+ * attached ops (from the node's tags array) as indented rows.
  */
 
 import React, { useCallback } from 'react';
 import { useSceneStore } from '../../store/sceneStore';
+import { useExpressionStore } from '../../store/expressionStore';
 import { commandRegistry } from '../../commands/CommandRegistry';
+import { uiStoreActions } from '../../store/uiStore';
 import type { SceneNode } from '../../engine/scene/SceneNode';
 import { NODE_TYPES } from '../../engine/scene/SceneNode';
+import type { Operator } from '../../engine/expression/types';
 
 interface ObjectManagerNodeProps {
   nodeId: string;
@@ -25,23 +29,114 @@ const NODE_ICONS: Record<string, string> = {
   [NODE_TYPES.GROUP]: '\u25A1', // empty square
   [NODE_TYPES.INITIAL_STATE]: '\u2B50', // star
   [NODE_TYPES.SHARED]: '\u221E', // infinity
+  [NODE_TYPES.VISUAL]: '\u25D0', // half circle
 };
 
 function getNodeIcon(type: string): string {
   return NODE_ICONS[type] ?? '\u25CB'; // empty circle fallback
 }
 
+// OP type badge styles (matches Pipeline View)
+const OP_TYPE_STYLES: Record<string, { label: string; class: string }> = {
+  code: { label: '\u0192', class: 'text-green-400 bg-green-400/10' },
+  link: { label: '\u0192', class: 'text-green-400 bg-green-400/10' },
+  script: { label: '\u26A1', class: 'text-amber-400 bg-amber-400/10' },
+};
+
+// ---------------------------------------------------------------------------
+// Op row (rendered under parent node in the tree)
+// ---------------------------------------------------------------------------
+
+function OpTreeRow({ op, depth }: { op: Operator; depth: number }) {
+  const selectedNodeId = useSceneStore((s) => s.selectedNodeId);
+  // Ops don't have scene node IDs, so we use a synthetic selection check
+  const isSelected = selectedNodeId === op.id;
+
+  const indent = depth * 16;
+  const badge = OP_TYPE_STYLES[op.source] ?? OP_TYPE_STYLES.code;
+
+  const handleClick = useCallback(() => {
+    // Set pipeline entry selection so Inspector shows the op detail
+    uiStoreActions.selectPipelineEntry(op.id);
+    // Also set scene selection to the op ID (Inspector's PipelineEntryDetail
+    // will pick this up via selectedPipelineEntryId)
+    commandRegistry.execute('scene.select', { id: '' }); // clear scene selection
+  }, [op.id]);
+
+  const handleToggleEnabled = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      commandRegistry.execute(op.enabled ? 'op.disable' : 'op.enable', { id: op.id });
+    },
+    [op.id, op.enabled],
+  );
+
+  const phaseColor = op.phase === 'pre-rule'
+    ? 'text-blue-400'
+    : op.phase === 'rule'
+      ? 'text-red-400'
+      : 'text-amber-400';
+
+  return (
+    <div
+      onClick={handleClick}
+      className={`flex items-center gap-1 px-1 py-0.5 cursor-pointer text-xs font-mono border-l-2 border-green-500/20
+        ${isSelected ? 'bg-green-400/20 text-green-300' : 'text-zinc-400 hover:bg-zinc-700/50'}`}
+      style={{ paddingLeft: `${indent + 4}px` }}
+      data-testid={`om-op-${op.id}`}
+    >
+      {/* No chevron — ops don't have children */}
+      <span className="w-3 text-center text-transparent">{'\u00B7'}</span>
+
+      {/* Source badge */}
+      <span className={`text-[9px] px-0.5 rounded shrink-0 leading-tight ${badge.class}`}>
+        {badge.label}
+      </span>
+
+      {/* Name */}
+      <span className={`flex-1 truncate ${!op.enabled ? 'opacity-40' : ''}`}>
+        {op.name}
+      </span>
+
+      {/* Phase badge */}
+      <span className={`text-[9px] shrink-0 ${phaseColor}`}>
+        {op.phase === 'pre-rule' ? 'pre' : op.phase === 'rule' ? 'rule' : 'post'}
+      </span>
+
+      {/* Enabled toggle */}
+      <span
+        onClick={handleToggleEnabled}
+        className={`text-[10px] cursor-pointer px-0.5 ${
+          op.enabled ? 'text-green-400' : 'text-zinc-600'
+        }`}
+      >
+        {op.enabled ? 'ON' : 'OFF'}
+      </span>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main node component
+// ---------------------------------------------------------------------------
+
 export const ObjectManagerNode: React.FC<ObjectManagerNodeProps> = React.memo(
   ({ nodeId, depth }) => {
     const node = useSceneStore((s) => s.nodes[nodeId]);
     const selectedNodeId = useSceneStore((s) => s.selectedNodeId);
     const expandedNodeIds = useSceneStore((s) => s.expandedNodeIds);
+    const allOps = useExpressionStore((s) => s.tags);
 
     const isSelected = selectedNodeId === nodeId;
     const isExpanded = expandedNodeIds.includes(nodeId);
     const hasChildren = node?.childIds.length > 0;
+    // Ops attached to this node
+    const nodeOps = node ? allOps.filter((op) => node.tags.includes(op.id)) : [];
+    const hasExpandableContent = hasChildren || nodeOps.length > 0;
 
     const handleClick = useCallback(() => {
+      // Clear pipeline selection when selecting a tree node
+      uiStoreActions.selectPipelineEntry(null);
       commandRegistry.execute('scene.select', { id: nodeId });
     }, [nodeId]);
 
@@ -89,10 +184,10 @@ export const ObjectManagerNode: React.FC<ObjectManagerNodeProps> = React.memo(
         >
           {/* Expand/collapse chevron */}
           <span
-            onClick={hasChildren ? handleToggleExpand : undefined}
-            className={`w-3 text-center ${hasChildren ? 'cursor-pointer text-zinc-400' : 'text-transparent'}`}
+            onClick={hasExpandableContent ? handleToggleExpand : undefined}
+            className={`w-3 text-center ${hasExpandableContent ? 'cursor-pointer text-zinc-400' : 'text-transparent'}`}
           >
-            {hasChildren ? (isExpanded ? '\u25BE' : '\u25B8') : '\u00B7'}
+            {hasExpandableContent ? (isExpanded ? '\u25BE' : '\u25B8') : '\u00B7'}
           </span>
 
           {/* Type icon */}
@@ -112,9 +207,9 @@ export const ObjectManagerNode: React.FC<ObjectManagerNodeProps> = React.memo(
           </span>
 
           {/* Tag count badge */}
-          {node.tags.length > 0 && (
+          {nodeOps.length > 0 && (
             <span className="text-[10px] text-zinc-500 bg-zinc-800 px-1 rounded">
-              {node.tags.length}
+              {nodeOps.length}
             </span>
           )}
 
@@ -129,7 +224,7 @@ export const ObjectManagerNode: React.FC<ObjectManagerNodeProps> = React.memo(
           </span>
         </div>
 
-        {/* Children (recursive) */}
+        {/* Children (recursive) — structural hierarchy first */}
         {isExpanded &&
           node.childIds.map((childId) => (
             <ObjectManagerNode
@@ -137,6 +232,12 @@ export const ObjectManagerNode: React.FC<ObjectManagerNodeProps> = React.memo(
               nodeId={childId}
               depth={depth + 1}
             />
+          ))}
+
+        {/* Ops attached to this node — computation rows, indented like children */}
+        {isExpanded &&
+          nodeOps.map((op) => (
+            <OpTreeRow key={op.id} op={op} depth={depth + 1} />
           ))}
       </>
     );

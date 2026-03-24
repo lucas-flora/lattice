@@ -132,8 +132,8 @@ function PipelineContent() {
         </span>
       </div>
 
-      {/* Sections */}
-      <div className="flex-1 overflow-y-auto py-1">
+      {/* Sections with flow connectors */}
+      <div className="flex-1 overflow-y-auto py-1 pl-1">
         <PipelineSection
           title="Pre-Rule Ops"
           entries={preRuleOps}
@@ -141,6 +141,7 @@ function PipelineContent() {
           selectedId={selectedEntryId}
           onSelectEntry={handleSelectEntry}
           onToggleEnabled={handleToggleEnabled}
+          isLastSection={ruleStages.length === 0 && postRuleOps.length === 0 && visualMappings.length === 0}
         />
         <PipelineSection
           title="Rule Stages"
@@ -149,6 +150,7 @@ function PipelineContent() {
           selectedId={selectedEntryId}
           onSelectEntry={handleSelectEntry}
           onToggleEnabled={handleToggleEnabled}
+          isLastSection={postRuleOps.length === 0 && visualMappings.length === 0}
         />
         <PipelineSection
           title="Post-Rule Ops"
@@ -157,6 +159,7 @@ function PipelineContent() {
           selectedId={selectedEntryId}
           onSelectEntry={handleSelectEntry}
           onToggleEnabled={handleToggleEnabled}
+          isLastSection={visualMappings.length === 0}
         />
         <PipelineSection
           title="Visual Mapping"
@@ -165,6 +168,7 @@ function PipelineContent() {
           selectedId={selectedEntryId}
           onSelectEntry={handleSelectEntry}
           onToggleEnabled={handleToggleEnabled}
+          isLastSection
         />
       </div>
     </div>

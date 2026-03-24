@@ -16,6 +16,8 @@ interface PipelineSectionProps {
   onSelectEntry: (entry: PipelineEntry) => void;
   onToggleEnabled?: (entry: PipelineEntry) => void;
   defaultExpanded?: boolean;
+  /** Whether this is the last section with entries (no continuation below) */
+  isLastSection?: boolean;
 }
 
 export function PipelineSection({
@@ -26,6 +28,7 @@ export function PipelineSection({
   onSelectEntry,
   onToggleEnabled,
   defaultExpanded = true,
+  isLastSection = false,
 }: PipelineSectionProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
 
@@ -36,7 +39,7 @@ export function PipelineSection({
   if (entries.length === 0) return null;
 
   return (
-    <div className="mb-1">
+    <div className="mb-0.5">
       {/* Section header */}
       <button
         onClick={toggleExpanded}
@@ -54,16 +57,18 @@ export function PipelineSection({
         </span>
       </button>
 
-      {/* Entries */}
+      {/* Entries with flow connectors */}
       {expanded && (
-        <div className="space-y-px">
-          {entries.map((entry) => (
+        <div>
+          {entries.map((entry, i) => (
             <PipelineEntryRow
               key={entry.id}
               entry={entry}
               isSelected={selectedId === entry.id}
               onSelect={() => onSelectEntry(entry)}
               onToggleEnabled={onToggleEnabled ? () => onToggleEnabled(entry) : undefined}
+              isLast={isLastSection && i === entries.length - 1}
+              isFirstInSection={i === 0}
             />
           ))}
         </div>
