@@ -655,6 +655,96 @@ export class GPURuleRunner {
   }
 
   /**
+   * Reorder a rule stage within the compiled ruleStages array.
+   * Changes actual GPU dispatch order — no recompilation needed.
+   * Also reorders the preset config stages array to stay in sync.
+   */
+  reorderStage(name: string, newIndex: number): boolean {
+    const curIdx = this.ruleStages.findIndex((s) => s.name === name);
+    if (curIdx < 0 || newIndex < 0 || newIndex >= this.ruleStages.length || curIdx === newIndex) return false;
+    const [moved] = this.ruleStages.splice(curIdx, 1);
+    this.ruleStages.splice(newIndex, 0, moved);
+    // Keep preset config in sync
+    if (this.preset.rule.stages) {
+      const presetIdx = this.preset.rule.stages.findIndex((s) => s.name === name);
+      if (presetIdx >= 0) {
+        const [presetMoved] = this.preset.rule.stages.splice(presetIdx, 1);
+        this.preset.rule.stages.splice(newIndex, 0, presetMoved);
+      }
+    }
+    return true;
+  }
+
+  /**
+   * Reorder an expression/visual pass within the compiled expressionPasses array.
+   * Changes actual GPU dispatch order — no recompilation needed.
+   * Constrains reorder to non-visual passes only (visual passes stay at the end).
+   * Also reorders the preset config expression_tags array to stay in sync.
+   */
+  reorderPass(name: string, newIndex: number): boolean {
+    // Find all non-visual passes (the reorderable set)
+    const nonVisualIndices: number[] = [];
+    for (let i = 0; i < this.expressionPasses.length; i++) {
+      const p = this.expressionPasses[i];
+      if (p.name !== 'visual-ramp' && p.name !== 'visual-script') {
+        nonVisualIndices.push(i);
+      }
+    }
+    const curLocalIdx = nonVisualIndices.findIndex(
+      (gi) => this.expressionPasses[gi].name === name,
+    );
+    if (curLocalIdx < 0 || newIndex < 0 || newIndex >= nonVisualIndices.length || curLocalIdx === newIndex) return false;
+
+    // Remove from current global position
+    const curGlobalIdx = nonVisualIndices[curLocalIdx];
+    const [moved] = this.expressionPasses.splice(curGlobalIdx, 1);
+
+    // Recompute non-visual indices after removal
+    const updatedIndices: number[] = [];
+    for (let i = 0; i < this.expressionPasses.length; i++) {
+      const p = this.expressionPasses[i];
+      if (p.name !== 'visual-ramp' && p.name !== 'visual-script') {
+        updatedIndices.push(i);
+      }
+    }
+    // Insert at new local position
+    const insertGlobal = newIndex < updatedIndices.length
+      ? updatedIndices[newIndex]
+      : (updatedIndices.length > 0 ? updatedIndices[updatedIndices.length - 1] + 1 : this.expressionPasses.length);
+    this.expressionPasses.splice(insertGlobal, 0, moved);
+
+    // Keep preset config expression_tags in sync (same-phase reorder)
+    if (this.preset.expression_tags) {
+      const phase = 'post-rule';
+      const phaseIndices: number[] = [];
+      for (let i = 0; i < this.preset.expression_tags.length; i++) {
+        if (this.preset.expression_tags[i].phase === phase) {
+          phaseIndices.push(i);
+        }
+      }
+      const presetLocalIdx = phaseIndices.findIndex(
+        (gi) => this.preset.expression_tags![gi].name === name,
+      );
+      if (presetLocalIdx >= 0) {
+        const presetGlobalIdx = phaseIndices[presetLocalIdx];
+        const [presetMoved] = this.preset.expression_tags.splice(presetGlobalIdx, 1);
+        // Recompute after removal
+        const updatedPhaseIndices: number[] = [];
+        for (let i = 0; i < this.preset.expression_tags.length; i++) {
+          if (this.preset.expression_tags[i].phase === phase) {
+            updatedPhaseIndices.push(i);
+          }
+        }
+        const presetInsert = newIndex < updatedPhaseIndices.length
+          ? updatedPhaseIndices[newIndex]
+          : (updatedPhaseIndices.length > 0 ? updatedPhaseIndices[updatedPhaseIndices.length - 1] + 1 : this.preset.expression_tags.length);
+        this.preset.expression_tags.splice(presetInsert, 0, presetMoved);
+      }
+    }
+    return true;
+  }
+
+  /**
    * Upload new cell data from CPU. Used for cell editing and state restore.
    * Takes interleaved data matching the GPU buffer format.
    */

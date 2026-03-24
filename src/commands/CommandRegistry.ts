@@ -13,7 +13,7 @@ import { simStoreActions } from '../store/simStore';
 
 /** Commands that mutate the preset configuration (trigger fork-on-modify). */
 const CONFIG_MUTATING_COMMANDS = new Set([
-  'op.add', 'op.remove', 'op.edit', 'op.enable', 'op.disable',
+  'op.add', 'op.remove', 'op.edit', 'op.enable', 'op.disable', 'op.reorder',
   'tag.add', 'tag.remove', 'tag.edit', 'tag.enable', 'tag.disable',
   'param.set', 'param.add', 'param.remove', 'param.reset',
   'cell.addProperty', 'cell.removeProperty', 'cell.setDefault',

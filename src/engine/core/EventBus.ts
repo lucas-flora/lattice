@@ -62,6 +62,8 @@ export interface EngineEventMap {
   'gpu:error': { message: string };
   'gpu:shader-compiled': { label: string; cached: boolean };
   'gpu:ruleRunnerReady': Record<string, never>;
+  // Pipeline reorder
+  'pipeline:reordered': { id: string; phase: string; newIndex: number };
 }
 
 /** Valid event names */

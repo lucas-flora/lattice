@@ -4,6 +4,8 @@
  * Renders with two connector columns:
  * - Outer connector: continuation of the section-level flow line
  * - Inner connector: entry-level dot + line within the expanded section
+ *
+ * Supports drag-to-reorder and Alt+Up/Down keyboard reorder.
  */
 
 'use client';
@@ -30,9 +32,26 @@ interface PipelineEntryRowProps {
   showOuterLine?: boolean;
   /** Is this the last entry in the inner group */
   isLastInner?: boolean;
+  /** Whether this row is draggable */
+  draggable?: boolean;
+  onDragStart?: (e: React.DragEvent) => void;
+  onDragEnd?: (e: React.DragEvent) => void;
+  /** Keyboard reorder: Alt+Up/Down */
+  onKeyReorder?: (direction: 'up' | 'down') => void;
 }
 
-export function PipelineEntryRow({ entry, isSelected, onSelect, onToggleEnabled, showOuterLine = true, isLastInner = false }: PipelineEntryRowProps) {
+export function PipelineEntryRow({
+  entry,
+  isSelected,
+  onSelect,
+  onToggleEnabled,
+  showOuterLine = true,
+  isLastInner = false,
+  draggable = false,
+  onDragStart,
+  onDragEnd,
+  onKeyReorder,
+}: PipelineEntryRowProps) {
   const style = TYPE_STYLES[entry.type];
 
   const handleToggle = useCallback((e: React.MouseEvent) => {
@@ -40,8 +59,25 @@ export function PipelineEntryRow({ entry, isSelected, onSelect, onToggleEnabled,
     onToggleEnabled?.();
   }, [onToggleEnabled]);
 
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (!onKeyReorder || !e.altKey) return;
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      onKeyReorder('up');
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      onKeyReorder('down');
+    }
+  }, [onKeyReorder]);
+
   return (
-    <div className="flex" data-testid={`pipeline-entry-${entry.id}`}>
+    <div
+      className="flex"
+      data-testid={`pipeline-entry-${entry.id}`}
+      draggable={draggable}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+    >
       {/* Outer connector: just a continuation line (no dot — the section header has the dot) */}
       <div className="w-3 shrink-0 flex flex-col items-center">
         <div className="w-px flex-1" style={{ background: showOuterLine ? LINE_ENABLED : 'transparent' }} />
@@ -57,12 +93,20 @@ export function PipelineEntryRow({ entry, isSelected, onSelect, onToggleEnabled,
       {/* Entry content */}
       <button
         onClick={onSelect}
+        onKeyDown={handleKeyDown}
         className={`flex-1 flex items-center gap-1.5 pr-2 py-0.5 text-left transition-colors cursor-pointer rounded-r ${
           isSelected
             ? 'bg-green-500/10 ring-1 ring-green-500/30'
             : 'hover:bg-zinc-800/60'
         } ${!entry.enabled ? 'opacity-40' : ''}`}
       >
+        {/* Drag handle indicator */}
+        {draggable && (
+          <span className="text-zinc-700 text-[9px] shrink-0 cursor-grab select-none" title="Drag to reorder">
+            ⠿
+          </span>
+        )}
+
         {/* Index */}
         <span className="text-[9px] font-mono text-zinc-600 tabular-nums w-3 text-right shrink-0">
           {entry.index + 1}

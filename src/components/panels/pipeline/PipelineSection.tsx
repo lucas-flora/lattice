@@ -4,11 +4,13 @@
  * The section header is a node on the outer (section-level) connector line.
  * When expanded, entries render with both the outer continuation line and
  * their own inner connector line (indented one level).
+ *
+ * Supports drag-to-reorder within the section.
  */
 
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import type { PipelineEntry } from '@/engine/rule/GPURuleRunner';
 import { PipelineEntryRow } from './PipelineEntryRow';
 
@@ -27,6 +29,7 @@ interface PipelineSectionProps {
   selectedId: string | null;
   onSelectEntry: (entry: PipelineEntry) => void;
   onToggleEnabled?: (entry: PipelineEntry) => void;
+  onReorder?: (entryId: string, newIndex: number) => void;
   defaultExpanded?: boolean;
   /** Is this the last section in the pipeline (no outer line below) */
   isLastSection?: boolean;
@@ -41,15 +44,67 @@ export function PipelineSection({
   selectedId,
   onSelectEntry,
   onToggleEnabled,
+  onReorder,
   defaultExpanded = true,
   isLastSection = false,
   isFirstSection = false,
 }: PipelineSectionProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const dragSourceIndex = useRef<number | null>(null);
 
   const toggleExpanded = useCallback(() => {
     setExpanded((v) => !v);
   }, []);
+
+  const canReorder = !!onReorder && entries.length > 1;
+
+  // ── Drag handlers ──────────────────────────────────────────────────
+  const handleDragStart = useCallback((e: React.DragEvent, index: number) => {
+    dragSourceIndex.current = index;
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', entries[index].id);
+    // Add a subtle drag image
+    const target = e.currentTarget as HTMLElement;
+    target.style.opacity = '0.5';
+  }, [entries]);
+
+  const handleDragEnd = useCallback((e: React.DragEvent) => {
+    const target = e.currentTarget as HTMLElement;
+    target.style.opacity = '1';
+    dragSourceIndex.current = null;
+    setDragOverIndex(null);
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (dragSourceIndex.current !== null && dragSourceIndex.current !== index) {
+      setDragOverIndex(index);
+    }
+  }, []);
+
+  const handleDragLeave = useCallback(() => {
+    setDragOverIndex(null);
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent, dropIndex: number) => {
+    e.preventDefault();
+    setDragOverIndex(null);
+    const srcIdx = dragSourceIndex.current;
+    if (srcIdx === null || srcIdx === dropIndex || !onReorder) return;
+    const entry = entries[srcIdx];
+    onReorder(entry.id, dropIndex);
+    dragSourceIndex.current = null;
+  }, [entries, onReorder]);
+
+  // ── Keyboard reorder ───────────────────────────────────────────────
+  const handleKeyReorder = useCallback((index: number, direction: 'up' | 'down') => {
+    if (!onReorder) return;
+    const newIdx = direction === 'up' ? index - 1 : index + 1;
+    if (newIdx < 0 || newIdx >= entries.length) return;
+    onReorder(entries[index].id, newIdx);
+  }, [entries, onReorder]);
 
   if (entries.length === 0) return null;
 
@@ -87,15 +142,30 @@ export function PipelineSection({
       {/* Entries with nested connectors */}
       {expanded &&
         entries.map((entry, i) => (
-          <PipelineEntryRow
+          <div
             key={entry.id}
-            entry={entry}
-            isSelected={selectedId != null && (selectedId === entry.id || selectedId === entry.opId)}
-            onSelect={() => onSelectEntry(entry)}
-            onToggleEnabled={onToggleEnabled ? () => onToggleEnabled(entry) : undefined}
-            showOuterLine={!isLastSection}
-            isLastInner={i === entries.length - 1}
-          />
+            className="relative"
+            onDragOver={canReorder ? (e) => handleDragOver(e, i) : undefined}
+            onDragLeave={canReorder ? handleDragLeave : undefined}
+            onDrop={canReorder ? (e) => handleDrop(e, i) : undefined}
+          >
+            {/* Drop indicator line */}
+            {dragOverIndex === i && dragSourceIndex.current !== null && dragSourceIndex.current !== i && (
+              <div className="absolute left-6 right-2 top-0 h-[2px] bg-green-400 rounded z-10" />
+            )}
+            <PipelineEntryRow
+              entry={entry}
+              isSelected={selectedId != null && (selectedId === entry.id || selectedId === entry.opId)}
+              onSelect={() => onSelectEntry(entry)}
+              onToggleEnabled={onToggleEnabled ? () => onToggleEnabled(entry) : undefined}
+              showOuterLine={!isLastSection}
+              isLastInner={i === entries.length - 1}
+              draggable={canReorder}
+              onDragStart={canReorder ? (e) => handleDragStart(e, i) : undefined}
+              onDragEnd={canReorder ? handleDragEnd : undefined}
+              onKeyReorder={canReorder ? (dir) => handleKeyReorder(i, dir) : undefined}
+            />
+          </div>
         ))}
     </div>
   );

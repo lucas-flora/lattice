@@ -32,6 +32,7 @@ import { registerBenchCommands } from './bench';
 import { registerGpuCommands } from './gpu';
 import { registerIrCommands } from './ir';
 import { registerVisualCommands } from './visual';
+import { registerPipelineCommands } from './pipeline';
 
 /**
  * Register all commands in the registry.
@@ -65,4 +66,5 @@ export function registerAllCommands(
   registerGpuCommands(registry);
   registerIrCommands(registry);
   registerVisualCommands(registry, controller, eventBus);
+  registerPipelineCommands(registry, controller, eventBus);
 }

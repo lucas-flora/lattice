@@ -48,6 +48,36 @@ export const expressionStoreActions = {
     useExpressionStore.setState({ tags });
   },
 
+  /** Reorder a tag within its phase group (same-phase siblings only). */
+  reorderTag: (id: string, newIndex: number): void => {
+    useExpressionStore.setState((s) => {
+      const tag = s.tags.find((t) => t.id === id);
+      if (!tag) return s;
+      const phase = tag.phase;
+      // Collect indices of tags in the same phase
+      const phaseIndices: number[] = [];
+      for (let i = 0; i < s.tags.length; i++) {
+        if (s.tags[i].phase === phase) phaseIndices.push(i);
+      }
+      const curLocal = phaseIndices.findIndex((gi) => s.tags[gi].id === id);
+      if (curLocal < 0 || newIndex < 0 || newIndex >= phaseIndices.length || curLocal === newIndex) return s;
+      // Build new array
+      const next = [...s.tags];
+      const globalIdx = phaseIndices[curLocal];
+      const [moved] = next.splice(globalIdx, 1);
+      // Recompute phase indices after removal
+      const updated: number[] = [];
+      for (let i = 0; i < next.length; i++) {
+        if (next[i].phase === phase) updated.push(i);
+      }
+      const insertAt = newIndex < updated.length
+        ? updated[newIndex]
+        : (updated.length > 0 ? updated[updated.length - 1] + 1 : next.length);
+      next.splice(insertAt, 0, moved);
+      return { tags: next };
+    });
+  },
+
   resetAll: (): void => {
     useExpressionStore.setState({ ...initialExpressionState });
   },

@@ -4,6 +4,8 @@
  * Reads the execution order from GPURuleRunner via getController().
  * Sections: Pre-Rule Ops | Rule Stages | Post-Rule Ops | Visual Mapping.
  * Click an entry to select it and show detail in the Inspector.
+ *
+ * Two modes: List (flow diagram) and Code (combined script view).
  */
 
 'use client';
@@ -18,7 +20,12 @@ import { useExpressionStore } from '@/store/expressionStore';
 import { useSceneStore, sceneStoreActions } from '@/store/sceneStore';
 import { useUiStore, uiStoreActions } from '@/store/uiStore';
 import { NODE_TYPES } from '@/engine/scene/SceneNode';
+import { commandRegistry } from '@/commands/CommandRegistry';
+import type { PipelineSectionMeta } from '@/commands/definitions/pipeline';
 import { PipelineSection } from './PipelineSection';
+import { PipelineCodeView } from './PipelineCodeView';
+
+type PipelineMode = 'list' | 'code';
 
 export const PipelinePanel: React.FC<PanelProps> = () => {
   return <PipelineContent />;
@@ -32,6 +39,10 @@ function PipelineContent() {
   const selectedPipelineEntryId = useUiStore((s) => s.selectedPipelineEntryId);
 
   const [revision, setRevision] = useState(0);
+  const [mode, setMode] = useState<PipelineMode>('list');
+
+  // Combined code view state
+  const [codeData, setCodeData] = useState<{ code: string; sections: PipelineSectionMeta[] } | null>(null);
 
   useEffect(() => {
     setRevision((r) => r + 1);
@@ -118,6 +129,33 @@ function PipelineContent() {
     setRevision((r) => r + 1);
   }, []);
 
+  // Handle reorder from drag-and-drop
+  const handleReorder = useCallback((entryId: string, newIndex: number) => {
+    commandRegistry.execute('op.reorder', { id: entryId, newIndex });
+    setRevision((r) => r + 1);
+  }, []);
+
+  // Generate code view data when switching to code mode
+  const handleSetMode = useCallback(async (newMode: PipelineMode) => {
+    if (newMode === 'code') {
+      const result = await commandRegistry.execute('pipeline.showCode', {});
+      if (result.success && result.data) {
+        const data = result.data as { code: string; sections: PipelineSectionMeta[] };
+        setCodeData(data);
+      }
+    }
+    setMode(newMode);
+  }, []);
+
+  // Navigate from code view section header back to list mode + select entry
+  const handleNavigateToEntry = useCallback((entryId: string) => {
+    const entry = entries.find((e) => e.id === entryId);
+    if (entry) {
+      handleSelectEntry(entry);
+    }
+    setMode('list');
+  }, [entries, handleSelectEntry]);
+
   if (!activePreset) {
     return (
       <div className="flex-1 flex items-center justify-center px-4">
@@ -147,54 +185,95 @@ function PipelineContent() {
         <span className="text-[10px] font-mono text-zinc-500">
           {entries.length} steps
         </span>
-        <span className="text-[9px] font-mono text-zinc-600 tabular-nums">
-          {totalDispatches} dispatch{totalDispatches !== 1 ? 'es' : ''}/tick
-        </span>
+
+        {/* Mode toggle + dispatch count */}
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-0.5 bg-zinc-800/60 rounded p-0.5">
+            <button
+              onClick={() => handleSetMode('list')}
+              className={`text-[9px] font-mono px-1.5 py-0.5 rounded cursor-pointer transition-colors ${
+                mode === 'list'
+                  ? 'bg-zinc-700 text-zinc-300'
+                  : 'text-zinc-500 hover:text-zinc-400'
+              }`}
+              title="List view"
+            >
+              List
+            </button>
+            <button
+              onClick={() => handleSetMode('code')}
+              className={`text-[9px] font-mono px-1.5 py-0.5 rounded cursor-pointer transition-colors ${
+                mode === 'code'
+                  ? 'bg-zinc-700 text-zinc-300'
+                  : 'text-zinc-500 hover:text-zinc-400'
+              }`}
+              title="Combined code view"
+            >
+              {'{ }'}
+            </button>
+          </div>
+          <span className="text-[9px] font-mono text-zinc-600 tabular-nums">
+            {totalDispatches} dispatch{totalDispatches !== 1 ? 'es' : ''}/tick
+          </span>
+        </div>
       </div>
 
-      {/* Sections with nested flow connectors */}
-      <div className="flex-1 overflow-y-auto py-1 pl-1">
-        <PipelineSection
-          title="Pre-Rule Ops"
-          entries={preRuleOps}
-          executionContext="cpu"
-          selectedId={focusedOpId ?? selectedPipelineEntryId}
-          onSelectEntry={handleSelectEntry}
-          onToggleEnabled={handleToggleEnabled}
-          isFirstSection
-          isLastSection={ruleStages.length === 0 && postRuleOps.length === 0 && visualMappings.length === 0}
-        />
-        <PipelineSection
-          title="Rule Stages"
-          entries={ruleStages}
-          executionContext="gpu"
-          selectedId={focusedOpId ?? selectedPipelineEntryId}
-          onSelectEntry={handleSelectEntry}
-          onToggleEnabled={handleToggleEnabled}
-          isFirstSection={preRuleOps.length === 0}
-          isLastSection={postRuleOps.length === 0 && visualMappings.length === 0}
-        />
-        <PipelineSection
-          title="Post-Rule Ops"
-          entries={postRuleOps}
-          executionContext="gpu"
-          selectedId={focusedOpId ?? selectedPipelineEntryId}
-          onSelectEntry={handleSelectEntry}
-          onToggleEnabled={handleToggleEnabled}
-          isFirstSection={preRuleOps.length === 0 && ruleStages.length === 0}
-          isLastSection={visualMappings.length === 0}
-        />
-        <PipelineSection
-          title="Visual Mapping"
-          entries={visualMappings}
-          executionContext="gpu"
-          selectedId={focusedOpId ?? selectedPipelineEntryId}
-          onSelectEntry={handleSelectEntry}
-          onToggleEnabled={handleToggleEnabled}
-          isFirstSection={preRuleOps.length === 0 && ruleStages.length === 0 && postRuleOps.length === 0}
-          isLastSection
-        />
-      </div>
+      {/* Content */}
+      {mode === 'list' ? (
+        <div className="flex-1 overflow-y-auto py-1 pl-1">
+          <PipelineSection
+            title="Pre-Rule Ops"
+            entries={preRuleOps}
+            executionContext="cpu"
+            selectedId={focusedOpId ?? selectedPipelineEntryId}
+            onSelectEntry={handleSelectEntry}
+            onToggleEnabled={handleToggleEnabled}
+            onReorder={handleReorder}
+            isFirstSection
+            isLastSection={ruleStages.length === 0 && postRuleOps.length === 0 && visualMappings.length === 0}
+          />
+          <PipelineSection
+            title="Rule Stages"
+            entries={ruleStages}
+            executionContext="gpu"
+            selectedId={focusedOpId ?? selectedPipelineEntryId}
+            onSelectEntry={handleSelectEntry}
+            onToggleEnabled={handleToggleEnabled}
+            onReorder={handleReorder}
+            isFirstSection={preRuleOps.length === 0}
+            isLastSection={postRuleOps.length === 0 && visualMappings.length === 0}
+          />
+          <PipelineSection
+            title="Post-Rule Ops"
+            entries={postRuleOps}
+            executionContext="gpu"
+            selectedId={focusedOpId ?? selectedPipelineEntryId}
+            onSelectEntry={handleSelectEntry}
+            onToggleEnabled={handleToggleEnabled}
+            onReorder={handleReorder}
+            isFirstSection={preRuleOps.length === 0 && ruleStages.length === 0}
+            isLastSection={visualMappings.length === 0}
+          />
+          <PipelineSection
+            title="Visual Mapping"
+            entries={visualMappings}
+            executionContext="gpu"
+            selectedId={focusedOpId ?? selectedPipelineEntryId}
+            onSelectEntry={handleSelectEntry}
+            onToggleEnabled={handleToggleEnabled}
+            isFirstSection={preRuleOps.length === 0 && ruleStages.length === 0 && postRuleOps.length === 0}
+            isLastSection
+          />
+        </div>
+      ) : (
+        codeData && (
+          <PipelineCodeView
+            code={codeData.code}
+            sections={codeData.sections}
+            onNavigateToEntry={handleNavigateToEntry}
+          />
+        )
+      )}
     </div>
   );
 }
