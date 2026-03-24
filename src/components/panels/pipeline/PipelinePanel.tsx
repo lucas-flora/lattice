@@ -26,7 +26,6 @@ import type { PipelineSectionMeta } from '@/commands/definitions/pipeline';
 import { PipelineSection } from './PipelineSection';
 import { PipelineCodeView } from './PipelineCodeView';
 import { ContextMenu, type ContextMenuItem } from '../../shared/ContextMenu';
-import { ConfirmDialog } from '../../shared/ConfirmDialog';
 import { AddObjectMenu } from '../../shared/AddObjectMenu';
 
 type PipelineMode = 'list' | 'code';
@@ -48,7 +47,6 @@ function PipelineContent() {
 
   // Context menu state
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; entry: PipelineEntry } | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState<PipelineEntry | null>(null);
 
   // Add menu state
   const [addMenuPos, setAddMenuPos] = useState<{ x: number; y: number } | null>(null);
@@ -113,15 +111,20 @@ function PipelineContent() {
   }, [visualNodeId, sceneNodes]);
 
   const handleToggleEnabled = useCallback((entry: PipelineEntry) => {
-    const ctrl = getController();
-    if (!ctrl) return;
-    const runner = ctrl.getGPURuleRunner();
-    if (!runner) return;
     const newEnabled = !entry.enabled;
-    if (entry.type === 'rule-stage') {
-      runner.setStageEnabled(entry.sourceId!, newEnabled);
+    if (entry.opId) {
+      // Route through commands so all views stay in sync
+      commandRegistry.execute(newEnabled ? 'op.enable' : 'op.disable', { id: entry.opId });
     } else {
-      runner.setPassEnabled(entry.sourceId!, newEnabled);
+      // Fallback for entries without an op ID (shouldn't happen, but safe)
+      const ctrl = getController();
+      const runner = ctrl?.getGPURuleRunner();
+      if (!runner) return;
+      if (entry.type === 'rule-stage') {
+        runner.setStageEnabled(entry.sourceId!, newEnabled);
+      } else {
+        runner.setPassEnabled(entry.sourceId!, newEnabled);
+      }
     }
     setRevision((r) => r + 1);
   }, []);
@@ -156,7 +159,6 @@ function PipelineContent() {
     if (entry.opId) {
       commandRegistry.execute('op.remove', { id: entry.opId });
     }
-    setConfirmDelete(null);
     setRevision((r) => r + 1);
   }, []);
 
@@ -205,7 +207,7 @@ function PipelineContent() {
         label: 'Delete',
         divider: true,
         hidden: !isOp || !entry.opId,
-        action: () => setConfirmDelete(entry),
+        action: () => handleDeleteEntry(entry),
       },
     ];
   }, [entries, ops, handleSelectEntry, handleToggleEnabled, handleReorder]);
@@ -339,16 +341,6 @@ function PipelineContent() {
           y={ctxMenu.y}
           items={getCtxItems(ctxMenu.entry)}
           onClose={() => setCtxMenu(null)}
-        />
-      )}
-
-      {/* Delete confirmation */}
-      {confirmDelete && (
-        <ConfirmDialog
-          title={`Delete "${confirmDelete.name}"?`}
-          message="This operator will be permanently removed from the pipeline."
-          onConfirm={() => handleDeleteEntry(confirmDelete)}
-          onCancel={() => setConfirmDelete(null)}
         />
       )}
 

@@ -17,7 +17,6 @@ import type { SceneNode } from '../../engine/scene/SceneNode';
 import { NODE_TYPES } from '../../engine/scene/SceneNode';
 import type { Operator } from '../../engine/expression/types';
 import { ContextMenu, type ContextMenuItem } from '../shared/ContextMenu';
-import { ConfirmDialog } from '../shared/ConfirmDialog';
 
 interface ObjectManagerNodeProps {
   nodeId: string;
@@ -58,7 +57,6 @@ function OpTreeRow({ op, depth, parentNodeId }: { op: Operator; depth: number; p
   const focusedOpId = useUiStore((s) => s.focusedOpId);
   const isSelected = focusedOpId === op.id;
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const indent = depth * 16;
   const badge = OP_TYPE_STYLES[op.source] ?? OP_TYPE_STYLES.code;
@@ -100,7 +98,7 @@ function OpTreeRow({ op, depth, parentNodeId }: { op: Operator; depth: number; p
     {
       label: 'Delete',
       divider: true,
-      action: () => setConfirmDelete(true),
+      action: () => commandRegistry.execute('op.remove', { id: op.id }),
     },
   ];
 
@@ -131,14 +129,6 @@ function OpTreeRow({ op, depth, parentNodeId }: { op: Operator; depth: number; p
       {ctxMenu && (
         <ContextMenu x={ctxMenu.x} y={ctxMenu.y} items={ctxItems} onClose={() => setCtxMenu(null)} />
       )}
-      {confirmDelete && (
-        <ConfirmDialog
-          title={`Delete "${op.name}"?`}
-          message="This operator will be permanently removed."
-          onConfirm={() => { commandRegistry.execute('op.remove', { id: op.id }); setConfirmDelete(false); }}
-          onCancel={() => setConfirmDelete(false)}
-        />
-      )}
     </>
   );
 }
@@ -155,7 +145,6 @@ export const ObjectManagerNode: React.FC<ObjectManagerNodeProps> = React.memo(
     const allOps = useExpressionStore((s) => s.tags);
 
     const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
-    const [confirmDelete, setConfirmDelete] = useState(false);
 
     const isSelected = selectedNodeId === nodeId;
     const isExpanded = expandedNodeIds.includes(nodeId);
@@ -229,7 +218,7 @@ export const ObjectManagerNode: React.FC<ObjectManagerNodeProps> = React.memo(
       {
         label: 'Delete',
         divider: true,
-        action: () => setConfirmDelete(true),
+        action: () => commandRegistry.execute('scene.remove', { id: nodeId }),
         hidden: !canDelete,
       },
     ];
@@ -281,16 +270,6 @@ export const ObjectManagerNode: React.FC<ObjectManagerNodeProps> = React.memo(
 
         {ctxMenu && (
           <ContextMenu x={ctxMenu.x} y={ctxMenu.y} items={ctxItems} onClose={() => setCtxMenu(null)} />
-        )}
-        {confirmDelete && (
-          <ConfirmDialog
-            title={`Delete "${node.name}"?`}
-            message={hasChildren
-              ? `This will also delete ${node.childIds.length} child node(s). This cannot be undone.`
-              : 'This cannot be undone.'}
-            onConfirm={() => { commandRegistry.execute('scene.remove', { id: nodeId }); setConfirmDelete(false); }}
-            onCancel={() => setConfirmDelete(false)}
-          />
         )}
       </>
     );

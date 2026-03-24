@@ -167,6 +167,18 @@ export function registerOpCommands(
     },
   });
 
+  /** Sync the GPU runner's internal pass/stage enabled state to match a tag. */
+  const syncRunnerEnabled = (tag: { name: string; phase: string }, enabled: boolean) => {
+    const runner = controller.getGPURuleRunner();
+    if (!runner) return;
+    if (tag.phase === 'rule') {
+      runner.setStageEnabled(tag.name, enabled);
+    } else {
+      // pre-rule, post-rule, and visual passes all live in expressionPasses
+      runner.setPassEnabled(tag.name, enabled);
+    }
+  };
+
   registry.register({
     name: 'op.enable',
     description: 'Enable an operator',
@@ -183,8 +195,8 @@ export function registerOpCommands(
         return { success: false, error: `Op "${id}" not found` };
       }
       tagRegistry.enable(id);
+      syncRunnerEnabled(tag, true);
       eventBus.emit('tag:updated', { id, enabled: true });
-      controller.onTagChanged();
       return { success: true, data: { id, enabled: true } };
     },
   });
@@ -205,8 +217,8 @@ export function registerOpCommands(
         return { success: false, error: `Op "${id}" not found` };
       }
       tagRegistry.disable(id);
+      syncRunnerEnabled(tag, false);
       eventBus.emit('tag:updated', { id, enabled: false });
-      controller.onTagChanged();
       return { success: true, data: { id, enabled: false } };
     },
   });
