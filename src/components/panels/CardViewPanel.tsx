@@ -339,63 +339,93 @@ function CellCards({
   const cellTypes = useSimStore((s) => s.cellTypes);
   const cellProperties = useSimStore((s) => s.cellProperties);
 
-  if (cellTypes.length > 0) {
-    return (
-      <>
-        {cellTypes.map((ct) => {
-          const sceneNode = nodes.find(
-            (n) => n.name === ct.name || (n.properties as Record<string, unknown>).cellTypeId === ct.id,
-          );
-          const nodeId = sceneNode?.id ?? ct.id;
-          const isSelected = selectedNodeId === nodeId;
-          return (
-            <div
-              key={ct.id}
-              onClick={() => onSelect(nodeId)}
-              className={`cursor-pointer rounded transition-colors ${isSelected ? 'ring-1 ring-green-500/60' : ''}`}
-              data-testid={`card-cell-${ct.id}`}
-            >
-              <CellCard
-                typeName={ct.name}
-                typeId={ct.id}
-                color={ct.color}
-                properties={ct.properties.map((p) => ({
-                  name: p.name,
-                  type: p.type,
-                  default: p.default,
-                  role: p.role,
-                  isInherent: p.isInherent,
-                }))}
-              />
-            </div>
-          );
-        })}
-      </>
-    );
-  }
+  // Track which scene nodes are already represented by simStore cellTypes
+  const matchedNodeIds = new Set<string>();
 
-  if (cellProperties.length > 0) {
+  const engineCards = cellTypes.length > 0 ? cellTypes.map((ct) => {
+    const sceneNode = nodes.find(
+      (n) => n.name === ct.name || (n.properties as Record<string, unknown>).cellTypeId === ct.id,
+    );
+    if (sceneNode) matchedNodeIds.add(sceneNode.id);
+    const nodeId = sceneNode?.id ?? ct.id;
+    const isSelected = selectedNodeId === nodeId;
     return (
       <div
-        onClick={() => nodes[0] && onSelect(nodes[0].id)}
-        className={`cursor-pointer rounded transition-colors ${
-          nodes[0] && selectedNodeId === nodes[0].id ? 'ring-1 ring-green-500/60' : ''
-        }`}
+        key={ct.id}
+        onClick={() => onSelect(nodeId)}
+        className={`cursor-pointer rounded transition-colors ${isSelected ? 'ring-1 ring-green-500/60' : ''}`}
+        data-testid={`card-cell-${ct.id}`}
       >
         <CellCard
-          typeName="Cell"
-          typeId="default"
-          color="#4ade80"
-          properties={cellProperties.map((p) => ({
+          typeName={ct.name}
+          typeId={ct.id}
+          color={ct.color}
+          properties={ct.properties.map((p) => ({
             name: p.name,
             type: p.type,
             default: p.default,
             role: p.role,
+            isInherent: p.isInherent,
           }))}
         />
       </div>
     );
-  }
+  }) : cellProperties.length > 0 ? [(
+    <div
+      key="default-cell"
+      onClick={() => nodes[0] && onSelect(nodes[0].id)}
+      className={`cursor-pointer rounded transition-colors ${
+        nodes[0] && selectedNodeId === nodes[0].id ? 'ring-1 ring-green-500/60' : ''
+      }`}
+    >
+      <CellCard
+        typeName="Cell"
+        typeId="default"
+        color="#4ade80"
+        properties={cellProperties.map((p) => ({
+          name: p.name,
+          type: p.type,
+          default: p.default,
+          role: p.role,
+        }))}
+      />
+    </div>
+  )] : [];
+
+  // Show scene-only cell nodes (created via + but not yet in engine typeRegistry)
+  const sceneOnlyCards = nodes
+    .filter((n) => !matchedNodeIds.has(n.id))
+    .map((n) => {
+      const props = n.properties as Record<string, unknown>;
+      const color = (props.color as string) ?? '#888888';
+      const cellProps = (props.cellProperties as Array<{ name: string; type: string; default: number | number[]; role?: string; isInherent?: boolean }>) ?? [];
+      const isSelected = selectedNodeId === n.id;
+      return (
+        <div
+          key={n.id}
+          onClick={() => onSelect(n.id)}
+          className={`cursor-pointer rounded transition-colors ${isSelected ? 'ring-1 ring-green-500/60' : ''}`}
+          data-testid={`card-cell-${n.id}`}
+        >
+          <CellCard
+            typeName={n.name}
+            typeId={n.id}
+            color={color}
+            properties={cellProps.map((p) => ({
+              name: p.name,
+              type: p.type as 'bool' | 'int' | 'float' | 'vec2' | 'vec3' | 'vec4',
+              default: p.default,
+              role: p.role,
+              isInherent: p.isInherent,
+            }))}
+          />
+        </div>
+      );
+    });
+
+  if (engineCards.length === 0 && sceneOnlyCards.length === 0) return null;
+
+  return <>{[...engineCards, ...sceneOnlyCards]}</>;
 
   return null;
 }
