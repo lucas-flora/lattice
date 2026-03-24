@@ -19,6 +19,38 @@ grid:
 
 draw_property: "fuel"
 
+brushes:
+  - name: "Fuel"
+    properties:
+      fuel: { value: 1.0, mode: "set" }
+      temperature: { value: 0.2, mode: "add" }
+    radius: 8
+    shape: "circle"
+    falloff: "smooth"
+
+  - name: "Cold Fuel"
+    properties:
+      fuel: { value: 1.0, mode: "set" }
+    radius: 8
+    shape: "circle"
+    falloff: "smooth"
+
+  - name: "Heat"
+    properties:
+      temperature: { value: 0.8, mode: "add" }
+    radius: 12
+    shape: "circle"
+    falloff: "smooth"
+
+  - name: "Eraser"
+    properties:
+      fuel: { value: 0, mode: "set" }
+      temperature: { value: 0, mode: "set" }
+      smoke: { value: 0, mode: "set" }
+    radius: 10
+    shape: "circle"
+    falloff: "hard"
+
 cell_properties:
   - name: "vx"
     type: "float"

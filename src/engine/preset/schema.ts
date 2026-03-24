@@ -155,6 +155,21 @@ const ExpressionTagSchema = z.object({
   }).optional(),
 });
 
+// --- Brush schemas ---
+
+const BrushPropertyActionSchema = z.object({
+  value: z.number(),
+  mode: z.enum(['set', 'add', 'multiply', 'random']),
+});
+
+const BrushSchema = z.object({
+  name: z.string().min(1),
+  properties: z.record(z.string(), BrushPropertyActionSchema),
+  radius: z.number().min(1).max(100).default(5),
+  shape: z.enum(['circle', 'square']).default('circle'),
+  falloff: z.enum(['hard', 'linear', 'smooth']).default('smooth'),
+});
+
 const AiContextSchema = z.object({
   description: z.string().optional(),
   hints: z.array(z.string()).optional(),
@@ -186,6 +201,8 @@ export const PresetSchema = z
     parameter_links: z.array(ParameterLinkSchema).optional(),
     expression_tags: z.array(ExpressionTagSchema).optional(),
     visual_mappings: z.array(VisualMappingSchema).optional(),
+    /** Brush definitions for the draw tool. If absent, a single default brush is created. */
+    brushes: z.array(BrushSchema).optional(),
     /** Which cell property the draw tool should paint. Defaults to the color-mapped property. */
     draw_property: z.string().optional(),
     /** Initial state seeding script (JS, runs on CPU once at load) */
@@ -303,3 +320,8 @@ export const PresetV2Schema = z.object({
 export type PresetV2Config = z.infer<typeof PresetV2Schema>;
 export type SceneNodeV2 = z.infer<typeof SceneNodeV2Schema>;
 export type TagV2 = z.infer<typeof TagV2Schema>;
+
+// --- Exported brush types ---
+
+export type BrushPropertyAction = z.infer<typeof BrushPropertyActionSchema>;
+export type Brush = z.infer<typeof BrushSchema>;

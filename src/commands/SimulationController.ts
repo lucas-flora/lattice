@@ -20,6 +20,7 @@ import type { SceneGraph } from '../engine/scene/SceneGraph';
 import type { SceneNode } from '../engine/scene/SceneNode';
 import { NODE_TYPES, generateNodeId } from '../engine/scene/SceneNode';
 import { sceneStoreActions, useSceneStore } from '../store/sceneStore';
+import { brushStoreActions } from '../store/brushStore';
 import { logMin, logDbg, logGPU } from '../lib/debugLog';
 import { GPURuleRunner } from '../engine/rule/GPURuleRunner';
 import { GPUContext } from '../engine/gpu/GPUContext';
@@ -334,6 +335,7 @@ export class SimulationController {
     // GPU acceleration (async, non-blocking — emit happens immediately, GPU init finishes in background)
     void this.tryInitGPURuleRunner();
     logMin('ctrl', `loadPreset: postRuleTags=${this.simulation.tagRegistry.hasPostRuleTags()}`);
+    brushStoreActions.loadFromPreset(config.brushes, config.cell_properties, config.draw_property);
     this.emitPresetLoaded(config);
     this.emitParamDefs();
     this.syncTagStore();
@@ -360,6 +362,7 @@ export class SimulationController {
 
     this.userParamDefs = [];
     void this.tryInitGPURuleRunner();
+    brushStoreActions.loadFromPreset(config.brushes, config.cell_properties, config.draw_property);
     this.emitPresetLoaded(config);
     this.emitParamDefs();
     this.syncTagStore();

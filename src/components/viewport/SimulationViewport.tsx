@@ -25,7 +25,9 @@ import { useLayoutStore, layoutStoreActions } from '@/store/layoutStore';
 import { useUiStore } from '@/store/uiStore';
 import { useSimStore } from '@/store/simStore';
 import { HUD } from '@/components/hud/HUD';
+import { BrushToolbar } from '@/components/hud/BrushToolbar';
 import { GPUContext } from '@/engine/gpu/GPUContext';
+import { brushStoreActions } from '@/store/brushStore';
 import { logGPU } from '@/lib/debugLog';
 
 /** Props for multi-viewport support */
@@ -168,6 +170,22 @@ export function SimulationViewport({ viewportId = 'viewport-1' }: SimulationView
       syncCamera(latticeRenderer, cameraController);
     }
 
+    // Cursor preview overlay canvas (transparent, above both GPU and Three.js canvases)
+    const cursorCanvas = document.createElement('canvas');
+    cursorCanvas.style.display = 'block';
+    cursorCanvas.style.position = 'absolute';
+    cursorCanvas.style.top = '0';
+    cursorCanvas.style.left = '0';
+    cursorCanvas.style.zIndex = '2';
+    cursorCanvas.style.pointerEvents = 'none';
+    cursorCanvas.width = width;
+    cursorCanvas.height = height;
+    container.appendChild(cursorCanvas);
+    const cursorCtx = cursorCanvas.getContext('2d');
+    let cursorScreenX = -1;
+    let cursorScreenY = -1;
+    let cursorVisible = false;
+
     // ResizeObserver for responsive sizing
     const resizeObserver = new ResizeObserver((entries) => {
       for (const entry of entries) {
@@ -177,6 +195,8 @@ export function SimulationViewport({ viewportId = 'viewport-1' }: SimulationView
           if (gpuGridRenderer && gpuCanvas) {
             gpuGridRenderer.resize(w, h);
           }
+          cursorCanvas.width = w;
+          cursorCanvas.height = h;
           if (cameraController) {
             cameraController.resize(w, h);
             syncCamera(latticeRenderer, cameraController);
@@ -260,6 +280,12 @@ export function SimulationViewport({ viewportId = 'viewport-1' }: SimulationView
     };
 
     const onMouseMove = (e: MouseEvent) => {
+      // Track cursor position for brush preview overlay
+      const canvasRect = canvas.getBoundingClientRect();
+      cursorScreenX = e.clientX - canvasRect.left;
+      cursorScreenY = e.clientY - canvasRect.top;
+      cursorVisible = true;
+
       if (isDragging) {
         const dx = e.clientX - lastMouseX;
         const dy = e.clientY - lastMouseY;
@@ -294,7 +320,17 @@ export function SimulationViewport({ viewportId = 'viewport-1' }: SimulationView
 
     const onMouseUp = () => {
       isDragging = false;
-      isDrawing = false;
+      if (isDrawing) {
+        isDrawing = false;
+        // Clear GPU brush state so the shader stops applying
+        const runner = getController()?.getGPURuleRunner();
+        if (runner) runner.setBrushState(false, 0, 0, null, 0);
+      }
+    };
+
+    const onMouseLeave = () => {
+      onMouseUp();
+      cursorVisible = false;
     };
 
     const onContextMenu = (e: MouseEvent) => {
@@ -319,7 +355,7 @@ export function SimulationViewport({ viewportId = 'viewport-1' }: SimulationView
     canvas.addEventListener('mousedown', onMouseDown);
     canvas.addEventListener('mousemove', onMouseMove);
     canvas.addEventListener('mouseup', onMouseUp);
-    canvas.addEventListener('mouseleave', onMouseUp);
+    canvas.addEventListener('mouseleave', onMouseLeave);
     canvas.addEventListener('wheel', onWheel, { passive: false });
     canvas.addEventListener('contextmenu', onContextMenu);
 
@@ -597,6 +633,51 @@ export function SimulationViewport({ viewportId = 'viewport-1' }: SimulationView
         );
       }
 
+      // Draw brush cursor preview on overlay canvas
+      if (cursorCtx) {
+        cursorCtx.clearRect(0, 0, cursorCanvas.width, cursorCanvas.height);
+        if (cursorVisible && cameraController && !isDragging) {
+          const radius = brushStoreActions.getEffectiveRadius();
+          const cam = cameraController.camera;
+          // Compute pixels per grid cell from camera
+          const camWidth = cam.right - cam.left;
+          const pixelsPerCell = cursorCanvas.width / camWidth;
+          const screenRadius = radius * pixelsPerCell;
+
+          if (screenRadius > 0.5) {
+            cursorCtx.beginPath();
+            const activeBrush = brushStoreActions.getActiveBrush();
+            if (activeBrush?.shape === 'square') {
+              cursorCtx.rect(
+                cursorScreenX - screenRadius,
+                cursorScreenY - screenRadius,
+                screenRadius * 2,
+                screenRadius * 2,
+              );
+            } else {
+              cursorCtx.arc(cursorScreenX, cursorScreenY, screenRadius, 0, Math.PI * 2);
+            }
+            cursorCtx.strokeStyle = 'rgba(74, 222, 128, 0.6)';
+            cursorCtx.lineWidth = 1;
+            cursorCtx.stroke();
+
+            // Falloff fill for smooth/linear brushes
+            if (activeBrush && activeBrush.falloff !== 'hard' && screenRadius > 4) {
+              const grad = cursorCtx.createRadialGradient(
+                cursorScreenX, cursorScreenY, 0,
+                cursorScreenX, cursorScreenY, screenRadius,
+              );
+              grad.addColorStop(0, 'rgba(74, 222, 128, 0.15)');
+              grad.addColorStop(1, 'rgba(74, 222, 128, 0.0)');
+              cursorCtx.fillStyle = grad;
+              cursorCtx.beginPath();
+              cursorCtx.arc(cursorScreenX, cursorScreenY, screenRadius, 0, Math.PI * 2);
+              cursorCtx.fill();
+            }
+          }
+        }
+      }
+
       // Three.js renders overlays (grid lines) or full CPU path
       latticeRenderer.update();
       if (orbitController) {
@@ -614,7 +695,7 @@ export function SimulationViewport({ viewportId = 'viewport-1' }: SimulationView
       canvas.removeEventListener('mousedown', onMouseDown);
       canvas.removeEventListener('mousemove', onMouseMove);
       canvas.removeEventListener('mouseup', onMouseUp);
-      canvas.removeEventListener('mouseleave', onMouseUp);
+      canvas.removeEventListener('mouseleave', onMouseLeave);
       canvas.removeEventListener('wheel', onWheel);
       canvas.removeEventListener('contextmenu', onContextMenu);
       resizeObserver.disconnect();
@@ -636,6 +717,9 @@ export function SimulationViewport({ viewportId = 'viewport-1' }: SimulationView
 
       if (gpuCanvas && container.contains(gpuCanvas)) {
         container.removeChild(gpuCanvas);
+      }
+      if (container.contains(cursorCanvas)) {
+        container.removeChild(cursorCanvas);
       }
       if (container.contains(canvas)) {
         container.removeChild(canvas);
@@ -671,6 +755,11 @@ export function SimulationViewport({ viewportId = 'viewport-1' }: SimulationView
       >
         {isFullscreen ? '\u2716' : '\u26F6'}
       </button>
+
+      {/* Brush toolbar — bottom of viewport, above timeline */}
+      <div className="absolute bottom-0 left-0 right-0 z-20 pointer-events-auto">
+        <BrushToolbar />
+      </div>
     </div>
   );
 }

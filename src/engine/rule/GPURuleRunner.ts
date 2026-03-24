@@ -24,6 +24,8 @@ import { generateWGSL, type WGSLCodegenConfig } from '../ir/WGSLCodegen';
 import type { IRProgram } from '../ir/types';
 import { parsePython, ParseError } from '../ir/PythonParser';
 import { compileRampToIR, type RampMapping } from '../ir/RampCompiler';
+import { BrushDispatcher } from '../gpu/BrushDispatcher';
+import type { Brush } from '../../store/brushStore';
 import { logGPU } from '../../lib/debugLog';
 
 /** Compiled expression tag pass (post-rule) */
@@ -89,6 +91,16 @@ export class GPURuleRunner {
   private _hasVisualMappingPass = false;
   /** Current env param values (updated by controller, read during tick) */
   private currentEnvParams: Record<string, number> = {};
+  /** GPU brush dispatcher — applies brush before rule stages */
+  private brushDispatcher: BrushDispatcher;
+  /** Current brush drawing state (set by controller each frame) */
+  private brushState: {
+    isDrawing: boolean;
+    cursorX: number;
+    cursorY: number;
+    brush: Brush | null;
+    radius: number;
+  } = { isDrawing: false, cursorX: 0, cursorY: 0, brush: null, radius: 3 };
 
   constructor(grid: Grid, preset: PresetConfig) {
     this.grid = grid;
@@ -96,6 +108,7 @@ export class GPURuleRunner {
     this.bufferManager = new BufferManager();
     this.shaderCompiler = new ShaderCompiler();
     this.computeDispatcher = new ComputeDispatcher(this.shaderCompiler);
+    this.brushDispatcher = new BrushDispatcher(this.shaderCompiler);
   }
 
   /**
@@ -218,6 +231,9 @@ export class GPURuleRunner {
 
     // 11. Run expression/visual passes once to compute colorR/G/B for the initial frame
     this.runExpressionPasses();
+
+    // 12. Initialize brush dispatcher (writes in-place to read buffer before rule stages)
+    this.brushDispatcher.initialize(width, height, this.bufferManager.getReadBuffer());
 
     const totalDispatches = this.ruleStages.reduce((n, s) => n + s.iterations, 0);
     logGPU(`GPURuleRunner initialized: ${presetName} (${width}×${height}, stride=${this.bufferManager.stride}, ${this.ruleStages.length} rule stages (${totalDispatches} dispatches/tick), ${this.expressionPasses.length} expr passes)`);
@@ -485,6 +501,22 @@ export class GPURuleRunner {
     // Update params uniform (generation, dt, env params)
     this.generation++;
     this.bufferManager.updateParams(this.getEnvParamsObject());
+
+    // Brush dispatch — writes in-place to read buffer before rule stages process it
+    if (this.brushState.isDrawing && this.brushState.brush) {
+      this.brushDispatcher.rebindGridBuffer(this.bufferManager.getReadBuffer());
+      const encoder = this.computeDispatcher.beginCommandEncoder('brush');
+      this.brushDispatcher.dispatch(
+        encoder,
+        this.brushState.cursorX,
+        this.brushState.cursorY,
+        this.brushState.brush,
+        this.brushState.radius,
+        this.bufferManager.stride,
+        this.propertyLayout,
+      );
+      this.computeDispatcher.submit(encoder);
+    }
 
     // Rule stages (each dispatches N iterations with buffer swaps)
     for (const stage of this.ruleStages) {
@@ -811,6 +843,14 @@ export class GPURuleRunner {
     }
   }
 
+  /**
+   * Set the brush drawing state. Called by the controller each frame.
+   * When isDrawing is true, the brush compute shader runs before rule stages.
+   */
+  setBrushState(isDrawing: boolean, cursorX: number, cursorY: number, brush: Brush | null, radius: number): void {
+    this.brushState = { isDrawing, cursorX, cursorY, brush, radius };
+  }
+
   /** Update env params in the uniform buffer */
   updateParams(envParams: Record<string, number>, generation: number, dt: number): void {
     this.generation = generation;
@@ -819,6 +859,7 @@ export class GPURuleRunner {
 
   /** Clean up all GPU resources */
   destroy(): void {
+    this.brushDispatcher.destroy();
     this.bufferManager.destroy();
     this.ruleStages = [];
   }

@@ -10,7 +10,14 @@ const gitCommit = (() => {
 })();
 
 const nextConfig: NextConfig = {
-  turbopack: {},
+  turbopack: {
+    rules: {
+      '*.yaml': {
+        loaders: ['raw-loader'],
+        as: '*.js',
+      },
+    },
+  },
   env: {
     NEXT_PUBLIC_GIT_COMMIT: gitCommit,
   },
