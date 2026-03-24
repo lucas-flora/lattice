@@ -92,10 +92,21 @@ export class Simulation {
       }
     }
 
-    // Create a rule tag from the preset's compute body (SG-6: rule-as-tag)
-    const computeBody = preset.rule.compute || '';
-    if (computeBody) {
-      this.tagRegistry.addFromRule(preset.meta.name, computeBody, 'webgpu');
+    // Create rule tag(s) from the preset's compute body (SG-6: rule-as-tag)
+    if (preset.rule.stages && preset.rule.stages.length > 0) {
+      // Multi-stage rules: create one tag per stage for inspector visibility
+      for (const stage of preset.rule.stages) {
+        this.tagRegistry.addFromRule(
+          `${preset.meta.name} — ${stage.name}`,
+          stage.compute,
+          'webgpu',
+        );
+      }
+    } else {
+      const computeBody = preset.rule.compute || '';
+      if (computeBody) {
+        this.tagRegistry.addFromRule(preset.meta.name, computeBody, 'webgpu');
+      }
     }
   }
 

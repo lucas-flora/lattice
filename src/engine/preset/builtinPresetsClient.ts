@@ -314,25 +314,13 @@ rule:
     n = neighbor_count(state, 1)
     if state > 0.5 and state < 1.5:
         self.state = 2.0
-        self.colorR = 0.0
-        self.colorG = 0.4
-        self.colorB = 1.0
     elif state > 1.5:
         self.state = 0.0
-        self.colorR = 0.0
-        self.colorG = 0.0
-        self.colorB = 0.0
     else:
         if n == 2:
             self.state = 1.0
-            self.colorR = 1.0
-            self.colorG = 1.0
-            self.colorB = 1.0
         else:
             self.state = 0.0
-            self.colorR = 0.0
-            self.colorG = 0.0
-            self.colorB = 0.0
 visual_mappings:
   - property: "state"
     channel: "color"
