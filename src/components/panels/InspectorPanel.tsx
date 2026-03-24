@@ -176,30 +176,42 @@ function SceneNodeDetail({ node, nodeId, tags }: { node: SceneNode; nodeId: stri
 // ---------------------------------------------------------------------------
 
 function PipelineEntryDetail({ entryId, tags }: { entryId: string; tags: import('../../engine/expression/types').Operator[] }) {
-  // Look up the pipeline entry
+  // Look up the pipeline entry by ID
   const ctrl = getController();
   const runner = ctrl?.getGPURuleRunner();
   const entries = useMemo(() => runner?.getExecutionOrder() ?? [], [runner]);
   const entry = entries.find((e) => e.id === entryId);
 
+  // If not found as a pipeline entry, check if it's an expression store op ID
+  // (ops selected from the Object Manager tree use their store ID directly)
+  const directOp = !entry ? tags.find((t) => t.id === entryId) : null;
+  if (directOp) {
+    return <OperatorSection op={directOp} />;
+  }
+
   if (!entry) {
     return (
       <div className="flex-1 flex items-center justify-center px-4">
         <span className="text-zinc-500 text-[11px] text-center">
-          Pipeline entry not found
+          Select an object to inspect
         </span>
       </div>
     );
   }
 
-  // Rule stages get their own section
+  // Rule stages: check if there's a matching op in the expression store (rule tags),
+  // otherwise show the RuleStageSection with preset data
   if (entry.type === 'rule-stage') {
+    const op = tags.find((t) => t.phase === 'rule' && t.name.includes(entry.sourceId!));
+    if (op) {
+      return <OperatorSection op={op} />;
+    }
     return <RuleStageSection entry={entry} />;
   }
 
-  // Operators: find the matching op from the expression store
+  // Post/pre-rule operators: find matching op from the expression store
   if (entry.type === 'post-rule-op' || entry.type === 'pre-rule-op') {
-    const op = tags.find((t) => t.name === entry.sourceId);
+    const op = tags.find((t) => t.name === entry.sourceId || t.name.includes(entry.sourceId!));
     if (op) {
       return <OperatorSection op={op} />;
     }

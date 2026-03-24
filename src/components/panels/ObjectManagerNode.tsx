@@ -49,29 +49,23 @@ const OP_TYPE_STYLES: Record<string, { label: string; class: string }> = {
 
 function OpTreeRow({ op, depth }: { op: Operator; depth: number }) {
   const selectedPipelineId = useUiStore((s) => s.selectedPipelineEntryId);
-  // Check if this op matches the selected pipeline entry
-  const pipelineId = op.phase === 'rule'
-    ? `rule-${op.name.replace(/^.*? – /, '').replace(/ Rule$/, '')}`
-    : op.phase === 'pre-rule'
-      ? `pre-rule-${op.name}`
-      : `post-rule-${op.name}`;
-  const isSelected = selectedPipelineId === pipelineId;
+  // Match against: direct op ID (from tree click) OR pipeline entry ID (from Pipeline View click)
+  // Pipeline entry IDs look like "rule-advection" or "post-rule-someName"
+  const shortName = op.name.replace(/^.*? – /, '').replace(/ Rule$/, '');
+  const isSelected = selectedPipelineId === op.id
+    || selectedPipelineId === `rule-${shortName}`
+    || selectedPipelineId === `pre-rule-${op.name}`
+    || selectedPipelineId === `post-rule-${op.name}`;
 
   const indent = depth * 16;
   const badge = OP_TYPE_STYLES[op.source] ?? OP_TYPE_STYLES.code;
 
   const handleClick = useCallback(() => {
-    // Set pipeline entry selection so Inspector shows the op detail.
-    // Map op ID to the pipeline entry ID format used by getExecutionOrder().
-    const pipelineId = op.phase === 'rule'
-      ? `rule-${op.name.replace(/^.*? – /, '').replace(/ Rule$/, '')}`
-      : op.phase === 'pre-rule'
-        ? `pre-rule-${op.name}`
-        : `post-rule-${op.name}`;
-    uiStoreActions.selectPipelineEntry(pipelineId);
+    // Use the op's expression store ID — Inspector will look it up directly
+    uiStoreActions.selectPipelineEntry(op.id);
     // Clear scene selection so Inspector routes to pipeline entry detail
     sceneStoreActions.select(null);
-  }, [op.id, op.name, op.phase]);
+  }, [op.id]);
 
   const handleToggleEnabled = useCallback(
     (e: React.MouseEvent) => {
