@@ -31,6 +31,7 @@ interface ExpressionPass {
   name: string;
   pipeline: GPUComputePipeline;
   bindGroups: [GPUBindGroup, GPUBindGroup];
+  enabled: boolean;
 }
 
 /** A compiled rule stage with iteration count */
@@ -40,6 +41,7 @@ interface RuleStage {
   bindGroups: [GPUBindGroup, GPUBindGroup];
   /** Number of times to dispatch this stage per tick (default 1) */
   iterations: number;
+  enabled: boolean;
 }
 
 /** A single entry in the pipeline execution order */
@@ -188,6 +190,7 @@ export class GPURuleRunner {
           pipeline,
           bindGroups: [bg0, bg1],
           iterations: stage.iterations,
+          enabled: true,
         });
 
         logGPU(`Transpiled "${presetName}/${stage.name}" → IR (${irProgram.statements.length} stmts)${stage.iterations > 1 ? ` ×${stage.iterations}` : ''}`);
@@ -301,7 +304,7 @@ export class GPURuleRunner {
         const bg0 = this.createBindGroup(readBuf, writeBuf, paramsBuf);
         const bg1 = this.createBindGroup(writeBuf, readBuf, paramsBuf);
 
-        this.expressionPasses.push({ name: tag.name, pipeline, bindGroups: [bg0, bg1] });
+        this.expressionPasses.push({ name: tag.name, pipeline, bindGroups: [bg0, bg1], enabled: true });
         logGPU(`Expression tag "${tag.name}" compiled to GPU`);
       } catch (e) {
         logGPU(`Expression tag "${tag.name}" transpile failed: ${e instanceof Error ? e.message : e}`);
@@ -380,7 +383,7 @@ export class GPURuleRunner {
             const pipeline = this.createPipelineWithLayout(wgsl, 'visual-ramp');
             const bg0 = this.createBindGroup(readBuf, writeBuf, paramsBuf);
             const bg1 = this.createBindGroup(writeBuf, readBuf, paramsBuf);
-            this.expressionPasses.push({ name: 'visual-ramp', pipeline, bindGroups: [bg0, bg1] });
+            this.expressionPasses.push({ name: 'visual-ramp', pipeline, bindGroups: [bg0, bg1], enabled: true });
             this._hasVisualMappingPass = true;
             logGPU(`Visual mapping ramp compiled to GPU (${rampMappings.length} ramp(s))`);
           }
@@ -421,7 +424,7 @@ export class GPURuleRunner {
         const pipeline = this.createPipelineWithLayout(wgsl, 'visual-script');
         const bg0 = this.createBindGroup(readBuf, writeBuf, paramsBuf);
         const bg1 = this.createBindGroup(writeBuf, readBuf, paramsBuf);
-        this.expressionPasses.push({ name: 'visual-script', pipeline, bindGroups: [bg0, bg1] });
+        this.expressionPasses.push({ name: 'visual-script', pipeline, bindGroups: [bg0, bg1], enabled: true });
         this._hasVisualMappingPass = true;
         logGPU(`Visual mapping script compiled to GPU`);
       } catch (e) {
@@ -450,6 +453,7 @@ export class GPURuleRunner {
     this.bufferManager.updateParams(this.getEnvParamsObject());
 
     for (const pass of this.expressionPasses) {
+      if (!pass.enabled) continue;
       this.computeDispatcher.dispatchAndSubmit(
         pass.pipeline,
         pass.bindGroups[this.currentBindGroup],
@@ -482,6 +486,7 @@ export class GPURuleRunner {
 
     // Rule stages (each dispatches N iterations with buffer swaps)
     for (const stage of this.ruleStages) {
+      if (!stage.enabled) continue;
       for (let i = 0; i < stage.iterations; i++) {
         this.computeDispatcher.dispatchAndSubmit(
           stage.pipeline,
@@ -495,6 +500,7 @@ export class GPURuleRunner {
 
     // Expression tag passes (each reads current, writes to other, then swaps)
     for (const pass of this.expressionPasses) {
+      if (!pass.enabled) continue;
       this.computeDispatcher.dispatchAndSubmit(
         pass.pipeline,
         pass.bindGroups[this.currentBindGroup],
@@ -603,7 +609,7 @@ export class GPURuleRunner {
         name: stage.name,
         type: 'rule-stage',
         phase: 'rule',
-        enabled: true,
+        enabled: stage.enabled,
         executionContext: 'gpu',
         sourceId: stage.name,
         iterations: stage.iterations > 1 ? stage.iterations : undefined,
@@ -620,7 +626,7 @@ export class GPURuleRunner {
         name: isVisual ? (pass.name === 'visual-ramp' ? 'Color Ramp' : 'Color Script') : pass.name,
         type: isVisual ? 'visual-mapping' : 'post-rule-op',
         phase: isVisual ? 'visual' : 'post-rule',
-        enabled: true,
+        enabled: pass.enabled,
         executionContext: 'gpu',
         sourceId: pass.name,
         index: idx++,
@@ -628,6 +634,22 @@ export class GPURuleRunner {
     }
 
     return entries;
+  }
+
+  /**
+   * Enable or disable a rule stage by name. No recompilation — just skips at dispatch time.
+   */
+  setStageEnabled(name: string, enabled: boolean): void {
+    const stage = this.ruleStages.find((s) => s.name === name);
+    if (stage) stage.enabled = enabled;
+  }
+
+  /**
+   * Enable or disable an expression/visual pass by name. No recompilation.
+   */
+  setPassEnabled(name: string, enabled: boolean): void {
+    const pass = this.expressionPasses.find((p) => p.name === name);
+    if (pass) pass.enabled = enabled;
   }
 
   /**

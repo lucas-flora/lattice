@@ -74,9 +74,23 @@ function PipelineContent() {
     // Future: rule stages and ops will become scene nodes too
   }, [visualNodeId]);
 
-  const handleToggleEnabled = useCallback((_entry: PipelineEntry) => {
-    // M3 will wire this to actually skip the dispatch.
-    // For now it's a no-op — the visual dimming already reflects entry.enabled.
+  const handleToggleEnabled = useCallback((entry: PipelineEntry) => {
+    const ctrl = getController();
+    if (!ctrl) return;
+    const runner = ctrl.getGPURuleRunner();
+    if (!runner) return;
+
+    const newEnabled = !entry.enabled;
+
+    if (entry.type === 'rule-stage') {
+      runner.setStageEnabled(entry.sourceId!, newEnabled);
+    } else {
+      // post-rule-op, visual-mapping, pre-rule-op all live in expressionPasses
+      runner.setPassEnabled(entry.sourceId!, newEnabled);
+    }
+
+    // Re-derive so the UI updates
+    setRevision((r) => r + 1);
   }, []);
 
   if (!activePreset) {
@@ -99,7 +113,7 @@ function PipelineContent() {
     );
   }
 
-  const totalDispatches = entries.reduce((n, e) => n + (e.iterations ?? 1), 0);
+  const totalDispatches = entries.reduce((n, e) => e.enabled ? n + (e.iterations ?? 1) : n, 0);
 
   return (
     <div className="flex flex-col h-full">

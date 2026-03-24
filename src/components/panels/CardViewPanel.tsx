@@ -26,17 +26,20 @@ import type { SceneNode } from '@/engine/scene/SceneNode';
 // Types
 // ---------------------------------------------------------------------------
 
-type FilterKey = 'cells' | 'env' | 'globals' | 'ops';
+type FilterKey = 'cells' | 'env' | 'globals' | 'ops' | 'visual' | 'state' | 'groups';
 
 const FILTER_DEFS: { key: FilterKey; label: string; icon: string }[] = [
   { key: 'cells', label: 'Cells', icon: '\u25A3' },
   { key: 'env', label: 'Env', icon: '\u2699' },
   { key: 'globals', label: 'Vars', icon: 'x' },
   { key: 'ops', label: 'Ops', icon: '\u0192' },
+  { key: 'visual', label: 'Visual', icon: '\u25D0' },
+  { key: 'state', label: 'State', icon: '\u23F5' },
+  { key: 'groups', label: 'Groups', icon: '\u25E7' },
 ];
 
 interface CardViewPanelProps extends Partial<PanelProps> {
-  /** Which filters are active by default */
+  /** Which filters are active by default. If omitted, defaults based on panelId. */
   defaultFilters?: FilterKey[];
 }
 
@@ -491,6 +494,9 @@ export function CardViewPanel({ defaultFilters }: CardViewPanelProps) {
   // Nodes per section
   const cellNodes = useMemo(() => allNodes.filter((n) => n.type === NODE_TYPES.CELL_TYPE), [allNodes]);
   const envNodes = useMemo(() => allNodes.filter((n) => n.type === NODE_TYPES.ENVIRONMENT), [allNodes]);
+  const visualNodes = useMemo(() => allNodes.filter((n) => n.type === NODE_TYPES.VISUAL), [allNodes]);
+  const stateNodes = useMemo(() => allNodes.filter((n) => n.type === NODE_TYPES.INITIAL_STATE), [allNodes]);
+  const groupNodes = useMemo(() => allNodes.filter((n) => n.type === NODE_TYPES.GROUP), [allNodes]);
 
   const handleSelect = useCallback((id: string) => {
     commandRegistry.execute('scene.select', { id });
@@ -536,14 +542,17 @@ export function CardViewPanel({ defaultFilters }: CardViewPanelProps) {
       env: envNodes.length,
       globals: Object.keys(variables).length,
       ops: tags.length,
+      visual: visualNodes.length,
+      state: stateNodes.length,
+      groups: groupNodes.length,
     }),
-    [cellNodes, envNodes, variables, tags],
+    [cellNodes, envNodes, variables, tags, visualNodes, stateNodes, groupNodes],
   );
 
   const totalCount = activeSections.reduce((sum, key) => sum + sectionCounts[key], 0);
 
   // Show pyodide status when ops or globals are in the view
-  const showPyodide = activeFilters.has('ops') || activeFilters.has('globals');
+  const showPyodide = activeFilters.has('ops') || activeFilters.has('globals') || activeFilters.has('visual');
 
   // Add handler per section
   const handleAddForSection = useCallback((key: FilterKey) => {
@@ -558,7 +567,10 @@ export function CardViewPanel({ defaultFilters }: CardViewPanelProps) {
         commandRegistry.execute('scene.add', { type: 'cell-type', name: 'New Cell Type' });
         break;
       case 'env':
-        // Environment is usually singleton
+      case 'visual':
+      case 'state':
+      case 'groups':
+        // These types don't have an inline add form
         break;
     }
   }, []);
@@ -596,6 +608,24 @@ export function CardViewPanel({ defaultFilters }: CardViewPanelProps) {
               <OpCards />
             </>
           );
+        case 'visual':
+          return visualNodes.length > 0 ? (
+            <GenericCards nodes={visualNodes} selectedNodeId={selectedNodeId} onSelect={handleSelect} />
+          ) : (
+            <p className="text-[10px] font-mono text-zinc-600 italic px-1">No visual mappings</p>
+          );
+        case 'state':
+          return stateNodes.length > 0 ? (
+            <GenericCards nodes={stateNodes} selectedNodeId={selectedNodeId} onSelect={handleSelect} />
+          ) : (
+            <p className="text-[10px] font-mono text-zinc-600 italic px-1">No state snapshots</p>
+          );
+        case 'groups':
+          return groupNodes.length > 0 ? (
+            <GenericCards nodes={groupNodes} selectedNodeId={selectedNodeId} onSelect={handleSelect} />
+          ) : (
+            <p className="text-[10px] font-mono text-zinc-600 italic px-1">No groups</p>
+          );
         default:
           return null;
       }
@@ -629,7 +659,7 @@ export function CardViewPanel({ defaultFilters }: CardViewPanelProps) {
   return (
     <div className="h-full bg-zinc-900/95 overflow-y-auto" data-testid="card-view-panel">
       {/* Filter bar */}
-      <div className="flex items-center gap-1 px-2 py-1.5 border-b border-zinc-800/50">
+      <div className="flex flex-wrap items-center gap-1 px-2 py-1.5 border-b border-zinc-800/50">
         {FILTER_DEFS.map((f) => {
           const active = activeFilters.has(f.key);
           return (
