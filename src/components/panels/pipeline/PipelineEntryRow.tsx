@@ -1,8 +1,9 @@
 /**
  * PipelineEntryRow: a single row in the pipeline execution order.
  *
- * Shows flow connector (dot + line), index, name, type badge, enabled toggle.
- * Click selects the entry; for visual-mapping entries, also selects the scene node.
+ * Renders with two connector columns:
+ * - Outer connector: continuation of the section-level flow line
+ * - Inner connector: entry-level dot + line within the expanded section
  */
 
 'use client';
@@ -17,18 +18,21 @@ const TYPE_STYLES: Record<PipelineEntry['type'], { label: string; class: string;
   'visual-mapping':{ label: 'visual',  class: 'bg-purple-500/15 text-purple-400', dotColor: 'bg-purple-400' },
 };
 
+const LINE_ENABLED = 'rgba(74, 222, 128, 0.2)';
+const LINE_DISABLED = 'repeating-linear-gradient(to bottom, rgba(113,113,122,0.3) 0px, rgba(113,113,122,0.3) 2px, transparent 2px, transparent 4px)';
+
 interface PipelineEntryRowProps {
   entry: PipelineEntry;
   isSelected: boolean;
   onSelect: () => void;
   onToggleEnabled?: () => void;
-  /** Whether this is the last entry (no continuation line below) */
-  isLast?: boolean;
-  /** Whether this is the first entry in a new section */
-  isFirstInSection?: boolean;
+  /** Show the outer (section-level) continuation line */
+  showOuterLine?: boolean;
+  /** Is this the last entry in the inner group */
+  isLastInner?: boolean;
 }
 
-export function PipelineEntryRow({ entry, isSelected, onSelect, onToggleEnabled, isLast, isFirstInSection }: PipelineEntryRowProps) {
+export function PipelineEntryRow({ entry, isSelected, onSelect, onToggleEnabled, showOuterLine = true, isLastInner = false }: PipelineEntryRowProps) {
   const style = TYPE_STYLES[entry.type];
 
   const handleToggle = useCallback((e: React.MouseEvent) => {
@@ -38,48 +42,29 @@ export function PipelineEntryRow({ entry, isSelected, onSelect, onToggleEnabled,
 
   return (
     <div className="flex" data-testid={`pipeline-entry-${entry.id}`}>
-      {/* Flow connector column */}
-      <div className="w-4 shrink-0 flex flex-col items-center relative">
-        {/* Line above dot (section gap if first in section) */}
-        <div
-          className={`w-px flex-1 ${
-            isFirstInSection ? 'bg-transparent' : entry.enabled ? '' : ''
-          }`}
-          style={{
-            background: isFirstInSection
-              ? 'transparent'
-              : entry.enabled
-                ? 'rgba(74, 222, 128, 0.2)'
-                : 'repeating-linear-gradient(to bottom, rgba(113,113,122,0.3) 0px, rgba(113,113,122,0.3) 2px, transparent 2px, transparent 4px)',
-            minHeight: isFirstInSection ? '4px' : undefined,
-          }}
-        />
-        {/* Node dot */}
+      {/* Outer connector: just a continuation line (no dot — the section header has the dot) */}
+      <div className="w-3 shrink-0 flex flex-col items-center">
+        <div className="w-px flex-1" style={{ background: showOuterLine ? LINE_ENABLED : 'transparent' }} />
+      </div>
+
+      {/* Inner connector: dot + line for this entry */}
+      <div className="w-3 shrink-0 flex flex-col items-center">
+        <div className="w-px flex-1" style={{ background: entry.enabled ? LINE_ENABLED : LINE_DISABLED }} />
         <div className={`w-[5px] h-[5px] rounded-full shrink-0 ${entry.enabled ? style.dotColor : 'bg-zinc-600'}`} />
-        {/* Line below dot */}
-        {!isLast && (
-          <div
-            className="w-px flex-1"
-            style={{
-              background: entry.enabled
-                ? 'rgba(74, 222, 128, 0.2)'
-                : 'repeating-linear-gradient(to bottom, rgba(113,113,122,0.3) 0px, rgba(113,113,122,0.3) 2px, transparent 2px, transparent 4px)',
-            }}
-          />
-        )}
+        <div className="w-px flex-1" style={{ background: isLastInner ? 'transparent' : (entry.enabled ? LINE_ENABLED : LINE_DISABLED) }} />
       </div>
 
       {/* Entry content */}
       <button
         onClick={onSelect}
-        className={`flex-1 flex items-center gap-1.5 pr-2 py-1 text-left transition-colors cursor-pointer rounded-r ${
+        className={`flex-1 flex items-center gap-1.5 pr-2 py-0.5 text-left transition-colors cursor-pointer rounded-r ${
           isSelected
             ? 'bg-green-500/10 ring-1 ring-green-500/30'
             : 'hover:bg-zinc-800/60'
         } ${!entry.enabled ? 'opacity-40' : ''}`}
       >
         {/* Index */}
-        <span className="text-[9px] font-mono text-zinc-600 tabular-nums w-4 text-right shrink-0">
+        <span className="text-[9px] font-mono text-zinc-600 tabular-nums w-3 text-right shrink-0">
           {entry.index + 1}
         </span>
 

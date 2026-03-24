@@ -132,7 +132,7 @@ function PipelineContent() {
         </span>
       </div>
 
-      {/* Sections with flow connectors */}
+      {/* Sections with nested flow connectors */}
       <div className="flex-1 overflow-y-auto py-1 pl-1">
         <PipelineSection
           title="Pre-Rule Ops"
@@ -141,6 +141,7 @@ function PipelineContent() {
           selectedId={selectedEntryId}
           onSelectEntry={handleSelectEntry}
           onToggleEnabled={handleToggleEnabled}
+          isFirstSection
           isLastSection={ruleStages.length === 0 && postRuleOps.length === 0 && visualMappings.length === 0}
         />
         <PipelineSection
@@ -150,6 +151,7 @@ function PipelineContent() {
           selectedId={selectedEntryId}
           onSelectEntry={handleSelectEntry}
           onToggleEnabled={handleToggleEnabled}
+          isFirstSection={preRuleOps.length === 0}
           isLastSection={postRuleOps.length === 0 && visualMappings.length === 0}
         />
         <PipelineSection
@@ -159,6 +161,7 @@ function PipelineContent() {
           selectedId={selectedEntryId}
           onSelectEntry={handleSelectEntry}
           onToggleEnabled={handleToggleEnabled}
+          isFirstSection={preRuleOps.length === 0 && ruleStages.length === 0}
           isLastSection={visualMappings.length === 0}
         />
         <PipelineSection
@@ -168,6 +171,7 @@ function PipelineContent() {
           selectedId={selectedEntryId}
           onSelectEntry={handleSelectEntry}
           onToggleEnabled={handleToggleEnabled}
+          isFirstSection={preRuleOps.length === 0 && ruleStages.length === 0 && postRuleOps.length === 0}
           isLastSection
         />
       </div>
