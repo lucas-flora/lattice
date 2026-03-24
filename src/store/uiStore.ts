@@ -87,12 +87,9 @@ export const uiStoreActions = {
     }));
   },
   setTimelineZoom: (start: number, end: number): void => {
-    const { timelineDuration } = useUiStore.getState();
     const s = Math.max(0, Math.round(start));
-    const e = Math.min(timelineDuration, Math.round(end));
-    if (e - s >= 1) {
-      useUiStore.setState({ timelineZoomStart: s, timelineZoomEnd: e });
-    }
+    const e = Math.max(s + 1, Math.round(end));
+    useUiStore.setState({ timelineZoomStart: s, timelineZoomEnd: e });
   },
   setTimelineAutoExtend: (autoExtend: boolean): void => {
     useUiStore.setState({ timelineAutoExtend: autoExtend });

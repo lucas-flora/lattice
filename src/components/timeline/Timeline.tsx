@@ -1,5 +1,5 @@
 /**
- * Timeline: Premiere-style full-width timeline with mini-map and zoomed ruler.
+ * Timeline: scrolling timeline with mini-map and zoomed ruler.
  *
  * Layout:
  * ┌──────────────────────────────────────────────────┐
@@ -8,14 +8,15 @@
  * │ ▼  50    60    70    80   ...                    │ Main ruler (zoomed view)
  * └──────────────────────────────────────────────────┘
  *
- * Frame counter is exported separately for placement below the timeline.
+ * During live playback the playhead stays centered and the timeline scrolls
+ * underneath — infinite forward scroll, no fixed end. When paused, the
+ * timeline is static and scrubbing moves the playhead across the view.
  *
  * Features:
- * - Mini-map always shows 0..timelineDuration, highlights zoom region with grips
+ * - Mini-map shows 0..duration, highlights zoom region with grips
  * - Main ruler shows zoomed portion with adaptive ticks
- * - Thin playhead line with triangle marker
+ * - Buffer window (cyan) shows instantly-scrubbable range
  * - Click-to-seek, drag-to-scrub, scroll-to-zoom
- * - Auto-extend: when sim reaches end, doubles duration
  * - Display modes: frames / time / timecode (click label to cycle)
  */
 
@@ -154,14 +155,13 @@ function MiniMap({
     const span = origEnd - origStart;
 
     if (draggingRef.current === 'pan') {
-      let newStart = origStart + dFrames;
-      newStart = Math.max(0, Math.min(newStart, duration - span));
+      const newStart = Math.max(0, origStart + dFrames);
       uiStoreActions.setTimelineZoom(newStart, newStart + span);
     } else if (draggingRef.current === 'left') {
       const newStart = Math.max(0, Math.min(origStart + dFrames, origEnd - 10));
       uiStoreActions.setTimelineZoom(newStart, origEnd);
     } else if (draggingRef.current === 'right') {
-      const newEnd = Math.min(duration, Math.max(origStart + 10, origEnd + dFrames));
+      const newEnd = Math.max(origStart + 10, origEnd + dFrames);
       uiStoreActions.setTimelineZoom(origStart, newEnd);
     }
   }, [duration, xToFrame]);
@@ -370,15 +370,21 @@ export function Timeline() {
     return () => observer.disconnect();
   }, []);
 
-  // Auto-pan during playback: keep playhead in view by scrolling the zoom region
+  // Scrolling timeline: during live playback, keep playhead centered.
+  // Once the playhead passes the center of the view, the timeline scrolls
+  // underneath while the playhead stays visually fixed. No fixed end.
   useEffect(() => {
     if (!isRunning) return;
     const span = zoomEnd - zoomStart;
-    const margin = span * 0.1;
-    if (generation > zoomEnd - margin) {
-      const newStart = generation - span * 0.5;
-      const clamped = Math.max(0, Math.min(newStart, duration - span));
-      uiStoreActions.setTimelineZoom(clamped, clamped + span);
+    const center = zoomStart + span * 0.5;
+    // Only start scrolling once playhead reaches center of current view
+    if (generation > center) {
+      const newStart = Math.max(0, generation - span * 0.5);
+      uiStoreActions.setTimelineZoom(newStart, newStart + span);
+    }
+    // Auto-grow duration so minimap always has space ahead of playhead
+    if (generation >= duration - span) {
+      uiStoreActions.setTimelineDuration(generation + span * 2);
     }
   }, [generation, isRunning, zoomStart, zoomEnd, duration]);
 
@@ -497,10 +503,10 @@ export function Timeline() {
     const cursorFrame = zoomStart + cursorFraction * zoomSpan;
 
     const factor = e.deltaY > 0 ? 1.2 : 1 / 1.2;
-    const newSpan = Math.max(10, Math.min(duration, zoomSpan * factor));
+    const newSpan = Math.max(10, zoomSpan * factor);
 
     const newStart = cursorFrame - cursorFraction * newSpan;
-    const clampedStart = Math.max(0, Math.min(newStart, duration - newSpan));
+    const clampedStart = Math.max(0, newStart);
     uiStoreActions.setTimelineZoom(clampedStart, clampedStart + newSpan);
   }, [containerWidth, zoomStart, zoomSpan, duration, generation, computedGeneration, maxGeneration]);
 

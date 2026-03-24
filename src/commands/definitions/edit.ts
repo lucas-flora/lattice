@@ -102,19 +102,15 @@ export function registerEditCommands(
         return { success: false, error: 'No simulation loaded' };
       }
 
-      // Auto-pause if running (don't await sync — write directly to GPU)
-      if (controller.isPlaying()) {
-        controller.pause();
-      }
-
-      // Determine draw target: use the visual-mapped color property if available,
-      // otherwise the first non-internal cell property.
+      const isLive = controller.isPlaying();
       const drawProp = resolveDrawProperty(sim);
       const brushSize = useUiStore.getState().brushSize;
       const halfBrush = Math.floor(brushSize / 2);
       const gpuRunner = controller.getGPURuleRunner();
 
-      history.beginCommand('Draw cell');
+      if (!isLive) history.beginCommand('Draw cell');
+
+      // Apply brush to GPU buffer — values are picked up by the next tick()
       for (let dy = -halfBrush; dy <= halfBrush; dy++) {
         for (let dx = -halfBrush; dx <= halfBrush; dx++) {
           const cx = x + dx;
@@ -123,14 +119,19 @@ export function registerEditCommands(
             const index = sim.grid.coordToIndex(cx, cy, 0);
             gpuRunner?.writeCellDirect(drawProp, index, 1);
             gpuRunner?.writeCellDirect('alpha', index, 1);
-            history.editCell(drawProp, index, 1);
-            sim.setCellDirect('alpha', index, 1);
+            if (!isLive) {
+              history.editCell(drawProp, index, 1);
+              sim.setCellDirect('alpha', index, 1);
+            }
           }
         }
       }
-      history.commitCommand();
 
-      controller.onGridEdited();
+      if (!isLive) {
+        // Paused: full state sync so the render shows the drawn values
+        history.commitCommand();
+        controller.onGridEdited();
+      }
 
       eventBus.emit('edit:draw', { x, y });
       return { success: true };
@@ -150,17 +151,14 @@ export function registerEditCommands(
         return { success: false, error: 'No simulation loaded' };
       }
 
-      // Auto-pause if running (don't await sync — write directly to GPU)
-      if (controller.isPlaying()) {
-        controller.pause();
-      }
-
+      const isLive = controller.isPlaying();
       const drawProp = resolveDrawProperty(sim);
       const brushSize = useUiStore.getState().brushSize;
       const halfBrush = Math.floor(brushSize / 2);
       const gpuRunner = controller.getGPURuleRunner();
 
-      history.beginCommand('Erase cell');
+      if (!isLive) history.beginCommand('Erase cell');
+
       for (let dy = -halfBrush; dy <= halfBrush; dy++) {
         for (let dx = -halfBrush; dx <= halfBrush; dx++) {
           const cx = x + dx;
@@ -169,14 +167,18 @@ export function registerEditCommands(
             const index = sim.grid.coordToIndex(cx, cy, 0);
             gpuRunner?.writeCellDirect(drawProp, index, 0);
             gpuRunner?.writeCellDirect('alpha', index, 0);
-            history.editCell(drawProp, index, 0);
-            sim.setCellDirect('alpha', index, 0);
+            if (!isLive) {
+              history.editCell(drawProp, index, 0);
+              sim.setCellDirect('alpha', index, 0);
+            }
           }
         }
       }
-      history.commitCommand();
 
-      controller.onGridEdited();
+      if (!isLive) {
+        history.commitCommand();
+        controller.onGridEdited();
+      }
 
       eventBus.emit('edit:erase', { x, y });
       return { success: true };

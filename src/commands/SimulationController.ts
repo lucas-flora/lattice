@@ -35,14 +35,6 @@ export interface ParamDef {
   step?: number;
 }
 
-/** Round a duration to a "nice" number for smart auto-extend */
-function smartExtendDuration(current: number): number {
-  const doubled = current * 2;
-  if (doubled <= 100) return Math.ceil(doubled / 10) * 10;
-  if (doubled <= 1000) return Math.ceil(doubled / 50) * 50;
-  return Math.ceil(doubled / 100) * 100;
-}
-
 export type PlaybackMode = 'loop' | 'endless' | 'once';
 
 /**
@@ -515,11 +507,6 @@ export class SimulationController {
 
     if (!this.gpuRuleRunner) return;
 
-    const nextGen = this.playbackGeneration + 1;
-    if (nextGen >= this.timelineDuration) {
-      this.timelineDuration = nextGen + 1;
-      this.eventBus.emit('sim:timelineExtend', { duration: this.timelineDuration });
-    }
     this.gpuRuleRunner.setEnvParams(this.simulation.getParamsObject());
     this.gpuRuleRunner.tick();
     this.playbackGeneration = this.gpuRuleRunner.getGeneration();
@@ -985,38 +972,11 @@ export class SimulationController {
 
   private playbackTick(): void {
     if (!this.simulation || !this.gpuRuleRunner) return;
-    logDbg('play', `playbackTick() — playbackGen=${this.playbackGeneration}, computedGen=${this.computedGeneration}`);
+    logDbg('play', `playbackTick() — playbackGen=${this.playbackGeneration}`);
 
     if (this.gpuSyncInFlight) return; // Wait for readback to finish
-    const nextGen = this.playbackGeneration + 1;
-    if (nextGen >= this.timelineDuration) {
-      switch (this.playbackMode) {
-        case 'once':
-          this.pause();
-          return;
-        case 'loop': {
-          // Reset GPU runner to initial state
-          this.playbackGeneration = 0;
-          if (this.initialSnapshot) {
-            for (const [propName, buf] of this.initialSnapshot) {
-              this.simulation.grid.getCurrentBuffer(propName).set(buf);
-            }
-            this.syncGridToGPU();
-          }
-          this.gpuRuleRunner.setGeneration(0);
-          this.simulation.setGeneration(0);
-          this.eventBus.emit('sim:tick', { generation: 0, liveCellCount: -1 });
-          return;
-        }
-        case 'endless': {
-          const newDuration = smartExtendDuration(this.timelineDuration);
-          this.timelineDuration = newDuration;
-          this.eventBus.emit('sim:timelineExtend', { duration: newDuration });
-          break;
-        }
-      }
-    }
-    // Live-tick on GPU — no cache roundtrip
+
+    // Live mode: tick forever. No duration boundary. Timeline scrolls to follow.
     this.gpuRuleRunner.setEnvParams(this.simulation.getParamsObject());
     this.gpuRuleRunner.tick();
     this.playbackGeneration = this.gpuRuleRunner.getGeneration();

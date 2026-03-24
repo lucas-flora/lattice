@@ -40,11 +40,6 @@ export function registerSimCommands(
     category: 'sim',
     params: NoParams,
     execute: async () => {
-      // Sync playback mode and timeline duration to controller before starting
-      const { timelineDuration, playbackMode } = useUiStore.getState();
-      controller.setPlaybackMode(playbackMode);
-      controller.setTimelineDuration(timelineDuration);
-      controller.computeAhead(timelineDuration);
       controller.play();
       return { success: true };
     },
@@ -149,10 +144,6 @@ export function registerSimCommands(
       if (controller.isPlaying()) {
         controller.pause();
       } else {
-        const { timelineDuration, playbackMode } = useUiStore.getState();
-        controller.setPlaybackMode(playbackMode);
-        controller.setTimelineDuration(timelineDuration);
-        controller.computeAhead(timelineDuration);
         controller.play();
       }
       return { success: true, data: { isRunning: controller.isPlaying() } };
