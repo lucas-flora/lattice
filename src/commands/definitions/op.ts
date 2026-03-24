@@ -167,15 +167,35 @@ export function registerOpCommands(
     },
   });
 
-  /** Sync the GPU runner's internal pass/stage enabled state to match a tag. */
+  /**
+   * Sync the GPU runner's internal pass/stage enabled state to match a tag.
+   *
+   * Tag names are decorated (e.g. "Fire – vorticity_apply Rule") but the
+   * runner's internal stage/pass names are raw (e.g. "vorticity_apply").
+   * We try exact match first, then substring match.
+   */
   const syncRunnerEnabled = (tag: { name: string; phase: string }, enabled: boolean) => {
     const runner = controller.getGPURuleRunner();
     if (!runner) return;
+    const order = runner.getExecutionOrder();
+
     if (tag.phase === 'rule') {
-      runner.setStageEnabled(tag.name, enabled);
+      // Find the matching rule stage by checking if its sourceId is contained in the tag name
+      const match = order.find(
+        (e) => e.type === 'rule-stage' && e.sourceId && tag.name.includes(e.sourceId),
+      );
+      if (match?.sourceId) {
+        runner.setStageEnabled(match.sourceId, enabled);
+      }
     } else {
-      // pre-rule, post-rule, and visual passes all live in expressionPasses
-      runner.setPassEnabled(tag.name, enabled);
+      // For pre-rule/post-rule ops, the pass name matches the tag name or sourceId
+      const match = order.find(
+        (e) => (e.type === 'pre-rule-op' || e.type === 'post-rule-op') &&
+               e.sourceId && (e.sourceId === tag.name || tag.name.includes(e.sourceId)),
+      );
+      if (match?.sourceId) {
+        runner.setPassEnabled(match.sourceId, enabled);
+      }
     }
   };
 
