@@ -49,13 +49,8 @@ const OP_TYPE_STYLES: Record<string, { label: string; class: string }> = {
 
 function OpTreeRow({ op, depth }: { op: Operator; depth: number }) {
   const selectedPipelineId = useUiStore((s) => s.selectedPipelineEntryId);
-  // Match against: direct op ID (from tree click) OR pipeline entry ID (from Pipeline View click)
-  // Pipeline entry IDs look like "rule-advection" or "post-rule-someName"
-  const shortName = op.name.replace(/^.*? – /, '').replace(/ Rule$/, '');
-  const isSelected = selectedPipelineId === op.id
-    || selectedPipelineId === `rule-${shortName}`
-    || selectedPipelineId === `pre-rule-${op.name}`
-    || selectedPipelineId === `post-rule-${op.name}`;
+  // Both Tree and Pipeline now use the op's expression store ID as selection key
+  const isSelected = selectedPipelineId === op.id;
 
   const indent = depth * 16;
   const badge = OP_TYPE_STYLES[op.source] ?? OP_TYPE_STYLES.code;

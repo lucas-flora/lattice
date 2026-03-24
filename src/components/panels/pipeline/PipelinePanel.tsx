@@ -26,7 +26,7 @@ export const PipelinePanel: React.FC<PanelProps> = () => {
 
 function PipelineContent() {
   const activePreset = useSimStore((s) => s.activePreset);
-  const opCount = useExpressionStore((s) => s.tags.length);
+  const ops = useExpressionStore((s) => s.tags);
   const sceneNodes = useSceneStore((s) => s.nodes);
 
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
@@ -35,7 +35,7 @@ function PipelineContent() {
 
   useEffect(() => {
     setRevision((r) => r + 1);
-  }, [activePreset, opCount]);
+  }, [activePreset, ops.length]);
 
   // GPURuleRunner initializes asynchronously AFTER the preset store update.
   useEffect(() => {
@@ -49,9 +49,20 @@ function PipelineContent() {
     if (!ctrl) return [];
     const runner = ctrl.getGPURuleRunner();
     if (!runner) return [];
-    return runner.getExecutionOrder();
+    const raw = runner.getExecutionOrder();
+    // Enrich entries with expression store op IDs for cross-selection
+    for (const entry of raw) {
+      if (entry.type === 'rule-stage') {
+        const match = ops.find((o) => o.phase === 'rule' && o.name.includes(entry.sourceId!));
+        if (match) entry.opId = match.id;
+      } else if (entry.type === 'post-rule-op' || entry.type === 'pre-rule-op') {
+        const match = ops.find((o) => o.name === entry.sourceId || o.name.includes(entry.sourceId!));
+        if (match) entry.opId = match.id;
+      }
+    }
+    return raw;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [revision]);
+  }, [revision, ops]);
 
   // Find the visual scene node (for cross-selection when clicking visual-mapping entries)
   const visualNodeId = useMemo(() => {
@@ -67,14 +78,16 @@ function PipelineContent() {
   const visualMappings = useMemo(() => entries.filter((e) => e.type === 'visual-mapping'), [entries]);
 
   const handleSelectEntry = useCallback((entry: PipelineEntry) => {
-    setSelectedEntryId(entry.id);
-    uiStoreActions.selectPipelineEntry(entry.id);
+    // Use opId (expression store ID) as the canonical selection key when available.
+    // This ensures Tree, Pipeline, and Inspector all agree on what's selected.
+    const selectionId = entry.opId ?? entry.id;
+    setSelectedEntryId(selectionId);
+    uiStoreActions.selectPipelineEntry(selectionId);
 
     // Cross-select into scene graph where possible
     if (entry.type === 'visual-mapping' && visualNodeId) {
       sceneStoreActions.select(visualNodeId);
     } else {
-      // Clear scene selection so Inspector shows pipeline entry instead
       sceneStoreActions.select(null);
     }
   }, [visualNodeId]);

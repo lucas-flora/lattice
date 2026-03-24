@@ -59,6 +59,8 @@ export interface PipelineEntry {
   executionContext: 'cpu' | 'gpu';
   /** Cross-reference ID (op ID, stage name) */
   sourceId?: string;
+  /** Expression store operator ID (tag_N) for cross-selection with Tree/CardView */
+  opId?: string;
   /** For rule stages with iterations > 1 */
   iterations?: number;
   /** Position in the full pipeline (0-based) */
