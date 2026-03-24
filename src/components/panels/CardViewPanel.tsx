@@ -28,12 +28,14 @@ import type { SceneNode } from '@/engine/scene/SceneNode';
 
 type FilterKey = 'cells' | 'env' | 'globals' | 'ops' | 'visual' | 'state' | 'groups';
 
+/** Filter definitions ordered by pipeline execution position:
+ * data definitions first, then computation pipeline, then structural. */
 const FILTER_DEFS: { key: FilterKey; label: string; icon: string }[] = [
   { key: 'cells', label: 'Cells', icon: '\u25A3' },
   { key: 'env', label: 'Env', icon: '\u2699' },
-  { key: 'globals', label: 'Vars', icon: 'x' },
   { key: 'ops', label: 'Ops', icon: '\u0192' },
   { key: 'visual', label: 'Visual', icon: '\u25D0' },
+  { key: 'globals', label: 'Vars', icon: 'x' },
   { key: 'state', label: 'State', icon: '\u23F5' },
   { key: 'groups', label: 'Groups', icon: '\u25E7' },
 ];
@@ -488,6 +490,7 @@ export function CardViewPanel({ defaultFilters }: CardViewPanelProps) {
   const selectedNodeId = useSceneStore((s) => s.selectedNodeId);
   const tags = useExpressionStore((s) => s.tags);
   const variables = useScriptStore((s) => s.globalVariables);
+  const cellTypes = useSimStore((s) => s.cellTypes);
 
   const allNodes = useMemo(() => Object.values(nodes), [nodes]);
 
@@ -563,9 +566,21 @@ export function CardViewPanel({ defaultFilters }: CardViewPanelProps) {
       case 'globals':
         setShowVarAddForm(true);
         break;
-      case 'cells':
-        commandRegistry.execute('scene.add', { type: 'cell-type', name: 'New Cell Type' });
+      case 'cells': {
+        // Find the sim-root node to parent the new cell type under it
+        const simRoot = allNodes.find((n) => n.type === NODE_TYPES.SIM_ROOT);
+        // Copy properties from first existing cell type (inherits base properties)
+        const baseProps = cellTypes.length > 0
+          ? { cellProperties: cellTypes[0].properties.map((p) => ({ name: p.name, type: p.type, default: p.default, role: p.role, isInherent: p.isInherent })) }
+          : {};
+        commandRegistry.execute('scene.add', {
+          type: 'cell-type',
+          name: 'New Cell Type',
+          parentId: simRoot?.id ?? null,
+          properties: { color: '#888888', ...baseProps },
+        });
         break;
+      }
       case 'env':
       case 'visual':
       case 'state':
