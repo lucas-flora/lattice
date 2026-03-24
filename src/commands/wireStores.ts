@@ -23,6 +23,8 @@ import { sceneStoreActions } from '../store/sceneStore';
  * Returns a cleanup function that removes all listeners.
  */
 export function wireStores(eventBus: EventBus): () => void {
+  const INITIAL_TIMELINE_SPAN = 256;
+
   // --- simStore wiring ---
   const onTick = (payload: { generation: number; liveCellCount: number }) => {
     simStoreActions.setTick(payload.generation, payload.liveCellCount);
@@ -42,9 +44,8 @@ export function wireStores(eventBus: EventBus): () => void {
     simStoreActions.resetState();
     simStoreActions.setActivePreset(payload.name, payload.width, payload.height);
     // Reset timeline to starting position for live mode
-    const defaultSpan = 256;
-    uiStoreActions.setTimelineDuration(defaultSpan);
-    uiStoreActions.setTimelineZoom(0, defaultSpan);
+    uiStoreActions.setTimelineDuration(INITIAL_TIMELINE_SPAN);
+    uiStoreActions.setTimelineZoom(0, INITIAL_TIMELINE_SPAN);
     if (payload.cellProperties) {
       simStoreActions.setCellProperties(payload.cellProperties as Array<{ name: string; type: 'bool' | 'int' | 'float' | 'vec2' | 'vec3' | 'vec4'; default: number | number[]; role?: string; isInherent?: boolean }>);
     }
@@ -55,10 +56,9 @@ export function wireStores(eventBus: EventBus): () => void {
 
   const onReset = () => {
     simStoreActions.resetState();
-    // Reset timeline to starting position — live mode starts fresh from frame 0
-    const defaultSpan = 256;
-    uiStoreActions.setTimelineDuration(defaultSpan);
-    uiStoreActions.setTimelineZoom(0, defaultSpan);
+    // Reset timeline to frame 0 with clean initial span
+    uiStoreActions.setTimelineDuration(INITIAL_TIMELINE_SPAN);
+    uiStoreActions.setTimelineZoom(0, INITIAL_TIMELINE_SPAN);
   };
 
   const onSpeedChange = (payload: { fps: number }) => {

@@ -690,6 +690,10 @@ export class SimulationController {
     this.computedGeneration = 0;
     this.playbackGeneration = 0;
     this.syncGridToGPU();
+    // Reset GPU runner generation so the rAF loop (if still running) resumes from 0
+    if (this.gpuRuleRunner) {
+      this.gpuRuleRunner.setGeneration(0);
+    }
     this.emitBufferStatus();
     this.eventBus.emit('sim:reset', {});
   }

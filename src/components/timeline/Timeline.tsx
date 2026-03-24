@@ -370,41 +370,35 @@ export function Timeline() {
     return () => observer.disconnect();
   }, []);
 
-  // Scrolling timeline: during live playback, derive the visible window
-  // directly from the generation so it never lags behind.
-  // The "span" (zoom width) is preserved; only the position changes.
-  const effectiveZoom = useMemo(() => {
-    const span = zoomEnd - zoomStart;
-    if (!isRunning) return { start: zoomStart, end: zoomEnd, span };
-    const center = zoomStart + span * 0.5;
-    if (generation > center) {
-      const newStart = Math.max(0, generation - span * 0.5);
-      return { start: newStart, end: newStart + span, span };
-    }
-    return { start: zoomStart, end: zoomEnd, span };
-  }, [generation, isRunning, zoomStart, zoomEnd]);
-
-  // Sync the derived zoom back to the store (debounced — only when it actually moves)
+  // Scrolling timeline: Zustand subscription runs synchronously on every
+  // simStore.setState — no React render lag. Keeps playhead centered during
+  // live playback by updating zoom directly in the store.
   useEffect(() => {
-    if (!isRunning) return;
-    const { start, end } = effectiveZoom;
-    const storeStart = useUiStore.getState().timelineZoomStart;
-    if (Math.abs(storeStart - start) > 1) {
-      uiStoreActions.setTimelineZoom(start, end);
-    }
-  }, [effectiveZoom, isRunning]);
+    const unsub = useSimStore.subscribe(
+      (s) => s.generation,
+      (gen) => {
+        const { isRunning } = useSimStore.getState();
+        if (!isRunning) return;
+        const { timelineZoomStart: zs, timelineZoomEnd: ze, timelineDuration: dur } = useUiStore.getState();
+        const span = ze - zs;
+        const center = zs + span * 0.5;
+        // Once playhead passes center, scroll to keep it centered
+        if (gen > center) {
+          const newStart = Math.max(0, gen - span * 0.5);
+          uiStoreActions.setTimelineZoom(newStart, newStart + span);
+        }
+        // Auto-grow duration so minimap has space ahead
+        if (gen > 0 && gen >= dur - span) {
+          uiStoreActions.setTimelineDuration(gen + span * 2);
+        }
+      },
+    );
+    return unsub;
+  }, []);
 
-  // Auto-grow duration so minimap always has space ahead of playhead
-  useEffect(() => {
-    if (!isRunning) return;
-    if (generation > 0 && generation >= duration - effectiveZoom.span) {
-      uiStoreActions.setTimelineDuration(generation + effectiveZoom.span * 2);
-    }
-  }, [generation, isRunning, duration, effectiveZoom.span]);
-
-  // Zoomed view range — use effectiveZoom for rendering so playhead stays centered
-  const viewStart = effectiveZoom.start;
-  const viewEnd = effectiveZoom.end;
+  // Zoomed view range
+  const viewStart = zoomStart;
+  const viewEnd = zoomEnd;
   const viewSpan = Math.max(viewEnd - viewStart, 1);
   const pixelsPerFrame = containerWidth / viewSpan;
 
