@@ -696,6 +696,11 @@ export class SimulationController {
     }
     this.emitBufferStatus();
     this.eventBus.emit('sim:reset', {});
+    // If still playing, re-emit so the store's isRunning stays true
+    // (sim:reset handler sets isRunning=false via resetState)
+    if (this.playing) {
+      this.eventBus.emit('sim:play', {});
+    }
   }
 
   /**
