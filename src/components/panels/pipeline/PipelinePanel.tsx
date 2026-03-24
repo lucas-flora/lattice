@@ -16,7 +16,7 @@ import { eventBus } from '@/engine/core/EventBus';
 import { useSimStore } from '@/store/simStore';
 import { useExpressionStore } from '@/store/expressionStore';
 import { useSceneStore, sceneStoreActions } from '@/store/sceneStore';
-import { uiStoreActions } from '@/store/uiStore';
+import { useUiStore, uiStoreActions } from '@/store/uiStore';
 import { NODE_TYPES } from '@/engine/scene/SceneNode';
 import { PipelineSection } from './PipelineSection';
 
@@ -28,9 +28,9 @@ function PipelineContent() {
   const activePreset = useSimStore((s) => s.activePreset);
   const ops = useExpressionStore((s) => s.tags);
   const sceneNodes = useSceneStore((s) => s.nodes);
+  const focusedOpId = useUiStore((s) => s.focusedOpId);
+  const selectedPipelineEntryId = useUiStore((s) => s.selectedPipelineEntryId);
 
-  const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
-  // Also push to uiStore so Inspector can read it
   const [revision, setRevision] = useState(0);
 
   useEffect(() => {
@@ -78,19 +78,26 @@ function PipelineContent() {
   const visualMappings = useMemo(() => entries.filter((e) => e.type === 'visual-mapping'), [entries]);
 
   const handleSelectEntry = useCallback((entry: PipelineEntry) => {
-    // Use opId (expression store ID) as the canonical selection key when available.
-    // This ensures Tree, Pipeline, and Inspector all agree on what's selected.
-    const selectionId = entry.opId ?? entry.id;
-    setSelectedEntryId(selectionId);
-    uiStoreActions.selectPipelineEntry(selectionId);
-
-    // Cross-select into scene graph where possible
     if (entry.type === 'visual-mapping' && visualNodeId) {
+      // Visual mapping is a scene node — select it like any other node
+      uiStoreActions.focusOp(null);
+      uiStoreActions.selectPipelineEntry(null);
       sceneStoreActions.select(visualNodeId);
+    } else if (entry.opId) {
+      // Op with expression store ID — select parent scene node + focus op
+      const parentNode = Object.values(sceneNodes).find((n) => n.tags.includes(entry.opId!));
+      if (parentNode) {
+        sceneStoreActions.select(parentNode.id);
+      }
+      uiStoreActions.focusOp(entry.opId);
+      uiStoreActions.selectPipelineEntry(null);
     } else {
+      // Rule stages without opId — pipeline entry fallback
       sceneStoreActions.select(null);
+      uiStoreActions.focusOp(null);
+      uiStoreActions.selectPipelineEntry(entry.id);
     }
-  }, [visualNodeId]);
+  }, [visualNodeId, sceneNodes]);
 
   const handleToggleEnabled = useCallback((entry: PipelineEntry) => {
     const ctrl = getController();
@@ -151,7 +158,7 @@ function PipelineContent() {
           title="Pre-Rule Ops"
           entries={preRuleOps}
           executionContext="cpu"
-          selectedId={selectedEntryId}
+          selectedId={focusedOpId ?? selectedPipelineEntryId}
           onSelectEntry={handleSelectEntry}
           onToggleEnabled={handleToggleEnabled}
           isFirstSection
@@ -161,7 +168,7 @@ function PipelineContent() {
           title="Rule Stages"
           entries={ruleStages}
           executionContext="gpu"
-          selectedId={selectedEntryId}
+          selectedId={focusedOpId ?? selectedPipelineEntryId}
           onSelectEntry={handleSelectEntry}
           onToggleEnabled={handleToggleEnabled}
           isFirstSection={preRuleOps.length === 0}
@@ -171,7 +178,7 @@ function PipelineContent() {
           title="Post-Rule Ops"
           entries={postRuleOps}
           executionContext="gpu"
-          selectedId={selectedEntryId}
+          selectedId={focusedOpId ?? selectedPipelineEntryId}
           onSelectEntry={handleSelectEntry}
           onToggleEnabled={handleToggleEnabled}
           isFirstSection={preRuleOps.length === 0 && ruleStages.length === 0}
@@ -181,7 +188,7 @@ function PipelineContent() {
           title="Visual Mapping"
           entries={visualMappings}
           executionContext="gpu"
-          selectedId={selectedEntryId}
+          selectedId={focusedOpId ?? selectedPipelineEntryId}
           onSelectEntry={handleSelectEntry}
           onToggleEnabled={handleToggleEnabled}
           isFirstSection={preRuleOps.length === 0 && ruleStages.length === 0 && postRuleOps.length === 0}

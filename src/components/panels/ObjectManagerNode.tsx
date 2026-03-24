@@ -47,20 +47,19 @@ const OP_TYPE_STYLES: Record<string, { label: string; class: string }> = {
 // Op row (rendered under parent node in the tree)
 // ---------------------------------------------------------------------------
 
-function OpTreeRow({ op, depth }: { op: Operator; depth: number }) {
-  const selectedPipelineId = useUiStore((s) => s.selectedPipelineEntryId);
-  // Both Tree and Pipeline now use the op's expression store ID as selection key
-  const isSelected = selectedPipelineId === op.id;
+function OpTreeRow({ op, depth, parentNodeId }: { op: Operator; depth: number; parentNodeId: string }) {
+  const focusedOpId = useUiStore((s) => s.focusedOpId);
+  const isSelected = focusedOpId === op.id;
 
   const indent = depth * 16;
   const badge = OP_TYPE_STYLES[op.source] ?? OP_TYPE_STYLES.code;
 
   const handleClick = useCallback(() => {
-    // Use the op's expression store ID — Inspector will look it up directly
-    uiStoreActions.selectPipelineEntry(op.id);
-    // Clear scene selection so Inspector routes to pipeline entry detail
-    sceneStoreActions.select(null);
-  }, [op.id]);
+    // Select the parent scene node (same as clicking any other node)
+    // AND focus this specific op so the Inspector shows its detail
+    commandRegistry.execute('scene.select', { id: parentNodeId });
+    uiStoreActions.focusOp(op.id);
+  }, [op.id, parentNodeId]);
 
   const handleToggleEnabled = useCallback(
     (e: React.MouseEvent) => {
@@ -135,8 +134,7 @@ export const ObjectManagerNode: React.FC<ObjectManagerNodeProps> = React.memo(
     const hasExpandableContent = hasChildren || nodeOps.length > 0;
 
     const handleClick = useCallback(() => {
-      // Clear pipeline selection when selecting a tree node
-      uiStoreActions.selectPipelineEntry(null);
+      uiStoreActions.focusOp(null);
       commandRegistry.execute('scene.select', { id: nodeId });
     }, [nodeId]);
 
@@ -244,7 +242,7 @@ export const ObjectManagerNode: React.FC<ObjectManagerNodeProps> = React.memo(
         {/* Ops attached to this node — computation rows, indented like children */}
         {isExpanded &&
           nodeOps.map((op) => (
-            <OpTreeRow key={op.id} op={op} depth={depth + 1} />
+            <OpTreeRow key={op.id} op={op} depth={depth + 1} parentNodeId={nodeId} />
           ))}
       </>
     );

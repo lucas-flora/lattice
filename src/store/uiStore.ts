@@ -36,6 +36,8 @@ export interface UiState {
   viewportBgColor: string;
   /** Selected pipeline entry ID (from Pipeline View — parallel to scene selection) */
   selectedPipelineEntryId: string | null;
+  /** Focused op ID within the selected scene node (for Inspector to show op detail) */
+  focusedOpId: string | null;
 }
 
 export const useUiStore = create<UiState>()(
@@ -52,6 +54,7 @@ export const useUiStore = create<UiState>()(
     deadCellColor: null,
     viewportBgColor: '#161616',
     selectedPipelineEntryId: null,
+    focusedOpId: null,
   })),
 );
 
@@ -62,6 +65,9 @@ export const uiStoreActions = {
   },
   selectPipelineEntry: (id: string | null): void => {
     useUiStore.setState({ selectedPipelineEntryId: id });
+  },
+  focusOp: (opId: string | null): void => {
+    useUiStore.setState({ focusedOpId: opId });
   },
   setBrushSize: (brushSize: number): void => {
     useUiStore.setState({ brushSize });

@@ -90,7 +90,7 @@ export function PipelineSection({
           <PipelineEntryRow
             key={entry.id}
             entry={entry}
-            isSelected={selectedId === entry.id || selectedId === entry.opId}
+            isSelected={selectedId != null && (selectedId === entry.id || selectedId === entry.opId)}
             onSelect={() => onSelectEntry(entry)}
             onToggleEnabled={onToggleEnabled ? () => onToggleEnabled(entry) : undefined}
             showOuterLine={!isLastSection}

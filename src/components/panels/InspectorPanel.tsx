@@ -60,12 +60,22 @@ function InspectorContent() {
   );
   const tags = useExpressionStore((s) => s.tags);
   const selectedPipelineEntryId = useUiStore((s) => s.selectedPipelineEntryId);
+  const focusedOpId = useUiStore((s) => s.focusedOpId);
 
-  // If a scene node is selected, show that. Otherwise check pipeline entry.
+  // If a scene node is selected AND an op is focused, show the op detail
+  if (node && focusedOpId) {
+    const focusedOp = tags.find((t) => t.id === focusedOpId);
+    if (focusedOp) {
+      return <OperatorSection op={focusedOp} />;
+    }
+  }
+
+  // If a scene node is selected, show its detail
   if (node) {
     return <SceneNodeDetail node={node} nodeId={selectedNodeId!} tags={tags} />;
   }
 
+  // Pipeline entry selected (for rule stages that aren't scene nodes)
   if (selectedPipelineEntryId) {
     return <PipelineEntryDetail entryId={selectedPipelineEntryId} tags={tags} />;
   }
