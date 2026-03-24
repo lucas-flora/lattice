@@ -370,27 +370,43 @@ export function Timeline() {
     return () => observer.disconnect();
   }, []);
 
-  // Scrolling timeline: during live playback, keep playhead centered.
-  // Once the playhead passes the center of the view, the timeline scrolls
-  // underneath while the playhead stays visually fixed. No fixed end.
-  useEffect(() => {
-    if (!isRunning) return;
+  // Scrolling timeline: during live playback, derive the visible window
+  // directly from the generation so it never lags behind.
+  // The "span" (zoom width) is preserved; only the position changes.
+  const effectiveZoom = useMemo(() => {
     const span = zoomEnd - zoomStart;
+    if (!isRunning) return { start: zoomStart, end: zoomEnd, span };
     const center = zoomStart + span * 0.5;
-    // Only start scrolling once playhead reaches center of current view
     if (generation > center) {
       const newStart = Math.max(0, generation - span * 0.5);
-      uiStoreActions.setTimelineZoom(newStart, newStart + span);
+      return { start: newStart, end: newStart + span, span };
     }
-    // Auto-grow duration so minimap always has space ahead of playhead
-    if (generation > 0 && generation >= duration - span) {
-      uiStoreActions.setTimelineDuration(generation + span * 2);
-    }
-  }, [generation, isRunning, zoomStart, zoomEnd, duration]);
+    return { start: zoomStart, end: zoomEnd, span };
+  }, [generation, isRunning, zoomStart, zoomEnd]);
 
-  // Zoomed view range
-  const zoomSpan = Math.max(zoomEnd - zoomStart, 1);
-  const pixelsPerFrame = containerWidth / zoomSpan;
+  // Sync the derived zoom back to the store (debounced — only when it actually moves)
+  useEffect(() => {
+    if (!isRunning) return;
+    const { start, end } = effectiveZoom;
+    const storeStart = useUiStore.getState().timelineZoomStart;
+    if (Math.abs(storeStart - start) > 1) {
+      uiStoreActions.setTimelineZoom(start, end);
+    }
+  }, [effectiveZoom, isRunning]);
+
+  // Auto-grow duration so minimap always has space ahead of playhead
+  useEffect(() => {
+    if (!isRunning) return;
+    if (generation > 0 && generation >= duration - effectiveZoom.span) {
+      uiStoreActions.setTimelineDuration(generation + effectiveZoom.span * 2);
+    }
+  }, [generation, isRunning, duration, effectiveZoom.span]);
+
+  // Zoomed view range — use effectiveZoom for rendering so playhead stays centered
+  const viewStart = effectiveZoom.start;
+  const viewEnd = effectiveZoom.end;
+  const viewSpan = Math.max(viewEnd - viewStart, 1);
+  const pixelsPerFrame = containerWidth / viewSpan;
 
   // Tick intervals for zoomed view
   const { majorInterval, minorInterval } = useMemo(() => {
@@ -406,24 +422,24 @@ export function Timeline() {
     if (containerWidth <= 0) return result;
 
     // Start from first tick aligned to minorInterval within view
-    const firstTick = Math.ceil(zoomStart / minorInterval) * minorInterval;
-    for (let frame = firstTick; frame <= zoomEnd; frame += minorInterval) {
+    const firstTick = Math.ceil(viewStart / minorInterval) * minorInterval;
+    for (let frame = firstTick; frame <= viewEnd; frame += minorInterval) {
       const roundedFrame = Math.round(frame);
-      const x = ((roundedFrame - zoomStart) / zoomSpan) * containerWidth;
+      const x = ((roundedFrame - viewStart) / viewSpan) * containerWidth;
       const isMajor = Math.abs(roundedFrame % majorInterval) < 0.5;
       result.push({ x, frame: roundedFrame, isMajor });
     }
     return result;
-  }, [containerWidth, zoomStart, zoomEnd, zoomSpan, majorInterval, minorInterval]);
+  }, [containerWidth, viewStart, viewEnd, viewSpan, majorInterval, minorInterval]);
 
   // Playhead X in zoomed view
-  const playheadInView = generation >= zoomStart && generation <= zoomEnd;
-  const playheadX = ((generation - zoomStart) / zoomSpan) * containerWidth;
+  const playheadInView = generation >= viewStart && generation <= viewEnd;
+  const playheadX = ((generation - viewStart) / viewSpan) * containerWidth;
 
   // Computed extent bar in zoomed view — shows actual cache frontier, not playhead history
   const computedExtent = Math.max(computedGeneration, maxGeneration);
-  const computedEndX = ((Math.min(computedExtent, zoomEnd) - zoomStart) / zoomSpan) * containerWidth;
-  const computedStartX = ((Math.max(0, zoomStart) - zoomStart) / zoomSpan) * containerWidth;
+  const computedEndX = ((Math.min(computedExtent, viewEnd) - viewStart) / viewSpan) * containerWidth;
+  const computedStartX = ((Math.max(0, viewStart) - viewStart) / viewSpan) * containerWidth;
 
   // Seek to pixel position — RAF-coalesced so only one seek per frame
   const seekToX = useCallback((clientX: number) => {
@@ -431,7 +447,7 @@ export function Timeline() {
     if (!el) return;
     const rect = el.getBoundingClientRect();
     const x = Math.max(0, Math.min(clientX - rect.left, containerWidth));
-    const targetGen = Math.round(zoomStart + (x / containerWidth) * zoomSpan);
+    const targetGen = Math.round(viewStart + (x / containerWidth) * viewSpan);
     // Live mode: GPU can compute to any frame on demand — clamp to timeline duration, not computed extent
     const clampedGen = Math.max(0, Math.min(targetGen, duration));
 
@@ -445,7 +461,7 @@ export function Timeline() {
         }
       });
     }
-  }, [containerWidth, zoomStart, zoomSpan, duration]);
+  }, [containerWidth, viewStart, viewSpan, duration]);
 
   // Seek from mini-map click
   const seekToFrame = useCallback((frame: number) => {
@@ -479,7 +495,7 @@ export function Timeline() {
 
     // Horizontal scroll → scrub playhead
     if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
-      const frameDelta = Math.round((e.deltaX / containerWidth) * zoomSpan * 2);
+      const frameDelta = Math.round((e.deltaX / containerWidth) * viewSpan * 2);
       if (frameDelta !== 0) {
         const target = Math.max(0, Math.min(generation + frameDelta, duration));
         pendingSeekRef.current = target;
@@ -500,15 +516,15 @@ export function Timeline() {
     const rect = el.getBoundingClientRect();
     const cursorX = e.clientX - rect.left;
     const cursorFraction = cursorX / containerWidth;
-    const cursorFrame = zoomStart + cursorFraction * zoomSpan;
+    const cursorFrame = viewStart + cursorFraction * viewSpan;
 
     const factor = e.deltaY > 0 ? 1.2 : 1 / 1.2;
-    const newSpan = Math.max(10, zoomSpan * factor);
+    const newSpan = Math.max(10, viewSpan * factor);
 
     const newStart = cursorFrame - cursorFraction * newSpan;
     const clampedStart = Math.max(0, newStart);
     uiStoreActions.setTimelineZoom(clampedStart, clampedStart + newSpan);
-  }, [containerWidth, zoomStart, zoomSpan, duration, generation, computedGeneration, maxGeneration]);
+  }, [containerWidth, viewStart, viewSpan]);
 
   // Click on timeline blurs any focused input (so keyboard shortcuts work again)
   const handleTimelineClick = useCallback(() => {
@@ -553,8 +569,8 @@ export function Timeline() {
 
         {/* Buffer window — cyan tint showing instantly-scrubbable range */}
         {bufferOldestFrame >= 0 && bufferNewestFrame >= 0 && (() => {
-          const bufStartX = ((Math.max(bufferOldestFrame, zoomStart) - zoomStart) / zoomSpan) * containerWidth;
-          const bufEndX = ((Math.min(bufferNewestFrame, zoomEnd) - zoomStart) / zoomSpan) * containerWidth;
+          const bufStartX = ((Math.max(bufferOldestFrame, viewStart) - viewStart) / viewSpan) * containerWidth;
+          const bufEndX = ((Math.min(bufferNewestFrame, viewEnd) - viewStart) / viewSpan) * containerWidth;
           return bufEndX > bufStartX ? (
             <div
               className="absolute bottom-0 h-[2px] bg-cyan-400/40 pointer-events-none"
