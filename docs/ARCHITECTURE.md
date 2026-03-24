@@ -529,6 +529,16 @@ circular frame buffer fills behind the playhead. There is no pre-compute step.
 - Beyond buffer window: restore nearest cached frame (or initial state), GPU-tick forward to target
 - Readback decimation: for large grids (>4MB/frame), readback runs every Nth tick to maintain framerate
 
+**Scrolling timeline**: during live playback, the playhead stays centered and the
+timeline scrolls underneath — infinite forward scroll, no fixed duration. The scroll
+is driven by a Zustand `subscribe` callback (synchronous with `setTick` in the same
+microtask) rather than a React effect, which is too slow to keep up with the rAF
+tick loop. Duration auto-grows as generation advances.
+
+**Live drawing**: brush input writes directly to the GPU read buffer via
+`writeCellDirect()` without pausing. Values are picked up by the next `tick()`.
+When paused, full undo history and `onGridEdited()` state sync are preserved.
+
 **Epoch-based cancellation**: `computeEpoch` increments on preset/resize changes.
 In-flight async readbacks check the epoch and discard stale results.
 

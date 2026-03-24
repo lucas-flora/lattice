@@ -236,8 +236,21 @@ Replaced the linear pre-compute pipeline with a circular frame buffer and live m
 - **New event**: `sim:bufferStatus` → simStore buffer fields
 - **Removed**: old `gpuCacheFill()` offscreen runner, `Map<number, TickSnapshot>` frame cache, `computeFrames()`, `cacheCurrentFrame()`, `restoreFrame()`
 
+### M1-fixup: Scrolling Timeline + Live Drawing (Complete)
+
+**Scrolling timeline:**
+- During live playback, the playhead stays centered and the timeline scrolls underneath — infinite forward scroll, no fixed end.
+- Removed `smartExtendDuration()`, playback mode boundary checks (`once`/`loop`/`endless` in `playbackTick`), and duration ceiling clamping.
+- Timeline duration auto-grows silently as generation advances.
+- Auto-scroll driven by Zustand `subscribe` callback (synchronous with `setTick`) — not a React effect, which was too slow to keep up with the rAF tick loop.
+- Reset snaps timeline to [0, 256] and re-emits `sim:play` if still playing so store stays in sync.
+
+**Live drawing:**
+- Drawing no longer pauses the simulation. Brush input writes directly to GPU buffer via `writeCellDirect()` — values are picked up by the next `tick()`.
+- When paused: full undo history and state sync preserved.
+
 ### M2–M5: Planned
-- M2: Brush drawing during live playback
+- M2: GPU brush compute shader, brush property mapping
 - M3: Interaction scripts
 - M4: Loop in/out point UI (AE-style, decoupled from buffer)
 - M5: Performance profiling and optimization
