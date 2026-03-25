@@ -1,9 +1,6 @@
-# Fire — staged fluid-combustion simulation with material system.
+# Fire — staged fluid-combustion simulation with velocity field.
 # GPU-native via Python transpiler -> IR -> WGSL.
-#
-# Materials: air(0), fuel-gas(1), wood(2), water(3), burner(4), water-source(5)
-# Physics: emitters, advection, diffusion, combustion, gravity, material interactions,
-#          pressure projection, vorticity confinement, cooling.
+# Physics: advection, diffusion, combustion, buoyancy, pressure projection, vorticity, cooling.
 # Colors computed by visual_mapping script (not the rule).
 
 schema_version: "1"
@@ -11,13 +8,13 @@ schema_version: "1"
 meta:
   name: "Fire"
   author: "Lattice Engine"
-  description: "Combustion with materials: paint fuel, wood, water, burners. Watch them interact."
-  tags: ["2d", "continuous", "fire", "combustion", "fluid", "materials"]
+  description: "Combustion simulation with velocity field, buoyancy, and GPU-compiled visual mapping."
+  tags: ["2d", "continuous", "fire", "combustion", "fluid"]
 
 grid:
   dimensionality: "2d"
-  width: 512
-  height: 512
+  width: 256
+  height: 256
   topology: "finite"
 
 draw_property: "fuel"
@@ -27,7 +24,6 @@ brushes:
     properties:
       fuel: { value: 1.0, mode: "set" }
       temperature: { value: 0.2, mode: "add" }
-      density: { value: 0.1, mode: "set" }
     radius: 8
     shape: "circle"
     falloff: "smooth"
@@ -35,29 +31,9 @@ brushes:
   - name: "Cold Fuel"
     properties:
       fuel: { value: 1.0, mode: "set" }
-      density: { value: 0.1, mode: "set" }
     radius: 8
     shape: "circle"
     falloff: "smooth"
-
-  - name: "Wood"
-    properties:
-      material: { value: 2, mode: "set" }
-      fuel: { value: 0.0, mode: "set" }
-      density: { value: 0.8, mode: "set" }
-    radius: 6
-    shape: "square"
-    falloff: "hard"
-
-  - name: "Water"
-    properties:
-      material: { value: 3, mode: "set" }
-      moisture: { value: 1.0, mode: "set" }
-      density: { value: 1.0, mode: "set" }
-      temperature: { value: 0, mode: "set" }
-    radius: 5
-    shape: "circle"
-    falloff: "hard"
 
   - name: "Heat"
     properties:
@@ -71,16 +47,6 @@ brushes:
       material: { value: 4, mode: "set" }
       fuel: { value: 1.0, mode: "set" }
       temperature: { value: 0.8, mode: "set" }
-      density: { value: 0.5, mode: "set" }
-    radius: 3
-    shape: "square"
-    falloff: "hard"
-
-  - name: "Faucet"
-    properties:
-      material: { value: 5, mode: "set" }
-      moisture: { value: 1.0, mode: "set" }
-      density: { value: 1.0, mode: "set" }
     radius: 3
     shape: "square"
     falloff: "hard"
@@ -91,8 +57,6 @@ brushes:
       fuel: { value: 0, mode: "set" }
       temperature: { value: 0, mode: "set" }
       smoke: { value: 0, mode: "set" }
-      moisture: { value: 0, mode: "set" }
-      density: { value: 0, mode: "set" }
       vx: { value: 0, mode: "set" }
       vy: { value: 0, mode: "set" }
     radius: 10
@@ -132,27 +96,19 @@ cell_properties:
     type: "int"
     default: 0
     role: "input_output"
-  - name: "density"
-    type: "float"
-    default: 0.0
-    role: "input_output"
-  - name: "moisture"
-    type: "float"
-    default: 0.0
-    role: "input_output"
 
 params:
   - name: "dt"
     label: "Time Step"
     type: "float"
-    default: 0.1
+    default: 0.20
     min: 0.01
     max: 0.5
     step: 0.01
   - name: "diffusion_rate"
     label: "Diffusion"
     type: "float"
-    default: 0.0002
+    default: 0.001
     min: 0.0
     max: 0.01
     step: 0.0001
@@ -173,28 +129,28 @@ params:
   - name: "smoke_generation"
     label: "Smoke Generation"
     type: "float"
-    default: 1.5
+    default: 2.0
     min: 0.0
     max: 5.0
     step: 0.1
   - name: "buoyancy_factor"
     label: "Buoyancy"
     type: "float"
-    default: 1.5
+    default: 3.0
     min: 0.0
-    max: 5.0
+    max: 10.0
     step: 0.1
   - name: "cooling_rate"
     label: "Cooling Rate"
     type: "float"
-    default: 1.2
+    default: 0.80
     min: 0.1
     max: 5.0
     step: 0.1
   - name: "smoke_dissipation"
     label: "Smoke Dissipation"
     type: "float"
-    default: 0.15
+    default: 0.16
     min: 0.01
     max: 2.0
     step: 0.05
@@ -208,214 +164,124 @@ params:
   - name: "vorticity_strength"
     label: "Vorticity"
     type: "float"
-    default: 15.0
-    min: 0.0
+    default: 6.0
+    min: -10.0
     max: 40.0
     step: 0.5
   - name: "max_temp"
     label: "Max Temperature"
     type: "float"
-    default: 5.0
+    default: 10.0
     min: 1.0
     max: 20.0
     step: 0.5
-  - name: "gravity_strength"
-    label: "Gravity"
-    type: "float"
-    default: 5.0
-    min: 0.0
-    max: 20.0
-    step: 0.5
-  - name: "wood_ignition"
-    label: "Wood Ignition Temp"
-    type: "float"
-    default: 0.3
-    min: 0.1
-    max: 1.0
-    step: 0.05
-  - name: "wood_burn_rate"
-    label: "Wood Burn Rate"
-    type: "float"
-    default: 0.08
-    min: 0.01
-    max: 0.5
-    step: 0.01
   - name: "emitter_strength"
     label: "Emitter Strength"
     type: "float"
-    default: 0.8
+    default: 2.3
     min: 0.1
-    max: 2.0
+    max: 5.0
     step: 0.1
 
 rule:
   type: "webgpu"
   stages:
-    # Stage 1: Emitters — burners and faucets regenerate their material each tick
+    # Stage 1: Emitters — burners regenerate fuel + heat each tick
     - name: "emitters"
       compute: |
-        # Burner (material 4): produce fuel + heat every tick
         is_burner = step(3.5, material) * step(material, 4.5)
         self.fuel = fuel + is_burner * (1.0 - fuel)
         self.temperature = temperature + is_burner * max(env_emitter_strength - temperature, 0.0)
-        self.density = density + is_burner * (0.1 - density)
-        # Water source (material 5): produce water every tick
-        is_faucet = step(4.5, material) * step(material, 5.5)
-        self.moisture = moisture + is_faucet * (1.0 - moisture)
-        self.density = self.density + is_faucet * (1.0 - self.density)
-        # Spread: burner pushes fuel UPWARD (to cell above = y+1), faucet pushes water DOWNWARD (to cell below = y-1)
-        # Am I above a burner? (cell below me at y-1 is a burner)
-        below_mat = neighbor_at(0, -1, material)
-        below_burner = step(3.5, below_mat) * step(below_mat, 4.5)
-        # Am I below a faucet? (cell above me at y+1 is a faucet)
-        above_mat = neighbor_at(0, 1, material)
-        above_faucet = step(4.5, above_mat) * step(above_mat, 5.5)
+        # Spread fuel upward from burner: check cells 1, 2, 3 below me
+        b1_mat = neighbor_at(0, -1, material)
+        b2_mat = neighbor_at(0, -2, material)
+        b3_mat = neighbor_at(0, -3, material)
+        near_burner = step(3.5, b1_mat) * step(b1_mat, 4.5)
+        near_burner2 = step(3.5, b2_mat) * step(b2_mat, 4.5)
+        near_burner3 = step(3.5, b3_mat) * step(b3_mat, 4.5)
+        any_burner_below = clamp(near_burner + near_burner2 * 0.7 + near_burner3 * 0.4, 0.0, 1.0)
         is_empty = step(material, 0.5)
-        # Receive fuel from burner below (fire goes up)
-        self.fuel = self.fuel + below_burner * is_empty * env_emitter_strength * 0.6
-        self.temperature = self.temperature + below_burner * is_empty * env_emitter_strength * 0.5
-        # Receive water from faucet above (water goes down) — set material discretely
-        got_water = above_faucet * is_empty
-        self.moisture = self.moisture + got_water * 0.8
-        self.density = self.density + got_water * 0.8
-        self.material = self.material * (1.0 - got_water) + got_water * 3.0
+        self.fuel = self.fuel + any_burner_below * is_empty * env_emitter_strength * 0.5
+        self.temperature = self.temperature + any_burner_below * is_empty * env_emitter_strength * 0.4
 
     # Stage 2: Upwind advection — move fields along velocity
-    # Solids (wood=2, burner=4, faucet=5) don't advect. Fluids (air=0, fuel=1, water=3) do.
     - name: "advection"
-      iterations: 4
       compute: |
-        # is_solid: 1 for wood(2), burner(4), faucet(5); 0 for air(0), fuel(1), water(3)
-        is_solid = step(1.5, material) * step(material, 2.5) + step(3.5, material)
-        is_fluid = 1.0 - is_solid
-        # Upwind advection for temperature, fuel, smoke, moisture
+        is_burner = step(3.5, material)
+        is_fluid = 1.0 - is_burner
         up_t = mix(neighbor_at(0, -1, temperature), neighbor_at(0, 1, temperature), step(0.0, vy))
         lr_t = mix(neighbor_at(-1, 0, temperature), neighbor_at(1, 0, temperature), step(0.0, vx))
         up_f = mix(neighbor_at(0, -1, fuel), neighbor_at(0, 1, fuel), step(0.0, vy))
         lr_f = mix(neighbor_at(-1, 0, fuel), neighbor_at(1, 0, fuel), step(0.0, vx))
         up_s = mix(neighbor_at(0, -1, smoke), neighbor_at(0, 1, smoke), step(0.0, vy))
         lr_s = mix(neighbor_at(-1, 0, smoke), neighbor_at(1, 0, smoke), step(0.0, vx))
-        spd = clamp((abs(vx) + abs(vy)) * env_dt, 0.0, 0.45) * is_fluid
+        spd = clamp((abs(vx) + abs(vy)) * env_dt, 0.0, 0.85) * is_fluid
         self.temperature = mix(temperature, (up_t + lr_t) * 0.5, spd)
         self.fuel = mix(fuel, (up_f + lr_f) * 0.5, spd)
         self.smoke = mix(smoke, (up_s + lr_s) * 0.5, spd)
-        # Moisture NOT advected here — handled by dedicated gravity stage (runs 1x, not 4x)
-        # Advect velocity
         up_vx = mix(neighbor_at(0, -1, vx), neighbor_at(0, 1, vx), step(0.0, vy))
         lr_vx = mix(neighbor_at(-1, 0, vx), neighbor_at(1, 0, vx), step(0.0, vx))
         up_vy = mix(neighbor_at(0, -1, vy), neighbor_at(0, 1, vy), step(0.0, vy))
         lr_vy = mix(neighbor_at(-1, 0, vy), neighbor_at(1, 0, vy), step(0.0, vx))
         self.vx = mix(vx, (up_vx + lr_vx) * 0.5, spd)
         self.vy = mix(vy, (up_vy + lr_vy) * 0.5, spd)
-        # Advect density for fluids
-        up_d = mix(neighbor_at(0, -1, density), neighbor_at(0, 1, density), step(0.0, vy))
-        lr_d = mix(neighbor_at(-1, 0, density), neighbor_at(1, 0, density), step(0.0, vx))
-        self.density = mix(density, (up_d + lr_d) * 0.5, spd)
 
     # Stage 3: Diffusion + Combustion + Buoyancy
     - name: "forces"
       compute: |
-        is_solid = step(1.5, material) * step(material, 2.5) + step(3.5, material)
-        # Diffusion: Laplacian for temperature and smoke
+        is_burner = step(3.5, material)
+        # Diffusion
         lap_t = neighbor_at(1,0,temperature) + neighbor_at(-1,0,temperature) + neighbor_at(0,1,temperature) + neighbor_at(0,-1,temperature) - 4.0 * temperature
         lap_s = neighbor_at(1,0,smoke) + neighbor_at(-1,0,smoke) + neighbor_at(0,1,smoke) + neighbor_at(0,-1,smoke) - 4.0 * smoke
         new_temp = temperature + env_diffusion_rate * lap_t
         new_smoke = smoke + env_diffusion_rate * lap_s * 0.5
-        # Combustion: fuel + heat -> more heat + smoke (gas fuel burns fast)
+        # Combustion
         burning = step(env_ignition_threshold, new_temp) * step(0.001, fuel)
         burn_amount = min(fuel, env_burn_rate * env_dt) * burning
         new_temp = new_temp + burn_amount * env_heat_generation
         new_smoke = new_smoke + burn_amount * env_smoke_generation
         new_fuel = fuel - burn_amount
-        # Wood burning: parameterized threshold and rate
-        is_wood = step(1.5, material) * step(material, 2.5)
-        wood_burn = is_wood * step(env_wood_ignition, new_temp)
-        new_fuel = new_fuel + wood_burn * env_wood_burn_rate
-        new_temp = new_temp + wood_burn * env_wood_burn_rate * 0.6
-        new_smoke = new_smoke + wood_burn * env_wood_burn_rate * 0.25
-        # Buoyancy: hot gas rises. Only for non-solids.
-        buoy = (1.0 - is_solid) * env_buoyancy_factor * new_temp * env_dt
+        # Buoyancy: hot gas rises
+        buoy = (1.0 - is_burner) * env_buoyancy_factor * new_temp * env_dt
+        # Entrainment: horizontal convergence toward heat — pinches flame into a point
+        # Look at temperature gradient left/right — pull toward hotter neighbor
+        t_left = neighbor_at(-1, 0, temperature)
+        t_right = neighbor_at(1, 0, temperature)
+        entrain = (t_left - t_right) * env_buoyancy_factor * env_dt * 0.3
         self.vy = vy - buoy
-        self.vx = vx * (1.0 - is_solid)
+        self.vx = (vx + entrain) * (1.0 - is_burner)
         self.temperature = clamp(new_temp, 0.0, env_max_temp)
         self.fuel = clamp(new_fuel, 0.0, 1.0)
         self.smoke = clamp(new_smoke, 0.0, 1.0)
 
-    # Stage 4: Water gravity — direct downward transport, single pass
-    # Reads cell above (y+1), blends moisture downward. Separate from advection
-    # so 4x advection iterations don't diffuse moisture into mist.
-    - name: "water_gravity"
-      compute: |
-        is_solid = step(1.5, material) * step(material, 2.5) + step(3.5, material)
-        # Pull moisture from cell above
-        above_moist = neighbor_at(0, 1, moisture)
-        above_has = step(0.02, above_moist)
-        # Push my moisture to cell below (by losing some)
-        below_moist = neighbor_at(0, -1, moisture)
-        i_have = step(0.02, moisture)
-        below_can_take = step(below_moist + 0.01, moisture)
-        # Net: gain from above, lose to below
-        gain = above_has * (1.0 - is_solid) * above_moist * env_gravity_strength * 0.15
-        lose = i_have * below_can_take * (1.0 - is_solid) * moisture * env_gravity_strength * 0.15
-        self.moisture = clamp(moisture + gain - lose, 0.0, 1.0)
-        # Slight lateral spread (water pools at bottom)
-        lap_m = neighbor_at(1,0,moisture) + neighbor_at(-1,0,moisture) - 2.0 * moisture
-        self.moisture = clamp(self.moisture + lap_m * 0.008, 0.0, 1.0)
-
-    # Stage 5: Material interactions — water/fire, moisture transfer, evaporation
-    - name: "material_interact"
-      compute: |
-        # Neighbor moisture (water nearby?)
-        nb_moist = neighbor_at(1,0,moisture) + neighbor_at(-1,0,moisture) + neighbor_at(0,1,moisture) + neighbor_at(0,-1,moisture)
-        # Hot cell near water: aggressive cooling + steam burst
-        hot_near_wet = step(0.05, temperature) * step(0.05, nb_moist)
-        cool_power = min(nb_moist, 1.0) * hot_near_wet
-        self.temperature = temperature * (1.0 - cool_power * 0.8)
-        self.fuel = fuel * (1.0 - cool_power * 0.7)
-        self.smoke = clamp(smoke + cool_power * 0.4, 0.0, 1.0)
-        # Direct moisture-on-hot: if I have moisture AND temperature, violent quench
-        self_wet_hot = step(0.05, moisture) * step(0.1, self.temperature)
-        self.temperature = self.temperature * (1.0 - self_wet_hot * 0.9)
-        self.fuel = self.fuel * (1.0 - self_wet_hot * 0.8)
-        self.smoke = clamp(self.smoke + self_wet_hot * moisture * 0.5, 0.0, 1.0)
-        self.moisture = moisture * (1.0 - self_wet_hot * 0.3)
-        # Evaporation: moisture at high temperature becomes steam
-        evap = step(0.3, self.temperature) * step(0.05, self.moisture)
-        self.moisture = clamp(self.moisture - evap * 0.05, 0.0, 1.0)
-        self.smoke = clamp(self.smoke + evap * 0.08, 0.0, 1.0)
-        self.density = density * (1.0 - evap * 0.05)
-        # Moisture diffusion: very slight lateral spread
-        lap_moist = neighbor_at(1,0,moisture) + neighbor_at(-1,0,moisture) - 2.0 * moisture
-        self.moisture = clamp(self.moisture + lap_moist * 0.005, 0.0, 1.0)
-
-    # Stage 5: Pressure solve — store divergence in curl, reset pressure
+    # Stage 4: Pressure solve
     - name: "pressure_setup"
       compute: |
         self.curl = (neighbor_at(1,0,vx) - neighbor_at(-1,0,vx) + neighbor_at(0,1,vy) - neighbor_at(0,-1,vy)) * 0.5
         self.pressure = 0.0
 
-    # Stage 6: Jacobi iteration for pressure
+    # Stage 5: Jacobi iteration for pressure
     - name: "pressure_jacobi"
       iterations: 10
       compute: |
         p_sum = neighbor_at(1,0,pressure) + neighbor_at(-1,0,pressure) + neighbor_at(0,1,pressure) + neighbor_at(0,-1,pressure)
         self.pressure = (p_sum - curl) * 0.25
 
-    # Stage 7: Pressure projection — subtract pressure gradient from velocity
+    # Stage 6: Pressure projection
     - name: "pressure_project"
       compute: |
-        is_solid = step(1.5, material) * step(material, 2.5) + step(3.5, material)
+        is_burner = step(3.5, material)
         grad_px = (neighbor_at(1,0,pressure) - neighbor_at(-1,0,pressure)) * 0.5
         grad_py = (neighbor_at(0,1,pressure) - neighbor_at(0,-1,pressure)) * 0.5
-        self.vx = (vx - grad_px) * (1.0 - is_solid)
-        self.vy = (vy - grad_py) * (1.0 - is_solid)
+        self.vx = (vx - grad_px) * (1.0 - is_burner)
+        self.vy = (vy - grad_py) * (1.0 - is_burner)
 
-    # Stage 8: Vorticity compute — curl of velocity field
+    # Stage 7: Vorticity compute
     - name: "vorticity_compute"
       compute: |
         self.curl = (neighbor_at(1,0,vy) - neighbor_at(-1,0,vy)) * 0.5 - (neighbor_at(0,1,vx) - neighbor_at(0,-1,vx)) * 0.5
 
-    # Stage 9: Vorticity confinement — re-inject rotational energy
+    # Stage 8: Vorticity confinement
     - name: "vorticity_apply"
       compute: |
         eta_x = abs(neighbor_at(1,0,curl)) - abs(neighbor_at(-1,0,curl))
@@ -426,81 +292,48 @@ rule:
         self.vx = vx + env_vorticity_strength * ny * curl * env_dt
         self.vy = vy + env_vorticity_strength * (0.0 - nx) * curl * env_dt
 
-    # Stage 10: Cooling and decay
+    # Stage 9: Cooling and decay
     - name: "cooling"
       compute: |
-        # Emitters (material >= 4) don't cool
         is_emitter = step(3.5, material)
         cool_factor = (1.0 - is_emitter) * env_cooling_rate * env_dt
         self.temperature = clamp(temperature * (1.0 - cool_factor), 0.0, env_max_temp)
         self.smoke = clamp(smoke * (1.0 - env_smoke_dissipation * env_dt), 0.0, 1.0)
-        # Clamp velocity for numerical stability
         self.vx = clamp(vx * 0.998, -5.0, 5.0)
         self.vy = clamp(vy * 0.998, -5.0, 5.0)
-        # Moisture decay: very slow, just cleans up trace amounts
-        self.moisture = clamp(moisture * 0.9995, 0.0, 1.0)
-        # Density decays toward 0 for non-material cells
-        is_matcell = step(1.5, material)
-        self.density = density * (is_matcell + (1.0 - is_matcell) * 0.99)
 
 visual_mappings:
   - type: "script"
     code: |
       t = clamp(temperature / env_max_temp, 0.0, 1.0)
-      # Material masks (branchless)
-      is_wood = step(1.5, material) * step(material, 2.5)
-      is_water = step(2.5, material) * step(material, 3.5)
       is_burner = step(3.5, material) * step(material, 4.5)
-      is_faucet = step(4.5, material) * step(material, 5.5)
-      is_gas = step(material, 1.5)
-      # --- Fire coloring (air + fuel gas, material 0-1) ---
-      # Multi-stop gradient: black → deep red → orange → yellow → white-hot
+      is_gas = 1.0 - is_burner
+      # Fire: black -> deep red -> orange -> yellow -> white-hot
       fr = smoothstep(0.0, 0.1, t) * is_gas
       fg = smoothstep(0.15, 0.5, t) * 0.85 * is_gas
       fb = smoothstep(0.4, 0.9, t) * 0.6 * is_gas
-      # Bright core: boost toward white at extreme heat
       core = smoothstep(0.6, 1.0, t) * is_gas
       fr = fr + core * (1.0 - fr) * 0.5
       fg = fg + core * (1.0 - fg) * 0.4
       fb = fb + core * (1.0 - fb) * 0.3
-      # Fuel: dark amber, fades as temperature rises
+      # Fuel: dark amber
       fuel_show = step(0.01, fuel) * (1.0 - smoothstep(0.0, 0.15, t)) * is_gas
-      # Smoke: gray wisps
-      smoke_show = clamp(smoke, 0.0, 1.0) * (1.0 - t) * is_gas
+      # Smoke: gray wisps, only visible where NOT hot
+      smoke_show = clamp(smoke, 0.0, 1.0) * smoothstep(0.0, 0.05, smoke) * (1.0 - smoothstep(0.0, 0.3, t)) * is_gas
       gray = 0.35 + smoke * 0.15
       fire_r = fr + fuel_show * 0.25 + smoke_show * gray
       fire_g = fg + fuel_show * 0.12 + smoke_show * gray
       fire_b = fb + fuel_show * 0.03 + smoke_show * (gray + 0.03)
-      fire_a = clamp(t * 5.0 + smoke_show + fuel_show, 0.0, 1.0) * is_gas
-      # --- Wood coloring (material 2): brown, glows when hot ---
-      wood_hot = clamp(t * 2.0, 0.0, 1.0)
-      wood_r = is_wood * (0.35 * (1.0 - wood_hot) + wood_hot * 1.0)
-      wood_g = is_wood * (0.2 * (1.0 - wood_hot) + wood_hot * 0.4)
-      wood_b = is_wood * (0.08 * (1.0 - wood_hot) + wood_hot * 0.05)
-      wood_a = is_wood
-      # --- Water coloring: based on MOISTURE content, not material integer ---
-      # Moisture flows via advection, material integer doesn't. So color by moisture.
-      w_int = clamp(moisture, 0.0, 1.0)
-      has_water = step(0.05, moisture) * (1.0 - is_wood) * (1.0 - is_burner) * (1.0 - is_faucet)
-      water_r = has_water * 0.1 * w_int
-      water_g = has_water * 0.35 * w_int
-      water_b = has_water * 0.85 * w_int
-      water_a = has_water * w_int * 0.9
-      # --- Burner coloring (material 4): orange glow ---
+      fire_a = clamp(smoothstep(0.0, 0.1, t) * 3.0 + smoke_show * 0.6 + fuel_show, 0.0, 1.0) * is_gas
+      # Burner: orange glow
       burn_r = is_burner * 1.0
       burn_g = is_burner * 0.5
       burn_b = is_burner * 0.1
       burn_a = is_burner
-      # --- Faucet coloring (material 5): blue glow ---
-      faucet_r = is_faucet * 0.2
-      faucet_g = is_faucet * 0.5
-      faucet_b = is_faucet * 1.0
-      faucet_a = is_faucet
-      # --- Combine all layers ---
-      self.colorR = fire_r + wood_r + water_r + burn_r + faucet_r
-      self.colorG = fire_g + wood_g + water_g + burn_g + faucet_g
-      self.colorB = fire_b + wood_b + water_b + burn_b + faucet_b
-      self.alpha = fire_a + wood_a + water_a + burn_a + faucet_a
+      self.colorR = fire_r + burn_r
+      self.colorG = fire_g + burn_g
+      self.colorB = fire_b + burn_b
+      self.alpha = fire_a + burn_a
 
 initial_state:
   type: "script"
@@ -508,60 +341,45 @@ initial_state:
     const fuel = buffers.fuel;
     const temp = buffers.temperature;
     const mat = buffers.material;
-    const dens = buffers.density;
-    const moist = buffers.moisture;
-    fuel.fill(0); temp.fill(0); mat.fill(0); dens.fill(0); moist.fill(0);
-    // Helper: set cell at (x, y) with material properties
+    fuel.fill(0); temp.fill(0); mat.fill(0);
     function set(x, y, props) {
       if (x < 0 || x >= width || y < 0 || y >= height) return;
       const i = y * width + x;
       if (props.fuel !== undefined) fuel[i] = props.fuel;
       if (props.temp !== undefined) temp[i] = props.temp;
       if (props.mat !== undefined) mat[i] = props.mat;
-      if (props.dens !== undefined) dens[i] = props.dens;
-      if (props.moist !== undefined) moist[i] = props.moist;
     }
     function rect(x0, y0, w, h, props) {
       for (let dy = 0; dy < h; dy++)
         for (let dx = 0; dx < w; dx++)
           set(x0 + dx, y0 + dy, props);
     }
-    // --- Scene 1 (left quarter): Candle ---
-    // Small wood base + tiny fuel wick + ignition
-    const cx = Math.floor(width * 0.12);
-    const cy = 4;
-    rect(cx - 2, cy, 5, 20, { mat: 2, dens: 0.8 });        // wood pillar
-    rect(cx - 1, cy + 20, 3, 3, { fuel: 0.8, dens: 0.1 });  // wick fuel
-    set(cx, cy + 22, { temp: 0.6 });                          // ignite tip
-    // --- Scene 2 (center-left): Fireplace with wood logs ---
-    const fx = Math.floor(width * 0.35);
-    const fy = 2;
-    // Stone hearth (wood used as solid, just for structure)
-    rect(fx - 15, fy, 3, 12, { mat: 2, dens: 0.8 });        // left wall
-    rect(fx + 13, fy, 3, 12, { mat: 2, dens: 0.8 });        // right wall
-    rect(fx - 15, fy, 31, 2, { mat: 2, dens: 0.8 });        // floor
-    // Logs inside
-    rect(fx - 8, fy + 2, 16, 3, { mat: 2, dens: 0.8 });     // bottom log
-    rect(fx - 5, fy + 5, 10, 2, { mat: 2, dens: 0.8 });     // top log
-    // Fuel and ignition between logs
-    rect(fx - 6, fy + 2, 12, 5, { fuel: 0.5, dens: 0.1 });
-    for (let dx = -3; dx <= 3; dx++) set(fx + dx, fy + 5, { temp: 0.5 });
-    // --- Scene 3 (center-right): Burner ---
-    const bx = Math.floor(width * 0.62);
-    rect(bx - 4, 2, 9, 3, { mat: 4, fuel: 1, temp: 0.8, dens: 0.5 });
-    // --- Scene 4 (right): Faucet + burner interaction ---
-    const rx = Math.floor(width * 0.85);
-    // Burner at bottom
-    rect(rx - 3, 2, 7, 3, { mat: 4, fuel: 1, temp: 0.8, dens: 0.5 });
-    // Faucet above — water will fall onto the fire
-    rect(rx - 4, Math.floor(height * 0.25), 9, 3, { mat: 5, moist: 1, dens: 1 });
+    // Scene 1 (left): Small burner
+    const cx = Math.floor(width * 0.15);
+    rect(cx - 2, 2, 5, 3, { mat: 4, fuel: 1, temp: 0.8 });
+    // Scene 2 (center): Fuel pile — dome shape with ignition
+    const fx = Math.floor(width * 0.45);
+    const pileW = Math.floor(width * 0.12);
+    const pileH = Math.floor(height * 0.08);
+    for (let y = 0; y < pileH; y++) {
+      for (let x = -pileW; x <= pileW; x++) {
+        const d = Math.abs(x) / pileW;
+        if (y < pileH * (1 - d * d) + Math.random() * 2) {
+          set(fx + x, 2 + y, { fuel: 0.5 + Math.random() * 0.5 });
+        }
+      }
+    }
+    for (let dx = -4; dx <= 4; dx++) set(fx + dx, 2 + pileH - 2, { temp: 0.6 });
+    // Scene 3 (right): Wide burner strip
+    const bx = Math.floor(width * 0.78);
+    rect(bx - 8, 2, 17, 3, { mat: 4, fuel: 1, temp: 0.8 });
 
 ai_context:
-  description: "Fire with material system: fuel, wood, water, burners, faucets"
+  description: "Fire: staged fluid-combustion with velocity field and GPU visual mapping"
   hints:
-    - "Materials: 0=air, 1=fuel-gas, 2=wood, 3=water, 4=burner, 5=water-source"
-    - "10 compute stages: emitters, advection, forces, material_interact, pressure(x3), vorticity(x2), cooling"
-    - "Solids (wood, burner, faucet) don't advect. Fluids (air, fuel, water) do."
-    - "Water falls via gravity, extinguishes fire via moisture transfer"
-    - "Wood burns slowly and self-sustains once ignited"
-    - "Burners regenerate fuel+heat. Faucets regenerate water."
+    - "9 rule stages: emitters, advection, forces, pressure(x3), vorticity(x2), cooling"
+    - "Color computed by visual_mapping script, not the rule"
+    - "Buoyancy adds upward velocity proportional to temperature"
+    - "Burners (material=4) regenerate fuel+heat every tick"
+    - "Paint fuel with Fuel brush, ignite with Heat brush"
+    - "Place permanent fire sources with Burner brush"
