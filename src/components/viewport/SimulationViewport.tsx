@@ -645,8 +645,21 @@ export function SimulationViewport({ viewportId = 'viewport-1' }: SimulationView
           const screenRadius = radius * pixelsPerCell;
 
           if (screenRadius > 0.5) {
-            cursorCtx.beginPath();
             const activeBrush = brushStoreActions.getActiveBrush();
+            // Color cursor based on material property in brush
+            const matVal = activeBrush?.properties?.material?.value;
+            let cr = 74, cg = 222, cb = 128; // default green
+            if (matVal === 1) { cr = 255; cg = 160; cb = 40; }       // fuel: orange
+            else if (matVal === 2) { cr = 160; cg = 100; cb = 40; }  // wood: brown
+            else if (matVal === 3) { cr = 40; cg = 140; cb = 255; }  // water: blue
+            else if (matVal === 4) { cr = 255; cg = 120; cb = 20; }  // burner: bright orange
+            else if (matVal === 5) { cr = 60; cg = 160; cb = 255; }  // faucet: bright blue
+            // Heat brush (no material prop, has temperature): red tint
+            else if (activeBrush?.properties?.temperature && !activeBrush?.properties?.material) {
+              cr = 255; cg = 80; cb = 40;
+            }
+
+            cursorCtx.beginPath();
             if (activeBrush?.shape === 'square') {
               cursorCtx.rect(
                 cursorScreenX - screenRadius,
@@ -657,7 +670,7 @@ export function SimulationViewport({ viewportId = 'viewport-1' }: SimulationView
             } else {
               cursorCtx.arc(cursorScreenX, cursorScreenY, screenRadius, 0, Math.PI * 2);
             }
-            cursorCtx.strokeStyle = 'rgba(74, 222, 128, 0.6)';
+            cursorCtx.strokeStyle = `rgba(${cr}, ${cg}, ${cb}, 0.7)`;
             cursorCtx.lineWidth = 1;
             cursorCtx.stroke();
 
@@ -667,8 +680,8 @@ export function SimulationViewport({ viewportId = 'viewport-1' }: SimulationView
                 cursorScreenX, cursorScreenY, 0,
                 cursorScreenX, cursorScreenY, screenRadius,
               );
-              grad.addColorStop(0, 'rgba(74, 222, 128, 0.15)');
-              grad.addColorStop(1, 'rgba(74, 222, 128, 0.0)');
+              grad.addColorStop(0, `rgba(${cr}, ${cg}, ${cb}, 0.15)`);
+              grad.addColorStop(1, `rgba(${cr}, ${cg}, ${cb}, 0.0)`);
               cursorCtx.fillStyle = grad;
               cursorCtx.beginPath();
               cursorCtx.arc(cursorScreenX, cursorScreenY, screenRadius, 0, Math.PI * 2);
