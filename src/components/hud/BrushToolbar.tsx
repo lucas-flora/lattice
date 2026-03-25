@@ -10,7 +10,7 @@
 
 'use client';
 
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useBrushStore, brushStoreActions, type BrushBlendMode } from '@/store/brushStore';
 import { useExpressionStore } from '@/store/expressionStore';
 import { uiStoreActions } from '@/store/uiStore';
@@ -38,7 +38,8 @@ export function BrushToolbar() {
   const effectiveRadius = radiusOverride ?? activeBrush?.radius ?? 3;
 
   // Interaction ops from expression store — for syncing selection
-  const interactionOps = useExpressionStore((s) => s.tags.filter(t => t.phase === 'interaction'));
+  const allTags = useExpressionStore((s) => s.tags);
+  const interactionOps = useMemo(() => allTags.filter(t => t.phase === 'interaction'), [allTags]);
 
   const handleSelect = useCallback((index: number) => {
     commandRegistry.execute('brush.select', { index });
