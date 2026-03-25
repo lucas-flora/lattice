@@ -214,6 +214,11 @@ export const brushStoreActions = {
     return true;
   },
 
+  /** Get all available brushes */
+  getAll(): Brush[] {
+    return useBrushStore.getState().availableBrushes;
+  },
+
   /** Adjust radius by delta (clamp 1..100) */
   adjustRadius(delta: number): void {
     const current = brushStoreActions.getEffectiveRadius();

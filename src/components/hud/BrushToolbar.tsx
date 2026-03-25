@@ -12,6 +12,8 @@
 
 import { useCallback } from 'react';
 import { useBrushStore, brushStoreActions, type BrushBlendMode } from '@/store/brushStore';
+import { useExpressionStore } from '@/store/expressionStore';
+import { uiStoreActions } from '@/store/uiStore';
 import { commandRegistry } from '@/commands/CommandRegistry';
 
 const BLEND_MODE_LABELS: Record<BrushBlendMode, string> = {
@@ -35,9 +37,15 @@ export function BrushToolbar() {
   const effectiveBrush = brushStoreActions.getEffectiveBrush();
   const effectiveRadius = radiusOverride ?? activeBrush?.radius ?? 3;
 
+  // Interaction ops from expression store — for syncing selection
+  const interactionOps = useExpressionStore((s) => s.tags.filter(t => t.phase === 'interaction'));
+
   const handleSelect = useCallback((index: number) => {
     commandRegistry.execute('brush.select', { index });
-  }, []);
+    // Focus the corresponding interaction op in the Inspector
+    const op = interactionOps[index];
+    if (op) uiStoreActions.focusOp(op.id);
+  }, [interactionOps]);
 
   const handleRadiusChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const r = parseInt(e.target.value, 10);

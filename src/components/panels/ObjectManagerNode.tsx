@@ -80,11 +80,13 @@ function OpTreeRow({ op, depth, parentNodeId }: { op: Operator; depth: number; p
     setCtxMenu({ x: e.clientX, y: e.clientY });
   }, []);
 
-  const phaseBadge = op.phase === 'pre-rule'
-    ? { label: 'pre', class: 'bg-zinc-700 text-zinc-400' }
-    : op.phase === 'rule'
-      ? { label: 'rule', class: 'bg-blue-500/15 text-blue-400' }
-      : { label: 'post', class: 'bg-green-500/15 text-green-400' };
+  const phaseBadge = op.phase === 'interaction'
+    ? { label: 'brush', class: 'bg-amber-500/15 text-amber-400' }
+    : op.phase === 'pre-rule'
+      ? { label: 'pre', class: 'bg-zinc-700 text-zinc-400' }
+      : op.phase === 'rule'
+        ? { label: 'rule', class: 'bg-blue-500/15 text-blue-400' }
+        : { label: 'post', class: 'bg-green-500/15 text-green-400' };
 
   const ctxItems: ContextMenuItem[] = [
     {

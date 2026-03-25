@@ -20,7 +20,7 @@ import type { SceneGraph } from '../engine/scene/SceneGraph';
 import type { SceneNode } from '../engine/scene/SceneNode';
 import { NODE_TYPES, generateNodeId } from '../engine/scene/SceneNode';
 import { sceneStoreActions, useSceneStore } from '../store/sceneStore';
-import { brushStoreActions } from '../store/brushStore';
+import { brushStoreActions, type Brush } from '../store/brushStore';
 import { logMin, logDbg, logGPU } from '../lib/debugLog';
 import { GPURuleRunner } from '../engine/rule/GPURuleRunner';
 import { GPUContext } from '../engine/gpu/GPUContext';
@@ -336,6 +336,7 @@ export class SimulationController {
     void this.tryInitGPURuleRunner();
     logMin('ctrl', `loadPreset: postRuleTags=${this.simulation.tagRegistry.hasPostRuleTags()}`);
     brushStoreActions.loadFromPreset(config.brushes, config.cell_properties, config.draw_property);
+    this.registerBrushInteractionOps(brushStoreActions.getAll());
     this.emitPresetLoaded(config);
     this.emitParamDefs();
     this.syncTagStore();
@@ -363,6 +364,7 @@ export class SimulationController {
     this.userParamDefs = [];
     void this.tryInitGPURuleRunner();
     brushStoreActions.loadFromPreset(config.brushes, config.cell_properties, config.draw_property);
+    this.registerBrushInteractionOps(brushStoreActions.getAll());
     this.emitPresetLoaded(config);
     this.emitParamDefs();
     this.syncTagStore();
@@ -1232,6 +1234,56 @@ export class SimulationController {
   /**
    * Sync tag store with registry state after preset load.
    */
+  /**
+   * Generate interaction-phase ops from brush configs.
+   * Each brush becomes an op visible in Pipeline View and Inspector.
+   * The generated code is informational — actual execution still uses BrushDispatcher.
+   */
+  private registerBrushInteractionOps(brushes: Brush[]): void {
+    if (!this.simulation) return;
+    const registry = this.simulation.tagRegistry;
+
+    for (const brush of brushes) {
+      const propLines = Object.entries(brush.properties).map(([name, action]) => {
+        if (action.mode === 'set') return `self.${name} = ${action.value} * strength`;
+        if (action.mode === 'add') return `self.${name} = self.${name} + ${action.value} * strength`;
+        if (action.mode === 'multiply') return `self.${name} = self.${name} * mix(1.0, ${action.value}, strength)`;
+        return `self.${name} = random(0, ${action.value}) * strength`;
+      });
+
+      const code = [
+        `# Brush: ${brush.name}`,
+        `# Shape: ${brush.shape}, Radius: ${brush.radius}, Falloff: ${brush.falloff}`,
+        `#`,
+        `# This code is generated from the brush config.`,
+        `# Direct editing will be supported in a future update.`,
+        ``,
+        `distance = sqrt((x - cursor_x) ** 2 + (y - cursor_y) ** 2)`,
+        `if distance > ${brush.radius}:`,
+        `    return`,
+        ``,
+        brush.falloff === 'hard'
+          ? `strength = 1.0`
+          : brush.falloff === 'linear'
+            ? `strength = 1.0 - distance / ${brush.radius}`
+            : `strength = 1.0 - smoothstep(0.0, 1.0, distance / ${brush.radius})`,
+        ``,
+        ...propLines,
+      ].join('\n');
+
+      registry.add({
+        name: brush.name,
+        owner: { type: 'root' },
+        code,
+        phase: 'interaction',
+        enabled: true,
+        source: 'code',
+        inputs: [],
+        outputs: Object.keys(brush.properties).map(p => `cell.${p}`),
+      });
+    }
+  }
+
   private syncTagStore(): void {
     if (!this.simulation) return;
     const tags = this.simulation.tagRegistry.getAll();

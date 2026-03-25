@@ -12,7 +12,7 @@ export type { EasingType, AddressNamespace, ParsedAddress } from '../linking/typ
 
 /** When in the tick pipeline this operator evaluates.
  * 'rule' = THE simulation rule operator on a SimRoot. Receives RuleContext. */
-export type ExpressionPhase = 'pre-rule' | 'rule' | 'post-rule';
+export type ExpressionPhase = 'pre-rule' | 'rule' | 'post-rule' | 'interaction';
 
 /**
  * How the operator was authored.

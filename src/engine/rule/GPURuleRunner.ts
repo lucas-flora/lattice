@@ -53,9 +53,9 @@ export interface PipelineEntry {
   /** Display name */
   name: string;
   /** Pipeline category */
-  type: 'pre-rule-op' | 'rule-stage' | 'post-rule-op' | 'visual-mapping';
+  type: 'interaction-op' | 'pre-rule-op' | 'rule-stage' | 'post-rule-op' | 'visual-mapping';
   /** Pipeline phase */
-  phase: 'pre-rule' | 'rule' | 'post-rule' | 'visual';
+  phase: 'interaction' | 'pre-rule' | 'rule' | 'post-rule' | 'visual';
   enabled: boolean;
   /** CPU for pre-rule link ops, GPU for everything else */
   executionContext: 'cpu' | 'gpu';
@@ -613,9 +613,28 @@ export class GPURuleRunner {
    * Matches the actual execution order in tick():
    *   pre-rule ops (CPU) → rule stages (GPU) → post-rule expression passes (GPU) → visual mapping (GPU)
    */
-  getExecutionOrder(): PipelineEntry[] {
+  getExecutionOrder(allTags?: Array<{ id: string; name: string; phase: string; enabled: boolean }>): PipelineEntry[] {
     const entries: PipelineEntry[] = [];
     let idx = 0;
+
+    // 0. Interaction ops — brush-driven, run when drawing (before everything)
+    if (allTags) {
+      for (const tag of allTags) {
+        if (tag.phase === 'interaction') {
+          entries.push({
+            id: `interaction-${tag.name}`,
+            name: tag.name,
+            type: 'interaction-op',
+            phase: 'interaction',
+            enabled: tag.enabled !== false,
+            executionContext: 'gpu',
+            sourceId: tag.name,
+            opId: tag.id,
+            index: idx++,
+          });
+        }
+      }
+    }
 
     // 1. Pre-rule ops — link-sourced fast-path evaluations (CPU)
     const tags = this.preset.expression_tags;

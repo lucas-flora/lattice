@@ -142,7 +142,7 @@ const ExpressionTagSchema = z.object({
     id: z.string().optional(),
   }),
   code: z.string(),
-  phase: z.enum(['pre-rule', 'post-rule']).default('post-rule'),
+  phase: z.enum(['pre-rule', 'post-rule', 'interaction']).default('post-rule'),
   enabled: z.boolean().default(true),
   source: z.enum(['code', 'link', 'script']).default('code'),
   inputs: z.array(z.string()).default([]),
@@ -227,7 +227,7 @@ export const PresetSchema = z
 const TagV2Schema = z.object({
   name: z.string().min(1),
   code: z.string(),
-  phase: z.enum(['pre-rule', 'rule', 'post-rule']).default('post-rule'),
+  phase: z.enum(['pre-rule', 'rule', 'post-rule', 'interaction']).default('post-rule'),
   enabled: z.boolean().default(true),
   source: z.enum(['code', 'link', 'script']).default('code'),
   inputs: z.array(z.string()).default([]),
@@ -250,7 +250,7 @@ interface SceneNodeV2Input {
   tags?: Array<{
     name: string;
     code: string;
-    phase?: 'pre-rule' | 'rule' | 'post-rule';
+    phase?: 'pre-rule' | 'rule' | 'post-rule' | 'interaction';
     enabled?: boolean;
     source?: 'code' | 'link' | 'script';
     inputs?: string[];
@@ -274,7 +274,7 @@ interface SceneNodeV2Output {
   tags: Array<{
     name: string;
     code: string;
-    phase: 'pre-rule' | 'rule' | 'post-rule';
+    phase: 'pre-rule' | 'rule' | 'post-rule' | 'interaction';
     enabled: boolean;
     source: 'code' | 'link' | 'script';
     inputs: string[];
