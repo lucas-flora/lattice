@@ -1,5 +1,5 @@
 /**
- * Timeline: Premiere-style full-width timeline with mini-map and zoomed ruler.
+ * Timeline: scrolling timeline with mini-map and zoomed ruler.
  *
  * Layout:
  * ┌──────────────────────────────────────────────────┐
@@ -8,14 +8,15 @@
  * │ ▼  50    60    70    80   ...                    │ Main ruler (zoomed view)
  * └──────────────────────────────────────────────────┘
  *
- * Frame counter is exported separately for placement below the timeline.
+ * During live playback the playhead stays centered and the timeline scrolls
+ * underneath — infinite forward scroll, no fixed end. When paused, the
+ * timeline is static and scrubbing moves the playhead across the view.
  *
  * Features:
- * - Mini-map always shows 0..timelineDuration, highlights zoom region with grips
+ * - Mini-map shows 0..duration, highlights zoom region with grips
  * - Main ruler shows zoomed portion with adaptive ticks
- * - Thin playhead line with triangle marker
+ * - Buffer window (cyan) shows instantly-scrubbable range
  * - Click-to-seek, drag-to-scrub, scroll-to-zoom
- * - Auto-extend: when sim reaches end, doubles duration
  * - Display modes: frames / time / timecode (click label to cycle)
  */
 
@@ -80,6 +81,8 @@ function MiniMap({
   generation,
   zoomStart,
   zoomEnd,
+  bufferOldest,
+  bufferNewest,
   onSeek,
 }: {
   containerWidth: number;
@@ -88,6 +91,8 @@ function MiniMap({
   generation: number;
   zoomStart: number;
   zoomEnd: number;
+  bufferOldest: number;
+  bufferNewest: number;
   onSeek: (frame: number) => void;
 }) {
   const draggingRef = useRef<'none' | 'pan' | 'left' | 'right'>('none');
@@ -150,14 +155,13 @@ function MiniMap({
     const span = origEnd - origStart;
 
     if (draggingRef.current === 'pan') {
-      let newStart = origStart + dFrames;
-      newStart = Math.max(0, Math.min(newStart, duration - span));
+      const newStart = Math.max(0, origStart + dFrames);
       uiStoreActions.setTimelineZoom(newStart, newStart + span);
     } else if (draggingRef.current === 'left') {
       const newStart = Math.max(0, Math.min(origStart + dFrames, origEnd - 10));
       uiStoreActions.setTimelineZoom(newStart, origEnd);
     } else if (draggingRef.current === 'right') {
-      const newEnd = Math.min(duration, Math.max(origStart + 10, origEnd + dFrames));
+      const newEnd = Math.max(origStart + 10, origEnd + dFrames);
       uiStoreActions.setTimelineZoom(origStart, newEnd);
     }
   }, [duration, xToFrame]);
@@ -180,6 +184,17 @@ function MiniMap({
       <div className="absolute bottom-0 left-0 right-0 overflow-hidden" style={{ height: MINIMAP_HEIGHT }}>
         {/* Background — dark outside zoom region */}
         <div className="absolute inset-0 bg-zinc-950" />
+
+        {/* Buffer window — cyan tint showing instantly-scrubbable range */}
+        {bufferOldest >= 0 && bufferNewest >= 0 && (
+          <div
+            className="absolute top-0 bottom-0 bg-cyan-500/15"
+            style={{
+              left: frameToX(bufferOldest),
+              width: Math.max(1, frameToX(bufferNewest) - frameToX(bufferOldest)),
+            }}
+          />
+        )}
 
         {/* Computed region — subtle green tint in the dark area */}
         <div
@@ -247,6 +262,8 @@ function MiniMap({
 export function TimelineCounter() {
   const generation = useSimStore((s) => s.generation);
   const speed = useSimStore((s) => s.speed);
+  const bufferSize = useSimStore((s) => s.bufferSize);
+  const bufferCapacity = useSimStore((s) => s.bufferCapacity);
   const displayMode = useUiStore((s) => s.timelineDisplayMode);
   const duration = useUiStore((s) => s.timelineDuration);
   const [editingDuration, setEditingDuration] = useState(false);
@@ -293,6 +310,11 @@ export function TimelineCounter() {
         {currentLabel}
       </button>
       <span className="text-zinc-600">/</span>
+      {bufferCapacity > 0 && (
+        <span className="text-cyan-500/60 text-[8px] mx-0.5" title={`Buffer: ${bufferSize}/${bufferCapacity} frames`}>
+          {bufferSize}/{bufferCapacity}
+        </span>
+      )}
       {editingDuration ? (
         <input
           type="number"
@@ -325,6 +347,8 @@ export function Timeline() {
   const computedGeneration = useSimStore((s) => s.computedGeneration);
   const speed = useSimStore((s) => s.speed);
   const isRunning = useSimStore((s) => s.isRunning);
+  const bufferOldestFrame = useSimStore((s) => s.bufferOldestFrame);
+  const bufferNewestFrame = useSimStore((s) => s.bufferNewestFrame);
   const displayMode = useUiStore((s) => s.timelineDisplayMode);
   const duration = useUiStore((s) => s.timelineDuration);
   const zoomStart = useUiStore((s) => s.timelineZoomStart);
@@ -346,21 +370,37 @@ export function Timeline() {
     return () => observer.disconnect();
   }, []);
 
-  // Auto-pan during playback: keep playhead in view by scrolling the zoom region
+  // Scrolling timeline: Zustand subscription runs synchronously on every
+  // simStore.setState — no React render lag. Keeps playhead centered during
+  // live playback by updating zoom directly in the store.
   useEffect(() => {
-    if (!isRunning) return;
-    const span = zoomEnd - zoomStart;
-    const margin = span * 0.1;
-    if (generation > zoomEnd - margin) {
-      const newStart = generation - span * 0.5;
-      const clamped = Math.max(0, Math.min(newStart, duration - span));
-      uiStoreActions.setTimelineZoom(clamped, clamped + span);
-    }
-  }, [generation, isRunning, zoomStart, zoomEnd, duration]);
+    const unsub = useSimStore.subscribe(
+      (s) => s.generation,
+      (gen) => {
+        const { isRunning } = useSimStore.getState();
+        if (!isRunning) return;
+        const { timelineZoomStart: zs, timelineZoomEnd: ze, timelineDuration: dur } = useUiStore.getState();
+        const span = ze - zs;
+        const center = zs + span * 0.5;
+        // Once playhead passes center, scroll to keep it centered
+        if (gen > center) {
+          const newStart = Math.max(0, gen - span * 0.5);
+          uiStoreActions.setTimelineZoom(newStart, newStart + span);
+        }
+        // Auto-grow duration so minimap has space ahead
+        if (gen > 0 && gen >= dur - span) {
+          uiStoreActions.setTimelineDuration(gen + span * 2);
+        }
+      },
+    );
+    return unsub;
+  }, []);
 
   // Zoomed view range
-  const zoomSpan = Math.max(zoomEnd - zoomStart, 1);
-  const pixelsPerFrame = containerWidth / zoomSpan;
+  const viewStart = zoomStart;
+  const viewEnd = zoomEnd;
+  const viewSpan = Math.max(viewEnd - viewStart, 1);
+  const pixelsPerFrame = containerWidth / viewSpan;
 
   // Tick intervals for zoomed view
   const { majorInterval, minorInterval } = useMemo(() => {
@@ -376,24 +416,24 @@ export function Timeline() {
     if (containerWidth <= 0) return result;
 
     // Start from first tick aligned to minorInterval within view
-    const firstTick = Math.ceil(zoomStart / minorInterval) * minorInterval;
-    for (let frame = firstTick; frame <= zoomEnd; frame += minorInterval) {
+    const firstTick = Math.ceil(viewStart / minorInterval) * minorInterval;
+    for (let frame = firstTick; frame <= viewEnd; frame += minorInterval) {
       const roundedFrame = Math.round(frame);
-      const x = ((roundedFrame - zoomStart) / zoomSpan) * containerWidth;
+      const x = ((roundedFrame - viewStart) / viewSpan) * containerWidth;
       const isMajor = Math.abs(roundedFrame % majorInterval) < 0.5;
       result.push({ x, frame: roundedFrame, isMajor });
     }
     return result;
-  }, [containerWidth, zoomStart, zoomEnd, zoomSpan, majorInterval, minorInterval]);
+  }, [containerWidth, viewStart, viewEnd, viewSpan, majorInterval, minorInterval]);
 
   // Playhead X in zoomed view
-  const playheadInView = generation >= zoomStart && generation <= zoomEnd;
-  const playheadX = ((generation - zoomStart) / zoomSpan) * containerWidth;
+  const playheadInView = generation >= viewStart && generation <= viewEnd;
+  const playheadX = ((generation - viewStart) / viewSpan) * containerWidth;
 
   // Computed extent bar in zoomed view — shows actual cache frontier, not playhead history
   const computedExtent = Math.max(computedGeneration, maxGeneration);
-  const computedEndX = ((Math.min(computedExtent, zoomEnd) - zoomStart) / zoomSpan) * containerWidth;
-  const computedStartX = ((Math.max(0, zoomStart) - zoomStart) / zoomSpan) * containerWidth;
+  const computedEndX = ((Math.min(computedExtent, viewEnd) - viewStart) / viewSpan) * containerWidth;
+  const computedStartX = ((Math.max(0, viewStart) - viewStart) / viewSpan) * containerWidth;
 
   // Seek to pixel position — RAF-coalesced so only one seek per frame
   const seekToX = useCallback((clientX: number) => {
@@ -401,8 +441,9 @@ export function Timeline() {
     if (!el) return;
     const rect = el.getBoundingClientRect();
     const x = Math.max(0, Math.min(clientX - rect.left, containerWidth));
-    const targetGen = Math.round(zoomStart + (x / containerWidth) * zoomSpan);
-    const clampedGen = Math.max(0, Math.min(targetGen, Math.max(computedGeneration, maxGeneration)));
+    const targetGen = Math.round(viewStart + (x / containerWidth) * viewSpan);
+    // Live mode: GPU can compute to any frame on demand — clamp to timeline duration, not computed extent
+    const clampedGen = Math.max(0, Math.min(targetGen, duration));
 
     pendingSeekRef.current = clampedGen;
     if (seekRafRef.current === null) {
@@ -414,13 +455,13 @@ export function Timeline() {
         }
       });
     }
-  }, [containerWidth, zoomStart, zoomSpan, maxGeneration]);
+  }, [containerWidth, viewStart, viewSpan, duration]);
 
   // Seek from mini-map click
   const seekToFrame = useCallback((frame: number) => {
-    const clampedGen = Math.max(0, Math.min(frame, Math.max(computedGeneration, maxGeneration)));
+    const clampedGen = Math.max(0, Math.min(frame, duration));
     commandRegistry.execute('sim.seek', { generation: clampedGen });
-  }, [maxGeneration]);
+  }, [duration]);
 
   const onPointerDown = useCallback((e: React.PointerEvent) => {
     if (isRunning) return;
@@ -448,9 +489,9 @@ export function Timeline() {
 
     // Horizontal scroll → scrub playhead
     if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
-      const frameDelta = Math.round((e.deltaX / containerWidth) * zoomSpan * 2);
+      const frameDelta = Math.round((e.deltaX / containerWidth) * viewSpan * 2);
       if (frameDelta !== 0) {
-        const target = Math.max(0, Math.min(generation + frameDelta, Math.max(computedGeneration, maxGeneration)));
+        const target = Math.max(0, Math.min(generation + frameDelta, duration));
         pendingSeekRef.current = target;
         if (seekRafRef.current === null) {
           seekRafRef.current = requestAnimationFrame(() => {
@@ -469,15 +510,15 @@ export function Timeline() {
     const rect = el.getBoundingClientRect();
     const cursorX = e.clientX - rect.left;
     const cursorFraction = cursorX / containerWidth;
-    const cursorFrame = zoomStart + cursorFraction * zoomSpan;
+    const cursorFrame = viewStart + cursorFraction * viewSpan;
 
     const factor = e.deltaY > 0 ? 1.2 : 1 / 1.2;
-    const newSpan = Math.max(10, Math.min(duration, zoomSpan * factor));
+    const newSpan = Math.max(10, viewSpan * factor);
 
     const newStart = cursorFrame - cursorFraction * newSpan;
-    const clampedStart = Math.max(0, Math.min(newStart, duration - newSpan));
+    const clampedStart = Math.max(0, newStart);
     uiStoreActions.setTimelineZoom(clampedStart, clampedStart + newSpan);
-  }, [containerWidth, zoomStart, zoomSpan, duration, generation, computedGeneration, maxGeneration]);
+  }, [containerWidth, viewStart, viewSpan]);
 
   // Click on timeline blurs any focused input (so keyboard shortcuts work again)
   const handleTimelineClick = useCallback(() => {
@@ -496,6 +537,8 @@ export function Timeline() {
         generation={generation}
         zoomStart={zoomStart}
         zoomEnd={zoomEnd}
+        bufferOldest={bufferOldestFrame}
+        bufferNewest={bufferNewestFrame}
         onSeek={seekToFrame}
       />
 
@@ -517,6 +560,18 @@ export function Timeline() {
             style={{ left: Math.max(0, computedStartX), width: Math.max(0, computedEndX - Math.max(0, computedStartX)) }}
           />
         )}
+
+        {/* Buffer window — cyan tint showing instantly-scrubbable range */}
+        {bufferOldestFrame >= 0 && bufferNewestFrame >= 0 && (() => {
+          const bufStartX = ((Math.max(bufferOldestFrame, viewStart) - viewStart) / viewSpan) * containerWidth;
+          const bufEndX = ((Math.min(bufferNewestFrame, viewEnd) - viewStart) / viewSpan) * containerWidth;
+          return bufEndX > bufStartX ? (
+            <div
+              className="absolute bottom-0 h-[2px] bg-cyan-400/40 pointer-events-none"
+              style={{ left: Math.max(0, bufStartX), width: Math.max(0, bufEndX - bufStartX) }}
+            />
+          ) : null;
+        })()}
 
         {/* Tick marks and labels */}
         {ticks.map((tick, i) => (

@@ -40,11 +40,6 @@ export function registerSimCommands(
     category: 'sim',
     params: NoParams,
     execute: async () => {
-      // Sync playback mode and timeline duration to controller before starting
-      const { timelineDuration, playbackMode } = useUiStore.getState();
-      controller.setPlaybackMode(playbackMode);
-      controller.setTimelineDuration(timelineDuration);
-      controller.computeAhead(timelineDuration);
       controller.play();
       return { success: true };
     },
@@ -149,10 +144,6 @@ export function registerSimCommands(
       if (controller.isPlaying()) {
         controller.pause();
       } else {
-        const { timelineDuration, playbackMode } = useUiStore.getState();
-        controller.setPlaybackMode(playbackMode);
-        controller.setTimelineDuration(timelineDuration);
-        controller.computeAhead(timelineDuration);
         controller.play();
       }
       return { success: true, data: { isRunning: controller.isPlaying() } };
@@ -182,6 +173,37 @@ export function registerSimCommands(
       controller.setTimelineDuration(frames);
       uiStoreActions.setTimelineDuration(frames);
       return { success: true, data: { duration: frames } };
+    },
+  });
+
+  // --- Buffer commands ---
+
+  const BufferResizeParams = z.object({
+    frames: z.number().int().min(10).max(5000),
+  }).describe('{ frames: number }');
+
+  registry.register({
+    name: 'buffer.resize',
+    description: 'Resize the circular frame buffer (clears existing data)',
+    category: 'sim',
+    params: BufferResizeParams,
+    execute: async (params) => {
+      const { frames } = params as z.infer<typeof BufferResizeParams>;
+      const buf = controller.getCircularBuffer();
+      buf.resize(frames);
+      return { success: true, data: { frames, memoryUsage: buf.memoryUsage } };
+    },
+  });
+
+  registry.register({
+    name: 'buffer.clear',
+    description: 'Clear the circular frame buffer',
+    category: 'sim',
+    params: NoParams,
+    execute: async () => {
+      const buf = controller.getCircularBuffer();
+      buf.clear();
+      return { success: true };
     },
   });
 

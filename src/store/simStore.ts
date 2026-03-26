@@ -79,6 +79,18 @@ export interface SimState {
   gpuMaxGridSize: number;
   /** Measured actual playback FPS (updated from render loop) */
   measuredFps: number;
+  /** Circular buffer: current frame count */
+  bufferSize: number;
+  /** Circular buffer: maximum capacity */
+  bufferCapacity: number;
+  /** Circular buffer: oldest frame index (-1 if empty) */
+  bufferOldestFrame: number;
+  /** Circular buffer: newest frame index (-1 if empty) */
+  bufferNewestFrame: number;
+  /** Circular buffer: estimated memory usage in bytes */
+  bufferMemoryUsage: number;
+  /** Circular buffer: bytes per frame */
+  bufferBytesPerFrame: number;
 }
 
 /** Default initial state */
@@ -104,6 +116,12 @@ const initialSimState: SimState = {
   gpuAdapter: null,
   gpuMaxGridSize: 0,
   measuredFps: 0,
+  bufferSize: 0,
+  bufferCapacity: 0,
+  bufferOldestFrame: -1,
+  bufferNewestFrame: -1,
+  bufferMemoryUsage: 0,
+  bufferBytesPerFrame: 0,
 };
 
 export const useSimStore = create<SimState>()(
@@ -194,5 +212,23 @@ export const simStoreActions = {
   /** Set GPU availability and adapter info */
   setGpuStatus: (available: boolean, adapter: string | null, maxGridSize: number): void => {
     useSimStore.setState({ gpuAvailable: available, gpuAdapter: adapter, gpuMaxGridSize: maxGridSize });
+  },
+  /** Update circular buffer status */
+  setBufferStatus: (status: {
+    size: number;
+    capacity: number;
+    oldestFrame: number;
+    newestFrame: number;
+    memoryUsage: number;
+    bytesPerFrame: number;
+  }): void => {
+    useSimStore.setState({
+      bufferSize: status.size,
+      bufferCapacity: status.capacity,
+      bufferOldestFrame: status.oldestFrame,
+      bufferNewestFrame: status.newestFrame,
+      bufferMemoryUsage: status.memoryUsage,
+      bufferBytesPerFrame: status.bytesPerFrame,
+    });
   },
 };

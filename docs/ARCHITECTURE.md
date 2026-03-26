@@ -491,6 +491,7 @@ Any surface (GUI click, CLI command, AI tool call, MCP request, API endpoint)
 GPU tick pipeline (per frame):
 ```
   0. Update env params uniform (current slider values)
+  0b. Interaction ops — BrushDispatcher applies active brush strokes to GPU buffer
   1. Rule stages (1..N compute dispatches, buffer swap after each)
      - Single-pass: 1 dispatch
      - Multi-stage: N dispatches (fire = 8 stages, 17 dispatches incl. Jacobi x10)
@@ -502,23 +503,87 @@ Operators within each phase are evaluated in dependency order (topological sort)
 Pre-rule link operators use JS rangeMap for speed. Post-rule code operators go through
 the Pyodide Python harness.
 
-### Compute-Ahead Pipeline
+### Live Mode & Circular Frame Buffer
 
-Frames are pre-computed into a cache so the timeline can be scrubbed instantly.
-Playback is decoupled from computation — the sim computes as fast as possible
-while playback runs at display FPS.
+The simulation runs in **live mode**: press play, the GPU ticks immediately, and a
+circular frame buffer fills behind the playhead. There is no pre-compute step.
 
-**Sync path** (TS/WASM rules, no expressions): `computeFrames()` runs entire
-chunks synchronously. The renderer never fires mid-chunk.
+**Live loop** (requestAnimationFrame-based):
+```
+  rAF callback:
+    1. Speed gate: skip if less than tickIntervalMs since last tick
+    2. GPU tick (1–4 ticks/frame depending on speed setting)
+    3. Render (GPU renderer reads directly from storage buffer — zero-copy)
+    4. Async readback → push snapshot to CircularFrameBuffer (non-blocking)
+    5. Emit sim:tick event
+    6. requestAnimationFrame → repeat
+```
 
-**Async path** (Python rules or post-rule expressions): `computeFramesAsync()`
-uses `await tickAsync()` per frame, which yields to the event loop (worker
-postMessage is a macrotask). To prevent the renderer from showing intermediate
-compute states, the grid's **display lock** (`Grid.lockDisplay()`) freezes a
-snapshot that `getDisplayBuffer()` returns while the live buffers advance freely.
+**CircularFrameBuffer** (`src/engine/buffer/CircularFrameBuffer.ts`):
+- Ring buffer of `FrameSnapshot` objects (absolute frame index + interleaved Float32Array clone)
+- Capacity auto-sized per grid: targets ~500MB RAM, clamped to [10, 2000] frames
+- Configurable via `buffer.resize` command or ControlBar slider
+- When full, oldest frame is overwritten — buffer window slides forward
+
+**Scrubbing**:
+- Within buffer window: instant restore via `uploadInterleaved()` (GPU upload of cached snapshot)
+- Beyond buffer window: restore nearest cached frame (or initial state), GPU-tick forward to target
+- Readback decimation: for large grids (>4MB/frame), readback runs every Nth tick to maintain framerate
+
+**Scrolling timeline**: during live playback, the playhead stays centered and the
+timeline scrolls underneath — infinite forward scroll, no fixed duration. The scroll
+is driven by a Zustand `subscribe` callback (synchronous with `setTick` in the same
+microtask) rather than a React effect, which is too slow to keep up with the rAF
+tick loop. Duration auto-grows as generation advances.
+
+**Live drawing**: brush input writes directly to the GPU read buffer via
+`writeCellDirect()` without pausing. Values are picked up by the next `tick()`.
+When paused, full undo history and `onGridEdited()` state sync are preserved.
 
 **Epoch-based cancellation**: `computeEpoch` increments on preset/resize changes.
-In-flight async loops check the epoch after each `await` and bail if stale.
+In-flight async readbacks check the epoch and discard stale results.
+
+### Brush System
+
+Property-aware GPU brushes for interactive painting. Brushes are runtime
+configurations — each brush defines a set of property actions (which cell
+properties to modify, by how much, and with what blend mode).
+
+**BrushDispatcher** (`src/engine/gpu/BrushDispatcher.ts`):
+A fixed WGSL compute shader that applies brush strokes on the GPU. Reads brush
+parameters from uniforms: center position, radius, shape (circle/square),
+falloff (hard/linear/smooth), and up to 16 property actions per brush. Each
+action specifies a target property buffer offset, a value, and a blend mode
+(set/add/multiply/random). Dispatched in 8×8 workgroups. Deterministic PCG
+hashing provides per-cell random values for the random blend mode.
+
+**Brush store** (`src/store/brushStore.ts`):
+Zustand store holding available brushes, active selection, radius override, and
+per-brush blend mode memory. Brushes are generated from preset cell properties
+at load time and can be added/removed at runtime via commands.
+
+**Interaction ops**: Brushes generate `phase: 'interaction'` expression tags in
+the scene graph. These ops are informational (the actual painting is done by
+BrushDispatcher), but they make brush effects visible in the pipeline and
+Inspector. The interaction phase executes at position 0 in the tick pipeline,
+before pre-rule and rule stages.
+
+**Live drawing**: Brush input writes directly to the GPU read buffer via
+`BrushDispatcher.dispatch()` each frame while `isDrawing` is true. No simulation
+pause required — values are picked up by the next `tick()`. When paused, edits
+go through the undo-capable `writeCellDirect()` path.
+
+**Commands**: `brush.select`, `brush.setRadius`, `brush.setBlendMode`,
+`brush.cycleNext`, `brush.cycleBlendMode`, `brush.radiusUp`, `brush.radiusDown`,
+`brush.add`, `brush.remove`, `brush.list`, `brush.edit`. All Three Surface
+Doctrine compliant.
+
+**Keyboard**: V = next brush, M = cycle blend mode, [ / ] = radius down/up.
+
+**BrushToolbar** (`src/components/hud/BrushToolbar.tsx`):
+HUD overlay showing brush selection buttons, blend mode selector (6 modes),
+radius slider, and property action summary. Material-colored cursor preview
+overlay shows brush radius and active color on the viewport.
 
 ### Debug Logging
 

@@ -21,7 +21,7 @@ const IdParams = z.object({
 
 const SetPhaseParams = z.object({
   id: z.string(),
-  phase: z.enum(['pre-rule', 'rule', 'post-rule']),
+  phase: z.enum(['pre-rule', 'rule', 'post-rule', 'interaction']),
 }).describe('{ id: string, phase: "pre-rule" | "rule" | "post-rule" }');
 
 const CopyParams = z.object({
@@ -34,7 +34,7 @@ const AddParams = z.object({
   source: z.enum(['code', 'link', 'script']), // 'link' accepted but creates 'code' op with linkMeta
   name: z.string().optional(),
   code: z.string().optional(),
-  phase: z.enum(['pre-rule', 'rule', 'post-rule']).optional(),
+  phase: z.enum(['pre-rule', 'rule', 'post-rule', 'interaction']).optional(),
   owner: z.object({ type: z.enum(['cell-type', 'environment', 'global', 'root']), id: z.string().optional() }).optional(),
   // code source
   property: z.string().optional(),
@@ -60,7 +60,7 @@ const EditParams = z.object({
   id: z.string(),
   code: z.string().optional(),
   name: z.string().optional(),
-  phase: z.enum(['pre-rule', 'rule', 'post-rule']).optional(),
+  phase: z.enum(['pre-rule', 'rule', 'post-rule', 'interaction']).optional(),
   sourceRange: z.tuple([z.number(), z.number()]).optional(),
   targetRange: z.tuple([z.number(), z.number()]).optional(),
   easing: z.enum(VALID_EASINGS).optional(),

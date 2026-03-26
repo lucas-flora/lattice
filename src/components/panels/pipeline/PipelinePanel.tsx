@@ -27,6 +27,7 @@ import { PipelineSection } from './PipelineSection';
 import { PipelineCodeView } from './PipelineCodeView';
 import { ContextMenu, type ContextMenuItem } from '../../shared/ContextMenu';
 import { AddObjectMenu } from '../../shared/AddObjectMenu';
+import { brushStoreActions } from '@/store/brushStore';
 
 type PipelineMode = 'list' | 'code';
 
@@ -67,7 +68,7 @@ function PipelineContent() {
     if (!ctrl) return [];
     const runner = ctrl.getGPURuleRunner();
     if (!runner) return [];
-    const raw = runner.getExecutionOrder();
+    const raw = runner.getExecutionOrder(ops);
     for (const entry of raw) {
       if (entry.type === 'rule-stage') {
         const match = ops.find((o) => o.phase === 'rule' && o.name.includes(entry.sourceId!));
@@ -88,6 +89,7 @@ function PipelineContent() {
     return null;
   }, [sceneNodes]);
 
+  const interactionOps = useMemo(() => entries.filter((e) => e.type === 'interaction-op'), [entries]);
   const preRuleOps = useMemo(() => entries.filter((e) => e.type === 'pre-rule-op'), [entries]);
   const ruleStages = useMemo(() => entries.filter((e) => e.type === 'rule-stage'), [entries]);
   const postRuleOps = useMemo(() => entries.filter((e) => e.type === 'post-rule-op'), [entries]);
@@ -98,6 +100,16 @@ function PipelineContent() {
       uiStoreActions.focusOp(null);
       uiStoreActions.selectPipelineEntry(null);
       sceneStoreActions.select(visualNodeId);
+    } else if (entry.type === 'interaction-op') {
+      // Sync brush toolbar: select the brush matching this interaction op
+      const brushIdx = interactionOps.indexOf(entry);
+      if (brushIdx >= 0) brushStoreActions.selectByIndex(brushIdx);
+      if (entry.opId) {
+        const parentNode = Object.values(sceneNodes).find((n) => n.tags.includes(entry.opId!));
+        if (parentNode) sceneStoreActions.select(parentNode.id);
+        uiStoreActions.focusOp(entry.opId);
+        uiStoreActions.selectPipelineEntry(null);
+      }
     } else if (entry.opId) {
       const parentNode = Object.values(sceneNodes).find((n) => n.tags.includes(entry.opId!));
       if (parentNode) sceneStoreActions.select(parentNode.id);
@@ -170,7 +182,7 @@ function PipelineContent() {
 
   // Build context menu items for an entry
   const getCtxItems = useCallback((entry: PipelineEntry): ContextMenuItem[] => {
-    const isOp = entry.type === 'post-rule-op' || entry.type === 'pre-rule-op';
+    const isOp = entry.type === 'post-rule-op' || entry.type === 'pre-rule-op' || entry.type === 'interaction-op';
     const phaseEntries = entries.filter((e) => e.phase === entry.phase);
     const idxInPhase = phaseEntries.findIndex((e) => e.id === entry.id);
 
@@ -277,6 +289,17 @@ function PipelineContent() {
       {mode === 'list' ? (
         <div className="flex-1 overflow-y-auto py-1 pl-1">
           <PipelineSection
+            title="Interaction"
+            entries={interactionOps}
+            executionContext="gpu"
+            selectedId={focusedOpId ?? selectedPipelineEntryId}
+            onSelectEntry={handleSelectEntry}
+            onToggleEnabled={handleToggleEnabled}
+            onEntryContextMenu={handleEntryContextMenu}
+            isFirstSection
+            isLastSection={preRuleOps.length === 0 && ruleStages.length === 0 && postRuleOps.length === 0 && visualMappings.length === 0}
+          />
+          <PipelineSection
             title="Pre-Rule Ops"
             entries={preRuleOps}
             executionContext="cpu"
@@ -285,7 +308,7 @@ function PipelineContent() {
             onToggleEnabled={handleToggleEnabled}
             onReorder={handleReorder}
             onEntryContextMenu={handleEntryContextMenu}
-            isFirstSection
+            isFirstSection={interactionOps.length === 0}
             isLastSection={ruleStages.length === 0 && postRuleOps.length === 0 && visualMappings.length === 0}
           />
           <PipelineSection
@@ -297,7 +320,7 @@ function PipelineContent() {
             onToggleEnabled={handleToggleEnabled}
             onReorder={handleReorder}
             onEntryContextMenu={handleEntryContextMenu}
-            isFirstSection={preRuleOps.length === 0}
+            isFirstSection={interactionOps.length === 0 && preRuleOps.length === 0}
             isLastSection={postRuleOps.length === 0 && visualMappings.length === 0}
           />
           <PipelineSection
@@ -309,7 +332,7 @@ function PipelineContent() {
             onToggleEnabled={handleToggleEnabled}
             onReorder={handleReorder}
             onEntryContextMenu={handleEntryContextMenu}
-            isFirstSection={preRuleOps.length === 0 && ruleStages.length === 0}
+            isFirstSection={interactionOps.length === 0 && preRuleOps.length === 0 && ruleStages.length === 0}
             isLastSection={visualMappings.length === 0}
           />
           <PipelineSection
@@ -320,7 +343,7 @@ function PipelineContent() {
             onSelectEntry={handleSelectEntry}
             onToggleEnabled={handleToggleEnabled}
             onEntryContextMenu={handleEntryContextMenu}
-            isFirstSection={preRuleOps.length === 0 && ruleStages.length === 0 && postRuleOps.length === 0}
+            isFirstSection={interactionOps.length === 0 && preRuleOps.length === 0 && ruleStages.length === 0 && postRuleOps.length === 0}
             isLastSection
           />
         </div>

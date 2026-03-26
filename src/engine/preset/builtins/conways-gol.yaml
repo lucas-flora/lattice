@@ -14,6 +14,28 @@ grid:
   height: 128
   topology: "toroidal"
 
+brushes:
+  - name: "Place Cells"
+    properties:
+      alive: { value: 1, mode: "set" }
+    radius: 1
+    shape: "square"
+    falloff: "hard"
+
+  - name: "Kill Cells"
+    properties:
+      alive: { value: 0, mode: "set" }
+    radius: 1
+    shape: "square"
+    falloff: "hard"
+
+  - name: "Spray"
+    properties:
+      alive: { value: 1, mode: "set" }
+    radius: 5
+    shape: "circle"
+    falloff: "hard"
+
 cell_properties:
   - name: "alive"
     type: "bool"

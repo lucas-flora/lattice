@@ -23,6 +23,8 @@ import { sceneStoreActions } from '../store/sceneStore';
  * Returns a cleanup function that removes all listeners.
  */
 export function wireStores(eventBus: EventBus): () => void {
+  const INITIAL_TIMELINE_SPAN = 256;
+
   // --- simStore wiring ---
   const onTick = (payload: { generation: number; liveCellCount: number }) => {
     simStoreActions.setTick(payload.generation, payload.liveCellCount);
@@ -41,6 +43,9 @@ export function wireStores(eventBus: EventBus): () => void {
     // Reset generation/playback state on preset load
     simStoreActions.resetState();
     simStoreActions.setActivePreset(payload.name, payload.width, payload.height);
+    // Reset timeline to starting position for live mode
+    uiStoreActions.setTimelineDuration(INITIAL_TIMELINE_SPAN);
+    uiStoreActions.setTimelineZoom(0, INITIAL_TIMELINE_SPAN);
     if (payload.cellProperties) {
       simStoreActions.setCellProperties(payload.cellProperties as Array<{ name: string; type: 'bool' | 'int' | 'float' | 'vec2' | 'vec3' | 'vec4'; default: number | number[]; role?: string; isInherent?: boolean }>);
     }
@@ -51,6 +56,9 @@ export function wireStores(eventBus: EventBus): () => void {
 
   const onReset = () => {
     simStoreActions.resetState();
+    // Reset timeline to frame 0 with clean initial span
+    uiStoreActions.setTimelineDuration(INITIAL_TIMELINE_SPAN);
+    uiStoreActions.setTimelineZoom(0, INITIAL_TIMELINE_SPAN);
   };
 
   const onSpeedChange = (payload: { fps: number }) => {
@@ -107,6 +115,17 @@ export function wireStores(eventBus: EventBus): () => void {
     uiStoreActions.setTimelineDuration(payload.duration);
   };
 
+  const onBufferStatus = (payload: {
+    size: number;
+    capacity: number;
+    oldestFrame: number;
+    newestFrame: number;
+    memoryUsage: number;
+    bytesPerFrame: number;
+  }) => {
+    simStoreActions.setBufferStatus(payload);
+  };
+
   // Subscribe to all events
   eventBus.on('sim:tick', onTick);
   eventBus.on('sim:play', onPlay);
@@ -120,6 +139,7 @@ export function wireStores(eventBus: EventBus): () => void {
   eventBus.on('sim:paramsReset', onParamsReset);
   eventBus.on('sim:paramDefsChanged', onParamDefsChanged);
   eventBus.on('sim:timelineExtend', onTimelineExtend);
+  eventBus.on('sim:bufferStatus', onBufferStatus);
   eventBus.on('view:change', onViewChange);
   eventBus.on('ui:change', onUiChange);
 
@@ -216,6 +236,7 @@ export function wireStores(eventBus: EventBus): () => void {
     eventBus.off('sim:paramsReset', onParamsReset);
     eventBus.off('sim:paramDefsChanged', onParamDefsChanged);
     eventBus.off('sim:timelineExtend', onTimelineExtend);
+    eventBus.off('sim:bufferStatus', onBufferStatus);
     eventBus.off('view:change', onViewChange);
     eventBus.off('ui:change', onUiChange);
     eventBus.off('pyodide:loading', onPyodideLoading);

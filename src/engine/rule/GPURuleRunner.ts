@@ -24,6 +24,8 @@ import { generateWGSL, type WGSLCodegenConfig } from '../ir/WGSLCodegen';
 import type { IRProgram } from '../ir/types';
 import { parsePython, ParseError } from '../ir/PythonParser';
 import { compileRampToIR, type RampMapping } from '../ir/RampCompiler';
+import { BrushDispatcher } from '../gpu/BrushDispatcher';
+import type { Brush } from '../../store/brushStore';
 import { logGPU } from '../../lib/debugLog';
 
 /** Compiled expression tag pass (post-rule) */
@@ -51,9 +53,9 @@ export interface PipelineEntry {
   /** Display name */
   name: string;
   /** Pipeline category */
-  type: 'pre-rule-op' | 'rule-stage' | 'post-rule-op' | 'visual-mapping';
+  type: 'interaction-op' | 'pre-rule-op' | 'rule-stage' | 'post-rule-op' | 'visual-mapping';
   /** Pipeline phase */
-  phase: 'pre-rule' | 'rule' | 'post-rule' | 'visual';
+  phase: 'interaction' | 'pre-rule' | 'rule' | 'post-rule' | 'visual';
   enabled: boolean;
   /** CPU for pre-rule link ops, GPU for everything else */
   executionContext: 'cpu' | 'gpu';
@@ -89,6 +91,16 @@ export class GPURuleRunner {
   private _hasVisualMappingPass = false;
   /** Current env param values (updated by controller, read during tick) */
   private currentEnvParams: Record<string, number> = {};
+  /** GPU brush dispatcher — applies brush before rule stages */
+  private brushDispatcher: BrushDispatcher;
+  /** Current brush drawing state (set by controller each frame) */
+  private brushState: {
+    isDrawing: boolean;
+    cursorX: number;
+    cursorY: number;
+    brush: Brush | null;
+    radius: number;
+  } = { isDrawing: false, cursorX: 0, cursorY: 0, brush: null, radius: 3 };
 
   constructor(grid: Grid, preset: PresetConfig) {
     this.grid = grid;
@@ -96,6 +108,7 @@ export class GPURuleRunner {
     this.bufferManager = new BufferManager();
     this.shaderCompiler = new ShaderCompiler();
     this.computeDispatcher = new ComputeDispatcher(this.shaderCompiler);
+    this.brushDispatcher = new BrushDispatcher(this.shaderCompiler);
   }
 
   /**
@@ -218,6 +231,9 @@ export class GPURuleRunner {
 
     // 11. Run expression/visual passes once to compute colorR/G/B for the initial frame
     this.runExpressionPasses();
+
+    // 12. Initialize brush dispatcher (writes in-place to read buffer before rule stages)
+    this.brushDispatcher.initialize(width, height, this.bufferManager.getReadBuffer());
 
     const totalDispatches = this.ruleStages.reduce((n, s) => n + s.iterations, 0);
     logGPU(`GPURuleRunner initialized: ${presetName} (${width}×${height}, stride=${this.bufferManager.stride}, ${this.ruleStages.length} rule stages (${totalDispatches} dispatches/tick), ${this.expressionPasses.length} expr passes)`);
@@ -486,6 +502,22 @@ export class GPURuleRunner {
     this.generation++;
     this.bufferManager.updateParams(this.getEnvParamsObject());
 
+    // Brush dispatch — writes in-place to read buffer before rule stages process it
+    if (this.brushState.isDrawing && this.brushState.brush) {
+      this.brushDispatcher.rebindGridBuffer(this.bufferManager.getReadBuffer());
+      const encoder = this.computeDispatcher.beginCommandEncoder('brush');
+      this.brushDispatcher.dispatch(
+        encoder,
+        this.brushState.cursorX,
+        this.brushState.cursorY,
+        this.brushState.brush,
+        this.brushState.radius,
+        this.bufferManager.stride,
+        this.propertyLayout,
+      );
+      this.computeDispatcher.submit(encoder);
+    }
+
     // Rule stages (each dispatches N iterations with buffer swaps)
     for (const stage of this.ruleStages) {
       if (!stage.enabled) continue;
@@ -581,9 +613,28 @@ export class GPURuleRunner {
    * Matches the actual execution order in tick():
    *   pre-rule ops (CPU) → rule stages (GPU) → post-rule expression passes (GPU) → visual mapping (GPU)
    */
-  getExecutionOrder(): PipelineEntry[] {
+  getExecutionOrder(allTags?: Array<{ id: string; name: string; phase: string; enabled: boolean }>): PipelineEntry[] {
     const entries: PipelineEntry[] = [];
     let idx = 0;
+
+    // 0. Interaction ops — brush-driven, run when drawing (before everything)
+    if (allTags) {
+      for (const tag of allTags) {
+        if (tag.phase === 'interaction') {
+          entries.push({
+            id: `interaction-${tag.name}`,
+            name: tag.name,
+            type: 'interaction-op',
+            phase: 'interaction',
+            enabled: tag.enabled !== false,
+            executionContext: 'gpu',
+            sourceId: tag.name,
+            opId: tag.id,
+            index: idx++,
+          });
+        }
+      }
+    }
 
     // 1. Pre-rule ops — link-sourced fast-path evaluations (CPU)
     const tags = this.preset.expression_tags;
@@ -786,6 +837,14 @@ export class GPURuleRunner {
   }
 
   /**
+   * Upload already-interleaved data directly to the GPU read buffer.
+   * Used for restoring circular buffer snapshots — skip the per-property packing step.
+   */
+  uploadInterleaved(data: Float32Array): void {
+    this.bufferManager.uploadToRead(data);
+  }
+
+  /**
    * Unpack GPU readback data into the Grid's CPU buffers.
    */
   applyToGrid(interleavedData: Float32Array): void {
@@ -803,6 +862,14 @@ export class GPURuleRunner {
     }
   }
 
+  /**
+   * Set the brush drawing state. Called by the controller each frame.
+   * When isDrawing is true, the brush compute shader runs before rule stages.
+   */
+  setBrushState(isDrawing: boolean, cursorX: number, cursorY: number, brush: Brush | null, radius: number): void {
+    this.brushState = { isDrawing, cursorX, cursorY, brush, radius };
+  }
+
   /** Update env params in the uniform buffer */
   updateParams(envParams: Record<string, number>, generation: number, dt: number): void {
     this.generation = generation;
@@ -811,6 +878,7 @@ export class GPURuleRunner {
 
   /** Clean up all GPU resources */
   destroy(): void {
+    this.brushDispatcher.destroy();
     this.bufferManager.destroy();
     this.ruleStages = [];
   }

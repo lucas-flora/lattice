@@ -1,6 +1,6 @@
 # Fire — staged fluid-combustion simulation with velocity field.
 # GPU-native via Python transpiler -> IR -> WGSL.
-# Physics: upwind advection, diffusion, combustion, buoyancy, pressure projection, cooling.
+# Physics: advection, diffusion, combustion, buoyancy, pressure projection, vorticity, cooling.
 # Colors computed by visual_mapping script (not the rule).
 
 schema_version: "1"
@@ -13,11 +13,55 @@ meta:
 
 grid:
   dimensionality: "2d"
-  width: 512
-  height: 512
+  width: 256
+  height: 256
   topology: "finite"
 
 draw_property: "fuel"
+
+brushes:
+  - name: "Fuel"
+    properties:
+      fuel: { value: 1.0, mode: "set" }
+      temperature: { value: 0.2, mode: "add" }
+    radius: 8
+    shape: "circle"
+    falloff: "smooth"
+
+  - name: "Cold Fuel"
+    properties:
+      fuel: { value: 1.0, mode: "set" }
+    radius: 8
+    shape: "circle"
+    falloff: "smooth"
+
+  - name: "Heat"
+    properties:
+      temperature: { value: 0.8, mode: "add" }
+    radius: 12
+    shape: "circle"
+    falloff: "smooth"
+
+  - name: "Burner"
+    properties:
+      material: { value: 4, mode: "set" }
+      fuel: { value: 1.0, mode: "set" }
+      temperature: { value: 0.8, mode: "set" }
+    radius: 3
+    shape: "square"
+    falloff: "hard"
+
+  - name: "Eraser"
+    properties:
+      material: { value: 0, mode: "set" }
+      fuel: { value: 0, mode: "set" }
+      temperature: { value: 0, mode: "set" }
+      smoke: { value: 0, mode: "set" }
+      vx: { value: 0, mode: "set" }
+      vy: { value: 0, mode: "set" }
+    radius: 10
+    shape: "circle"
+    falloff: "hard"
 
 cell_properties:
   - name: "vx"
@@ -48,19 +92,23 @@ cell_properties:
     type: "float"
     default: 0.0
     role: "input_output"
+  - name: "material"
+    type: "int"
+    default: 0
+    role: "input_output"
 
 params:
   - name: "dt"
     label: "Time Step"
     type: "float"
-    default: 0.1
+    default: 0.20
     min: 0.01
     max: 0.5
     step: 0.01
   - name: "diffusion_rate"
     label: "Diffusion"
     type: "float"
-    default: 0.0002
+    default: 0.001
     min: 0.0
     max: 0.01
     step: 0.0001
@@ -81,28 +129,28 @@ params:
   - name: "smoke_generation"
     label: "Smoke Generation"
     type: "float"
-    default: 1.5
+    default: 2.0
     min: 0.0
     max: 5.0
     step: 0.1
   - name: "buoyancy_factor"
     label: "Buoyancy"
     type: "float"
-    default: 1.5
+    default: 3.0
     min: 0.0
-    max: 5.0
+    max: 10.0
     step: 0.1
   - name: "cooling_rate"
     label: "Cooling Rate"
     type: "float"
-    default: 1.2
+    default: 0.80
     min: 0.1
     max: 5.0
     step: 0.1
   - name: "smoke_dissipation"
     label: "Smoke Dissipation"
     type: "float"
-    default: 0.15
+    default: 0.16
     min: 0.01
     max: 2.0
     step: 0.05
@@ -116,37 +164,61 @@ params:
   - name: "vorticity_strength"
     label: "Vorticity"
     type: "float"
-    default: 15.0
-    min: 0.0
+    default: 6.0
+    min: -10.0
     max: 40.0
     step: 0.5
   - name: "max_temp"
     label: "Max Temperature"
     type: "float"
-    default: 5.0
+    default: 10.0
     min: 1.0
     max: 20.0
     step: 0.5
+  - name: "emitter_strength"
+    label: "Emitter Strength"
+    type: "float"
+    default: 2.3
+    min: 0.1
+    max: 5.0
+    step: 0.1
 
 rule:
   type: "webgpu"
   stages:
-    # Stage 1: Upwind advection — move fields along velocity
+    # Stage 1: Emitters — burners regenerate fuel + heat each tick
+    - name: "emitters"
+      compute: |
+        is_burner = step(3.5, material) * step(material, 4.5)
+        self.fuel = fuel + is_burner * (1.0 - fuel)
+        self.temperature = temperature + is_burner * max(env_emitter_strength - temperature, 0.0)
+        # Spread fuel upward from burner: check cells 1, 2, 3 below me
+        b1_mat = neighbor_at(0, -1, material)
+        b2_mat = neighbor_at(0, -2, material)
+        b3_mat = neighbor_at(0, -3, material)
+        near_burner = step(3.5, b1_mat) * step(b1_mat, 4.5)
+        near_burner2 = step(3.5, b2_mat) * step(b2_mat, 4.5)
+        near_burner3 = step(3.5, b3_mat) * step(b3_mat, 4.5)
+        any_burner_below = clamp(near_burner + near_burner2 * 0.7 + near_burner3 * 0.4, 0.0, 1.0)
+        is_empty = step(material, 0.5)
+        self.fuel = self.fuel + any_burner_below * is_empty * env_emitter_strength * 0.5
+        self.temperature = self.temperature + any_burner_below * is_empty * env_emitter_strength * 0.4
+
+    # Stage 2: Upwind advection — move fields along velocity
     - name: "advection"
       compute: |
-        # Upwind advection for temperature, fuel, smoke
-        # Select upstream neighbor based on velocity direction
+        is_burner = step(3.5, material)
+        is_fluid = 1.0 - is_burner
         up_t = mix(neighbor_at(0, -1, temperature), neighbor_at(0, 1, temperature), step(0.0, vy))
         lr_t = mix(neighbor_at(-1, 0, temperature), neighbor_at(1, 0, temperature), step(0.0, vx))
         up_f = mix(neighbor_at(0, -1, fuel), neighbor_at(0, 1, fuel), step(0.0, vy))
         lr_f = mix(neighbor_at(-1, 0, fuel), neighbor_at(1, 0, fuel), step(0.0, vx))
         up_s = mix(neighbor_at(0, -1, smoke), neighbor_at(0, 1, smoke), step(0.0, vy))
         lr_s = mix(neighbor_at(-1, 0, smoke), neighbor_at(1, 0, smoke), step(0.0, vx))
-        spd = clamp((abs(vx) + abs(vy)) * env_dt, 0.0, 0.45)
+        spd = clamp((abs(vx) + abs(vy)) * env_dt, 0.0, 0.85) * is_fluid
         self.temperature = mix(temperature, (up_t + lr_t) * 0.5, spd)
-        self.fuel = fuel
+        self.fuel = mix(fuel, (up_f + lr_f) * 0.5, spd)
         self.smoke = mix(smoke, (up_s + lr_s) * 0.5, spd)
-        # Advect velocity itself
         up_vx = mix(neighbor_at(0, -1, vx), neighbor_at(0, 1, vx), step(0.0, vy))
         lr_vx = mix(neighbor_at(-1, 0, vx), neighbor_at(1, 0, vx), step(0.0, vx))
         up_vy = mix(neighbor_at(0, -1, vy), neighbor_at(0, 1, vy), step(0.0, vy))
@@ -154,75 +226,79 @@ rule:
         self.vx = mix(vx, (up_vx + lr_vx) * 0.5, spd)
         self.vy = mix(vy, (up_vy + lr_vy) * 0.5, spd)
 
-    # Stage 2: Diffusion + Combustion + Buoyancy
+    # Stage 3: Diffusion + Combustion + Buoyancy
     - name: "forces"
       compute: |
-        # Diffusion: Laplacian for temperature and smoke
+        is_burner = step(3.5, material)
+        # Diffusion
         lap_t = neighbor_at(1,0,temperature) + neighbor_at(-1,0,temperature) + neighbor_at(0,1,temperature) + neighbor_at(0,-1,temperature) - 4.0 * temperature
         lap_s = neighbor_at(1,0,smoke) + neighbor_at(-1,0,smoke) + neighbor_at(0,1,smoke) + neighbor_at(0,-1,smoke) - 4.0 * smoke
         new_temp = temperature + env_diffusion_rate * lap_t
         new_smoke = smoke + env_diffusion_rate * lap_s * 0.5
-        # Combustion: fuel + heat -> more heat + smoke
+        # Combustion
         burning = step(env_ignition_threshold, new_temp) * step(0.001, fuel)
         burn_amount = min(fuel, env_burn_rate * env_dt) * burning
         new_temp = new_temp + burn_amount * env_heat_generation
         new_smoke = new_smoke + burn_amount * env_smoke_generation
         new_fuel = fuel - burn_amount
-        # Buoyancy: hot gas rises (negative vy = upward in screen coords)
-        self.vy = vy - env_buoyancy_factor * new_temp * env_dt
-        self.vx = vx
+        # Buoyancy: hot gas rises
+        buoy = (1.0 - is_burner) * env_buoyancy_factor * new_temp * env_dt
+        # Entrainment: horizontal convergence toward heat — pinches flame into a point
+        # Look at temperature gradient left/right — pull toward hotter neighbor
+        t_left = neighbor_at(-1, 0, temperature)
+        t_right = neighbor_at(1, 0, temperature)
+        entrain = (t_left - t_right) * env_buoyancy_factor * env_dt * 0.3
+        self.vy = vy - buoy
+        self.vx = (vx + entrain) * (1.0 - is_burner)
         self.temperature = clamp(new_temp, 0.0, env_max_temp)
         self.fuel = clamp(new_fuel, 0.0, 1.0)
         self.smoke = clamp(new_smoke, 0.0, 1.0)
 
-    # Stage 3: Pressure solve — store divergence in curl (reused), reset pressure
+    # Stage 4: Pressure solve
     - name: "pressure_setup"
       compute: |
-        # Store velocity divergence in curl field (curl unused until vorticity M4)
         self.curl = (neighbor_at(1,0,vx) - neighbor_at(-1,0,vx) + neighbor_at(0,1,vy) - neighbor_at(0,-1,vy)) * 0.5
         self.pressure = 0.0
 
-    # Stage 4: Jacobi iteration for pressure (reads divergence from curl)
+    # Stage 5: Jacobi iteration for pressure
     - name: "pressure_jacobi"
       iterations: 10
       compute: |
-        # One Jacobi iteration: p = (sum_neighbors(p) - divergence) / 4
         p_sum = neighbor_at(1,0,pressure) + neighbor_at(-1,0,pressure) + neighbor_at(0,1,pressure) + neighbor_at(0,-1,pressure)
         self.pressure = (p_sum - curl) * 0.25
 
-    # Stage 5: Pressure projection — subtract pressure gradient from velocity
+    # Stage 6: Pressure projection
     - name: "pressure_project"
       compute: |
+        is_burner = step(3.5, material)
         grad_px = (neighbor_at(1,0,pressure) - neighbor_at(-1,0,pressure)) * 0.5
         grad_py = (neighbor_at(0,1,pressure) - neighbor_at(0,-1,pressure)) * 0.5
-        self.vx = vx - grad_px
-        self.vy = vy - grad_py
+        self.vx = (vx - grad_px) * (1.0 - is_burner)
+        self.vy = (vy - grad_py) * (1.0 - is_burner)
 
-    # Stage 6: Vorticity compute — curl of velocity field
+    # Stage 7: Vorticity compute
     - name: "vorticity_compute"
       compute: |
-        # Curl = dvy/dx - dvx/dy (scalar in 2D)
         self.curl = (neighbor_at(1,0,vy) - neighbor_at(-1,0,vy)) * 0.5 - (neighbor_at(0,1,vx) - neighbor_at(0,-1,vx)) * 0.5
 
-    # Stage 7: Vorticity confinement — re-inject rotational energy
+    # Stage 8: Vorticity confinement
     - name: "vorticity_apply"
       compute: |
-        # Gradient of |curl| — points from low to high vorticity
         eta_x = abs(neighbor_at(1,0,curl)) - abs(neighbor_at(-1,0,curl))
         eta_y = abs(neighbor_at(0,1,curl)) - abs(neighbor_at(0,-1,curl))
         eta_len = sqrt(eta_x * eta_x + eta_y * eta_y) + 0.00001
         nx = eta_x / eta_len
         ny = eta_y / eta_len
-        # Confinement force: cross product of normalized eta with curl
         self.vx = vx + env_vorticity_strength * ny * curl * env_dt
         self.vy = vy + env_vorticity_strength * (0.0 - nx) * curl * env_dt
 
-    # Stage 8: Cooling and decay
+    # Stage 9: Cooling and decay
     - name: "cooling"
       compute: |
-        self.temperature = clamp(temperature * (1.0 - env_cooling_rate * env_dt), 0.0, env_max_temp)
+        is_emitter = step(3.5, material)
+        cool_factor = (1.0 - is_emitter) * env_cooling_rate * env_dt
+        self.temperature = clamp(temperature * (1.0 - cool_factor), 0.0, env_max_temp)
         self.smoke = clamp(smoke * (1.0 - env_smoke_dissipation * env_dt), 0.0, 1.0)
-        # Clamp velocity for numerical stability
         self.vx = clamp(vx * 0.998, -5.0, 5.0)
         self.vy = clamp(vy * 0.998, -5.0, 5.0)
 
@@ -230,76 +306,80 @@ visual_mappings:
   - type: "script"
     code: |
       t = clamp(temperature / env_max_temp, 0.0, 1.0)
-      # Fire: black → dark red → orange → yellow-white (red always dominant)
-      fr = smoothstep(0.0, 0.15, t)
-      fg = t * t * 0.7
-      fb = pow(t, 4.0) * 0.5
-      # Fuel: dark brown, fades as temperature rises
-      fuel_show = step(0.01, fuel) * (1.0 - smoothstep(0.0, 0.2, t))
-      # Smoke: gray wisps, visible where not hot
-      smoke_show = clamp(smoke, 0.0, 1.0) * (1.0 - t)
-      gray = 0.3 + smoke * 0.1
-      # Combine layers
-      self.colorR = fr + fuel_show * 0.22 + smoke_show * gray
-      self.colorG = fg + fuel_show * 0.11 + smoke_show * gray
-      self.colorB = fb + fuel_show * 0.03 + smoke_show * (gray + 0.02)
-      self.alpha = clamp(t * 4.0 + smoke_show + fuel_show, 0.0, 1.0)
+      is_burner = step(3.5, material) * step(material, 4.5)
+      is_gas = 1.0 - is_burner
+      # Fire: black -> deep red -> orange -> yellow -> white-hot
+      fr = smoothstep(0.0, 0.1, t) * is_gas
+      fg = smoothstep(0.15, 0.5, t) * 0.85 * is_gas
+      fb = smoothstep(0.4, 0.9, t) * 0.6 * is_gas
+      core = smoothstep(0.6, 1.0, t) * is_gas
+      fr = fr + core * (1.0 - fr) * 0.5
+      fg = fg + core * (1.0 - fg) * 0.4
+      fb = fb + core * (1.0 - fb) * 0.3
+      # Fuel: dark amber
+      fuel_show = step(0.01, fuel) * (1.0 - smoothstep(0.0, 0.15, t)) * is_gas
+      # Smoke: gray wisps, only visible where NOT hot
+      smoke_show = clamp(smoke, 0.0, 1.0) * smoothstep(0.0, 0.05, smoke) * (1.0 - smoothstep(0.0, 0.3, t)) * is_gas
+      gray = 0.35 + smoke * 0.15
+      fire_r = fr + fuel_show * 0.25 + smoke_show * gray
+      fire_g = fg + fuel_show * 0.12 + smoke_show * gray
+      fire_b = fb + fuel_show * 0.03 + smoke_show * (gray + 0.03)
+      fire_a = clamp(smoothstep(0.0, 0.1, t) * 3.0 + smoke_show * 0.6 + fuel_show, 0.0, 1.0) * is_gas
+      # Burner: orange glow
+      burn_r = is_burner * 1.0
+      burn_g = is_burner * 0.5
+      burn_b = is_burner * 0.1
+      burn_a = is_burner
+      self.colorR = fire_r + burn_r
+      self.colorG = fire_g + burn_g
+      self.colorB = fire_b + burn_b
+      self.alpha = fire_a + burn_a
 
 initial_state:
   type: "script"
   code: |
     const fuel = buffers.fuel;
     const temp = buffers.temperature;
-    fuel.fill(0.0);
-    temp.fill(0.0);
-    const bedTop = Math.floor(height * 0.30);
-    for (let y = 0; y < bedTop; y++) {
-      for (let x = 0; x < width; x++) {
-        const edgeNoise = Math.sin(x * 0.15) * 3 + Math.sin(x * 0.07) * 5;
-        if (y < bedTop + edgeNoise - 4) {
-          fuel[y * width + x] = 0.6 + Math.random() * 0.4;
+    const mat = buffers.material;
+    fuel.fill(0); temp.fill(0); mat.fill(0);
+    function set(x, y, props) {
+      if (x < 0 || x >= width || y < 0 || y >= height) return;
+      const i = y * width + x;
+      if (props.fuel !== undefined) fuel[i] = props.fuel;
+      if (props.temp !== undefined) temp[i] = props.temp;
+      if (props.mat !== undefined) mat[i] = props.mat;
+    }
+    function rect(x0, y0, w, h, props) {
+      for (let dy = 0; dy < h; dy++)
+        for (let dx = 0; dx < w; dx++)
+          set(x0 + dx, y0 + dy, props);
+    }
+    // Scene 1 (left): Small burner
+    const cx = Math.floor(width * 0.15);
+    rect(cx - 2, 2, 5, 3, { mat: 4, fuel: 1, temp: 0.8 });
+    // Scene 2 (center): Fuel pile — dome shape with ignition
+    const fx = Math.floor(width * 0.45);
+    const pileW = Math.floor(width * 0.12);
+    const pileH = Math.floor(height * 0.08);
+    for (let y = 0; y < pileH; y++) {
+      for (let x = -pileW; x <= pileW; x++) {
+        const d = Math.abs(x) / pileW;
+        if (y < pileH * (1 - d * d) + Math.random() * 2) {
+          set(fx + x, 2 + y, { fuel: 0.5 + Math.random() * 0.5 });
         }
       }
     }
-    const numPiles = 6 + Math.floor(width / 80);
-    for (let p = 0; p < numPiles; p++) {
-      const px = Math.floor(width * 0.05 + Math.random() * width * 0.9);
-      const py = Math.floor(Math.random() * bedTop * 0.7);
-      const pw = Math.floor(8 + Math.random() * (width * 0.08));
-      const ph = Math.floor(4 + Math.random() * (height * 0.04));
-      for (let by = 0; by < ph; by++) {
-        for (let bx = 0; bx < pw; bx++) {
-          const gx = px + bx - Math.floor(pw / 2);
-          const gy = py + by;
-          if (gx >= 0 && gx < width && gy >= 0 && gy < height) {
-            fuel[gy * width + gx] = Math.min(1.0, fuel[gy * width + gx] + 0.3 + Math.random() * 0.2);
-          }
-        }
-      }
-    }
-    const numIgnitions = 3 + Math.floor(width / 100);
-    for (let i = 0; i < numIgnitions; i++) {
-      const ix = Math.floor(width * 0.1 + (width * 0.8) * (i / (numIgnitions - 1)));
-      const iy = bedTop - 2;
-      const igRadius = Math.max(2, Math.floor(width / 100));
-      for (let dy = -igRadius; dy <= igRadius; dy++) {
-        for (let dx = -igRadius; dx <= igRadius; dx++) {
-          if (dx * dx + dy * dy <= igRadius * igRadius) {
-            const gx = ix + dx;
-            const gy = iy + dy;
-            if (gx >= 0 && gx < width && gy >= 0 && gy < height) {
-              temp[gy * width + gx] = 0.4 + Math.random() * 0.2;
-            }
-          }
-        }
-      }
-    }
+    for (let dx = -4; dx <= 4; dx++) set(fx + dx, 2 + pileH - 2, { temp: 0.6 });
+    // Scene 3 (right): Wide burner strip
+    const bx = Math.floor(width * 0.78);
+    rect(bx - 8, 2, 17, 3, { mat: 4, fuel: 1, temp: 0.8 });
 
 ai_context:
   description: "Fire: staged fluid-combustion with velocity field and GPU visual mapping"
   hints:
-    - "6 compute stages per tick: advection, forces, pressure setup, Jacobi x10, projection, cooling"
+    - "9 rule stages: emitters, advection, forces, pressure(x3), vorticity(x2), cooling"
     - "Color computed by visual_mapping script, not the rule"
     - "Buoyancy adds upward velocity proportional to temperature"
-    - "Pressure projection enforces incompressibility"
-    - "Paint fuel with draw tool to add combustible material"
+    - "Burners (material=4) regenerate fuel+heat every tick"
+    - "Paint fuel with Fuel brush, ignite with Heat brush"
+    - "Place permanent fire sources with Burner brush"

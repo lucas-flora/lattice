@@ -189,7 +189,7 @@ function PipelineEntryDetail({ entryId, tags }: { entryId: string; tags: import(
   // Look up the pipeline entry by ID
   const ctrl = getController();
   const runner = ctrl?.getGPURuleRunner();
-  const entries = useMemo(() => runner?.getExecutionOrder() ?? [], [runner]);
+  const entries = useMemo(() => runner?.getExecutionOrder(tags) ?? [], [runner, tags]);
   const entry = entries.find((e) => e.id === entryId);
 
   // If not found as a pipeline entry, check if it's an expression store op ID

@@ -14,6 +14,7 @@ import { useCallback } from 'react';
 import type { PipelineEntry } from '@/engine/rule/GPURuleRunner';
 
 const TYPE_STYLES: Record<PipelineEntry['type'], { label: string; class: string; dotColor: string }> = {
+  'interaction-op': { label: 'brush',   class: 'bg-amber-500/15 text-amber-400',   dotColor: 'bg-amber-400' },
   'rule-stage':    { label: 'rule',    class: 'bg-blue-500/15 text-blue-400',     dotColor: 'bg-blue-400' },
   'pre-rule-op':   { label: 'pre',     class: 'bg-zinc-700 text-zinc-400',        dotColor: 'bg-zinc-500' },
   'post-rule-op':  { label: 'post',    class: 'bg-green-500/15 text-green-400',   dotColor: 'bg-green-400' },
