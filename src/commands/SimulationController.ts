@@ -161,13 +161,19 @@ export class SimulationController {
       // Stop any CPU compute-ahead that may be running — GPU takes over
       this.stopComputeAhead();
 
+      // Compile all ops from tag registry (expression tags + visual mappings — same path)
+      const allTags = this.simulation.tagRegistry.getAll().map(t => ({
+        name: t.name, code: t.code, phase: t.phase, enabled: t.enabled,
+      }));
+      runner.recompileExpressionTags(allTags);
+
       // Ensure GPU has the initial state (not whatever CPU compute-ahead left in the Grid)
       if (this.initialSnapshot) {
         this.restoreInitialState();
         runner.uploadFromGrid();
-        // Re-run expression/visual passes — the CPU snapshot has no colorR/G/B
-        runner.runExpressionPasses();
       }
+      // Run expression passes once to compute colorR/G/B for the initial frame
+      runner.runExpressionPasses();
       runner.setGeneration(this.playbackGeneration);
 
       logGPU(`Rule runner active for "${presetName}"`);
@@ -412,9 +418,20 @@ export class SimulationController {
     this.circularBuffer.clear();
     this.computedGeneration = 0;
     this.playbackGeneration = 0;
-    // Restore initial state BEFORE anything else touches the grid
+
+    // Restore initial state BEFORE recompiling (so bind groups match correct buffer state)
     this.restoreInitialState();
+
+    // Recompile all ops from the live registry — single unified path for everything.
+    if (this.gpuRuleRunner && this.simulation) {
+      const liveTags = this.simulation.tagRegistry.getAll().map(t => ({
+        name: t.name, code: t.code, phase: t.phase, enabled: t.enabled,
+      }));
+      this.gpuRuleRunner.recompileExpressionTags(liveTags);
+    }
+
     this.syncGridToGPU();
+    this.syncTagStore(); // Push updated tag data to expression store (card view, inspector)
     this.emitBufferStatus();
     // Emit targeted events: generation=0, paused, computedGeneration=0.
     // Don't use sim:reset which nukes maxGeneration (timeline needs that for scrub ceiling).
@@ -1287,7 +1304,10 @@ export class SimulationController {
   private syncTagStore(): void {
     if (!this.simulation) return;
     const tags = this.simulation.tagRegistry.getAll();
-    expressionStoreActions.setTags(tags);
+    // Sort by execution order: interaction → pre-rule → rule → post-rule
+    const phaseOrder: Record<string, number> = { 'interaction': 0, 'pre-rule': 1, 'rule': 2, 'post-rule': 3 };
+    const sorted = [...tags].sort((a, b) => (phaseOrder[a.phase] ?? 9) - (phaseOrder[b.phase] ?? 9));
+    expressionStoreActions.setTags(sorted);
   }
 
   // --- Grid Configuration Methods ---

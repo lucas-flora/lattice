@@ -1,11 +1,57 @@
 import { describe, it, expect } from 'vitest';
 import { VisualMapper } from '../VisualMapper';
-import { loadBuiltinPreset } from '@/engine/preset/builtinPresets';
 import { loadPresetOrThrow } from '@/engine/preset/loader';
 
+const DISCRETE_GOL_YAML = `
+schema_version: "1"
+meta:
+  name: "GoL Discrete"
+grid:
+  dimensionality: "2d"
+  width: 8
+  height: 8
+  topology: "toroidal"
+cell_properties:
+  - name: "alive"
+    type: "bool"
+    default: 0
+rule:
+  type: "typescript"
+  compute: "return { alive: 0 };"
+visual_mappings:
+  - property: "alive"
+    channel: "color"
+    mapping:
+      "0": "#000000"
+      "1": "#00ff00"
+`;
+
+const DISCRETE_R110_YAML = `
+schema_version: "1"
+meta:
+  name: "Rule 110 Discrete"
+grid:
+  dimensionality: "1d"
+  width: 256
+  topology: "finite"
+cell_properties:
+  - name: "state"
+    type: "bool"
+    default: 0
+rule:
+  type: "typescript"
+  compute: "return { state: 0 };"
+visual_mappings:
+  - property: "state"
+    channel: "color"
+    mapping:
+      "0": "#ffffff"
+      "1": "#000000"
+`;
+
 describe('VisualMapper', () => {
-  it('TestVisualMapper_MapsColorFromYamlConfig', () => {
-    const preset = loadBuiltinPreset('conways-gol');
+  it('TestVisualMapper_MapsColorFromDiscreteMapping', () => {
+    const preset = loadPresetOrThrow(DISCRETE_GOL_YAML);
     const mapper = new VisualMapper(preset);
 
     // alive=1 should map to green (#00ff00)
@@ -22,7 +68,7 @@ describe('VisualMapper', () => {
   });
 
   it('TestVisualMapper_ReturnsDefaultColor_WhenNoMapping', () => {
-    const preset = loadBuiltinPreset('conways-gol');
+    const preset = loadPresetOrThrow(DISCRETE_GOL_YAML);
     const mapper = new VisualMapper(preset);
 
     // Unknown property should return default color (black)
@@ -33,8 +79,7 @@ describe('VisualMapper', () => {
   });
 
   it('TestVisualMapper_HandlesMultipleMappings', () => {
-    // Rule 110 has different colors: 0=white, 1=black
-    const preset = loadBuiltinPreset('rule-110');
+    const preset = loadPresetOrThrow(DISCRETE_R110_YAML);
     const mapper = new VisualMapper(preset);
 
     const offColor = mapper.getColor('state', 0);
@@ -120,17 +165,18 @@ visual_mappings:
   });
 
   it('TestVisualMapper_GetsPrimaryColorProperty', () => {
-    const preset = loadBuiltinPreset('conways-gol');
+    const preset = loadPresetOrThrow(DISCRETE_GOL_YAML);
     const mapper = new VisualMapper(preset);
 
     expect(mapper.getPrimaryColorProperty()).toBe('alive');
   });
 
-  it('TestVisualMapper_HandlesEmptyMappings', () => {
+  it('TestVisualMapper_SkipsScriptMappings', () => {
+    // Script-type visual mappings are handled by GPU compute, not VisualMapper
     const yaml = `
 schema_version: "1"
 meta:
-  name: "No Mappings"
+  name: "Script Only"
 grid:
   dimensionality: "2d"
   width: 8
@@ -143,38 +189,30 @@ cell_properties:
 rule:
   type: "typescript"
   compute: "return { alive: 0 };"
+visual_mappings:
+  - type: "script"
+    code: |
+      self.colorR = 0.0
+      self.colorG = alive
+      self.colorB = 0.0
 `;
     const preset = loadPresetOrThrow(yaml);
     const mapper = new VisualMapper(preset);
 
-    // Should create default mapping for first bool property
-    expect(mapper.hasColorMapping('alive')).toBe(true);
-    expect(mapper.getPrimaryColorProperty()).toBe('alive');
-
-    // Default mapping: 0=black, 1=green
-    const deadColor = mapper.getColor('alive', 0);
-    expect(deadColor.r).toBeCloseTo(0);
-    expect(deadColor.g).toBeCloseTo(0);
-    expect(deadColor.b).toBeCloseTo(0);
-
-    const aliveColor = mapper.getColor('alive', 1);
-    expect(aliveColor.r).toBeCloseTo(0);
-    expect(aliveColor.g).toBeCloseTo(1);
-    expect(aliveColor.b).toBeCloseTo(0);
+    // Script mappings don't register discrete color maps
+    expect(mapper.hasColorMapping('alive')).toBe(false);
+    expect(mapper.getPrimaryColorProperty()).toBeNull();
   });
 
   it('TestVisualMapper_DataDrivenChange', () => {
     // Verify that different visual_mappings produce different results (RNDR-07)
-    const golPreset = loadBuiltinPreset('conways-gol');
-    const golMapper = new VisualMapper(golPreset);
-
-    const rule110Preset = loadBuiltinPreset('rule-110');
-    const rule110Mapper = new VisualMapper(rule110Preset);
+    const golMapper = new VisualMapper(loadPresetOrThrow(DISCRETE_GOL_YAML));
+    const r110Mapper = new VisualMapper(loadPresetOrThrow(DISCRETE_R110_YAML));
 
     // GoL alive=1 -> green
     const golAlive = golMapper.getColor('alive', 1);
     // Rule 110 state=1 -> black
-    const r110Active = rule110Mapper.getColor('state', 1);
+    const r110Active = r110Mapper.getColor('state', 1);
 
     // Different presets produce different colors for the "active" state
     expect(golAlive.g).not.toBeCloseTo(r110Active.g);

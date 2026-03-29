@@ -92,6 +92,26 @@ export class Simulation {
       }
     }
 
+    // Register visual mapping scripts as regular post-rule ops.
+    // They compile through the same parsePython → IR → WGSL path as every other op.
+    // owner: 'visual' routes them to the VISUAL scene node in the object tree.
+    if (preset.visual_mappings) {
+      for (const vm of preset.visual_mappings) {
+        if (vm.type === 'script' && vm.code) {
+          this.tagRegistry.add({
+            name: 'Color Mapper',
+            owner: { type: 'visual' },
+            code: vm.code,
+            phase: 'post-rule',
+            enabled: true,
+            source: 'code',
+            inputs: [],
+            outputs: ['cell.colorR', 'cell.colorG', 'cell.colorB'],
+          });
+        }
+      }
+    }
+
     // Create rule tag(s) from the preset's compute body (SG-6: rule-as-tag)
     if (preset.rule.stages && preset.rule.stages.length > 0) {
       // Multi-stage rules: create one tag per stage for inspector visibility

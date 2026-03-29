@@ -378,7 +378,9 @@ export class SceneGraph {
     for (const tag of sim.tagRegistry.getAll()) {
       let ownerNode: SceneNode | undefined;
 
-      if (tag.owner.type === 'cell-type' && tag.owner.id) {
+      if (tag.owner.type === 'visual') {
+        ownerNode = graph.findByType(NODE_TYPES.VISUAL)[0];
+      } else if (tag.owner.type === 'cell-type' && tag.owner.id) {
         ownerNode = cellTypeNodeMap.get(tag.owner.id);
       } else if (tag.owner.type === 'environment') {
         ownerNode = graph.findByType(NODE_TYPES.ENVIRONMENT)[0];

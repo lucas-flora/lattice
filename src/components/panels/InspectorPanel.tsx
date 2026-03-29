@@ -151,7 +151,8 @@ function SceneNodeDetail({ node, nodeId, tags }: { node: SceneNode; nodeId: stri
             summaryContent={<VisualSection node={node} />}
             code={getVisualCode(node)}
             codeLang={getVisualCodeLang(node)}
-            noCodeMessage="No source code — this mapping uses a ramp/discrete configuration. See the Summary tab."
+            noCodeMessage="No source code — this mapping uses a ramp configuration. See the Summary tab."
+            opId={node.tags[0]}
           />
         )}
         {node.type === NODE_TYPES.GROUP && (

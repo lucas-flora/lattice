@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { Grid } from '@/engine/grid/Grid';
 import { Simulation } from '@/engine/rule/Simulation';
 import { loadBuiltinPreset } from '@/engine/preset/builtinPresets';
+import { loadPresetOrThrow } from '@/engine/preset/loader';
 import { VisualMapper } from '../VisualMapper';
 import { disposeObject } from '@/lib/three-dispose';
 import type { GridConfig } from '@/engine/grid/types';
@@ -172,7 +173,29 @@ describe('LatticeRenderer Logic', () => {
 
   describe('Visual Mapping Integration', () => {
     it('TestLatticeRenderer_UpdatesColors_FromVisualMapper', () => {
-      const preset = loadBuiltinPreset('conways-gol');
+      const preset = loadPresetOrThrow(`
+schema_version: "1"
+meta:
+  name: "Discrete GoL"
+grid:
+  dimensionality: "2d"
+  width: 4
+  height: 4
+  topology: "toroidal"
+cell_properties:
+  - name: "alive"
+    type: "bool"
+    default: 0
+rule:
+  type: "typescript"
+  compute: "return { alive: 0 };"
+visual_mappings:
+  - property: "alive"
+    channel: "color"
+    mapping:
+      "0": "#000000"
+      "1": "#00ff00"
+`);
       const grid = create2DGrid(4, 4);
       const mapper = new VisualMapper(preset);
 

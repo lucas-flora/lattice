@@ -1,21 +1,17 @@
 /**
  * OperatorSection: Inspector detail for an Operator (formerly ExpressionTag).
  *
- * Three-tab layout: Summary (phase, source, code, I/O) | Code (full source) | Nodes (placeholder).
+ * Three-tab layout: Summary (read-only overview) | Code (full editor) | Nodes (open in editor).
  */
 
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useCallback } from 'react';
 import type { Operator } from '@/engine/expression/types';
 import { commandRegistry } from '@/commands/CommandRegistry';
 import { InspectorHeader } from './InspectorHeader';
 import { LogicInspectorTabs } from './LogicInspectorTabs';
-
-const PHASE_OPTIONS: Array<{ value: string; label: string; class: string }> = [
-  { value: 'pre-rule', label: 'Pre', class: 'text-blue-400' },
-  { value: 'post-rule', label: 'Post', class: 'text-amber-400' },
-];
+import { hasNodeGraphComment } from '@/engine/nodes/NodeDecompiler';
 
 const SOURCE_LABELS: Record<string, string> = {
   code: 'Code',
@@ -28,23 +24,6 @@ interface OperatorSectionProps {
 }
 
 export function OperatorSection({ op }: OperatorSectionProps) {
-  const [editCode, setEditCode] = useState(op.code);
-  const [dirty, setDirty] = useState(false);
-
-  const handlePhaseChange = useCallback((phase: string) => {
-    commandRegistry.execute('op.edit', { id: op.id, phase });
-  }, [op.id]);
-
-  const handleCodeChange = useCallback((value: string) => {
-    setEditCode(value);
-    setDirty(true);
-  }, []);
-
-  const handleApply = useCallback(() => {
-    commandRegistry.execute('op.edit', { id: op.id, code: editCode });
-    setDirty(false);
-  }, [op.id, editCode]);
-
   const handleEnabledChange = useCallback((enabled: boolean) => {
     const cmd = enabled ? 'op.enable' : 'op.disable';
     commandRegistry.execute(cmd, { id: op.id });
@@ -54,49 +33,40 @@ export function OperatorSection({ op }: OperatorSectionProps) {
     commandRegistry.execute('op.remove', { id: op.id });
   }, [op.id]);
 
+  const handleCodeChange = useCallback((code: string) => {
+    commandRegistry.execute('op.edit', { id: op.id, code });
+  }, [op.id]);
+
+  const handlePhaseChange = useCallback((phase: string) => {
+    commandRegistry.execute('op.edit', { id: op.id, phase });
+  }, [op.id]);
+
+  // Summary tab: read-only overview
   const summaryContent = (
     <div className="space-y-2">
-      {/* Phase + source */}
+      {/* Phase + source badges */}
       <div className="flex items-center gap-2">
-        <div className="flex items-center gap-1">
-          {PHASE_OPTIONS.map((opt) => (
-            <button
-              key={opt.value}
-              onClick={() => handlePhaseChange(opt.value)}
-              className={`text-[10px] font-mono px-1.5 py-0.5 rounded cursor-pointer ${
-                op.phase === opt.value
-                  ? `${opt.class} bg-current/10 ring-1 ring-current/30`
-                  : 'text-zinc-500 hover:text-zinc-300'
-              }`}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
+        <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded ${
+          op.phase === 'rule' ? 'bg-red-500/10 text-red-400' :
+          op.phase === 'pre-rule' ? 'bg-blue-500/10 text-blue-400' :
+          'bg-amber-500/10 text-amber-400'
+        }`}>
+          {op.phase}
+        </span>
         <span className="text-[9px] font-mono px-1 rounded bg-zinc-800 text-zinc-500">
           {SOURCE_LABELS[op.source] ?? op.source}
         </span>
       </div>
 
-      {/* Code editor */}
-      <div>
-        <div className="text-[9px] font-mono text-zinc-500 uppercase mb-0.5">Code</div>
-        <textarea
-          className="w-full text-[10px] font-mono text-zinc-300 bg-zinc-800/60 rounded border border-zinc-700/50 p-1.5 resize-y min-h-[60px] max-h-[200px] focus:outline-none focus:border-green-500/50"
-          value={editCode}
-          onChange={(e) => handleCodeChange(e.target.value)}
-          spellCheck={false}
-          rows={Math.min(8, editCode.split('\n').length + 1)}
-        />
-        {dirty && (
-          <button
-            onClick={handleApply}
-            className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-green-500/20 text-green-400 hover:bg-green-500/30 cursor-pointer mt-0.5"
-          >
-            Apply
-          </button>
-        )}
-      </div>
+      {/* Code preview (read-only) */}
+      {op.code && (
+        <div>
+          <div className="text-[9px] font-mono text-zinc-500 uppercase mb-0.5">Code</div>
+          <pre className="w-full text-[10px] font-mono text-zinc-500 bg-zinc-800/40 rounded border border-zinc-700/30 p-1.5 whitespace-pre-wrap max-h-[200px] overflow-y-auto select-text">
+            {op.code}
+          </pre>
+        </div>
+      )}
 
       {/* Inputs / Outputs */}
       {(op.inputs.length > 0 || op.outputs.length > 0) && (
@@ -131,6 +101,9 @@ export function OperatorSection({ op }: OperatorSectionProps) {
   );
 
   const dummyNode = { id: op.id, type: 'operator', name: op.name } as Parameters<typeof LogicInspectorTabs>[0]['node'];
+  const opHasGraph = !!op.nodeGraph || (op.code ? hasNodeGraphComment(op.code) : false);
+  const nodeCount = op.nodeGraph?.nodes.length;
+  const edgeCount = op.nodeGraph?.edges.length;
 
   return (
     <>
@@ -150,7 +123,14 @@ export function OperatorSection({ op }: OperatorSectionProps) {
           node={dummyNode}
           summaryContent={summaryContent}
           code={op.code}
+          phase={op.phase}
           codeLang="Python"
+          onCodeChange={handleCodeChange}
+          onPhaseChange={handlePhaseChange}
+          opId={op.id}
+          hasNodeGraph={opHasGraph}
+          nodeCount={nodeCount}
+          edgeCount={edgeCount}
         />
       </div>
     </>

@@ -1,6 +1,6 @@
 /**
  * NodeEditorToolbar: top bar with compile, auto-layout, zoom-to-fit,
- * op selector, and code/node view toggle.
+ * op selector, code/node view toggle, and error indicator.
  */
 
 'use client';
@@ -17,6 +17,7 @@ interface NodeEditorToolbarProps {
   showCode: boolean;
   onToggleCode: () => void;
   syncStatus: 'synced' | 'code-edited' | 'code-only';
+  compileError?: string | null;
 }
 
 const STATUS_COLORS = {
@@ -26,8 +27,8 @@ const STATUS_COLORS = {
 };
 
 const STATUS_LABELS = {
-  synced: 'In sync',
-  'code-edited': 'Code edited',
+  synced: 'Live',
+  'code-edited': 'Editing',
   'code-only': 'Code only',
 };
 
@@ -41,6 +42,7 @@ export function NodeEditorToolbar({
   showCode,
   onToggleCode,
   syncStatus,
+  compileError,
 }: NodeEditorToolbarProps) {
   const handleTagChange = useCallback(
     (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -67,8 +69,14 @@ export function NodeEditorToolbar({
 
       {/* Sync status */}
       <div className="flex items-center gap-1 text-[9px] font-mono text-zinc-500">
-        <div className={`w-1.5 h-1.5 rounded-full ${STATUS_COLORS[syncStatus]}`} />
-        {STATUS_LABELS[syncStatus]}
+        <div className={`w-1.5 h-1.5 rounded-full ${compileError ? 'bg-red-500' : STATUS_COLORS[syncStatus]}`} />
+        {compileError ? (
+          <span className="text-red-400 truncate max-w-[180px]" title={compileError}>
+            Error: {compileError}
+          </span>
+        ) : (
+          STATUS_LABELS[syncStatus]
+        )}
       </div>
 
       <div className="flex-1" />
@@ -77,7 +85,7 @@ export function NodeEditorToolbar({
       <button
         className="px-1.5 py-0.5 text-[10px] font-mono text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded transition-colors"
         onClick={onCompile}
-        title="Compile graph to code"
+        title="Compile graph to code (auto-compiles on change)"
       >
         Compile
       </button>

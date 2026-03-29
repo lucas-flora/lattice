@@ -13,7 +13,7 @@ import { compileNodeGraph } from '../../engine/nodes/NodeCompiler';
 import { nodeTypeRegistry } from '../../engine/nodes/NodeTypeRegistry';
 import { registerBuiltinNodes } from '../../engine/nodes/builtinNodes';
 import type { NodeGraph, NodeInstance, Edge } from '../../engine/nodes/types';
-import { useLayoutStore, layoutStoreActions } from '../../store/layoutStore';
+// layoutStore no longer needed — node.openEditor delegates to ui.toggleNodeEditor
 
 // Ensure builtin nodes are registered
 let registered = false;
@@ -220,25 +220,13 @@ export function registerNodeCommands(
   // --- node.openEditor ---
   registry.register({
     name: 'node.openEditor',
-    description: 'Open/focus the node editor panel',
+    description: 'Open/focus the node editor panel for a specific op',
     category: 'node',
     params: OpenEditorParams,
-    execute: async () => {
-      // Switch center tabs to node editor
-      const { zones } = useLayoutStore.getState();
-      const center = zones.center;
-      if (center.type === 'tabs') {
-        const editorIdx = center.children.findIndex(
-          (c) => c.type === 'panel' && c.panelType === 'nodeEditor',
-        );
-        if (editorIdx >= 0) {
-          layoutStoreActions.setZoneLayout('center', {
-            ...center,
-            activeIndex: editorIdx,
-          });
-        }
-      }
-      return { success: true };
+    execute: async (params) => {
+      const { tagId } = params as z.infer<typeof OpenEditorParams>;
+      // Delegate to ui.toggleNodeEditor which handles per-op tab management
+      return registry.execute('ui.toggleNodeEditor', { tagId });
     },
   });
 

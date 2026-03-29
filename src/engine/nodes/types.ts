@@ -43,6 +43,9 @@ export interface NodeTypeDefinition {
   outputs: PortDefinition[];
   /** Whether this node has user-editable inline data (e.g., Constant value, property address) */
   hasData?: boolean;
+  /** Whether this node emits code compatible with the GPU pipeline (PythonParser → IR → WGSL).
+   *  Defaults to true. Nodes marked false emit a warning comment instead of executable code. */
+  gpuCompatible?: boolean;
   /**
    * Compile this node into a Python expression/statement.
    * @param inputExprs - Map of input port ID → Python expression string

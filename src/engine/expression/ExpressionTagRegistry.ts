@@ -131,7 +131,10 @@ export class ExpressionTagRegistry {
     const tag = this.tags.get(id);
     if (!tag) return null;
 
-    // If inputs/outputs changed, rebuild graph edges
+    // If inputs/outputs changed, rebuild graph edges.
+    // Rule-phase tags are exempt from cycle detection — they inherently
+    // read and write the same cell properties (that's what a rule does).
+    const effectivePhase = patch.phase ?? tag.phase;
     if (patch.inputs || patch.outputs) {
       // Remove old edges
       for (const input of tag.inputs) {
@@ -147,20 +150,24 @@ export class ExpressionTagRegistry {
       const newInputs = patch.inputs ?? tag.inputs;
       const newOutputs = patch.outputs ?? tag.outputs;
 
-      // Cycle check
-      for (const output of newOutputs) {
-        for (const input of newInputs) {
-          if (this.wouldCreateCycle(input, output)) {
-            throw new Error(`Update would create a cycle: ${input} → ${output}`);
+      // Cycle check (skip for rule-phase tags)
+      if (effectivePhase !== 'rule') {
+        for (const output of newOutputs) {
+          for (const input of newInputs) {
+            if (this.wouldCreateCycle(input, output)) {
+              throw new Error(`Update would create a cycle: ${input} → ${output}`);
+            }
           }
         }
       }
 
-      // Add new edges
-      for (const input of newInputs) {
-        for (const output of newOutputs) {
-          if (!this.graph.has(input)) this.graph.set(input, new Set());
-          this.graph.get(input)!.add(output);
+      // Add new edges (skip for rule-phase tags — they don't participate in the dependency graph)
+      if (effectivePhase !== 'rule') {
+        for (const input of newInputs) {
+          for (const output of newOutputs) {
+            if (!this.graph.has(input)) this.graph.set(input, new Set());
+            this.graph.get(input)!.add(output);
+          }
         }
       }
     }

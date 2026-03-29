@@ -22,7 +22,7 @@ export type ExpressionPhase = 'pre-rule' | 'rule' | 'post-rule' | 'interaction';
 export type ExpressionSource = 'code' | 'link' | 'script';
 
 /** What type of object owns this operator */
-export type OperatorOwnerType = 'cell-type' | 'environment' | 'global' | 'root';
+export type OperatorOwnerType = 'cell-type' | 'environment' | 'global' | 'root' | 'visual';
 /** @deprecated Use OperatorOwnerType */
 export type TagOwnerType = OperatorOwnerType;
 

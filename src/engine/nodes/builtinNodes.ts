@@ -1,7 +1,21 @@
 /**
  * Built-in node type definitions.
  *
- * Each node defines its ports and a compile() function that emits Python code.
+ * Each node defines its ports and a compile() function that emits
+ * PythonParser-compatible code targeting the GPU pipeline (IR → WGSL).
+ *
+ * PythonParser supported syntax:
+ *   Property reads:  bare name (cell prop), self.prop, env.param, glob.var
+ *   Property writes: self.prop = expr
+ *   Built-in fns:    abs, sqrt, sin, cos, floor, ceil, min, max, pow,
+ *                    clamp, smoothstep, mix, step, fract, sign,
+ *                    int(), float(), neighbor_at(dx,dy,prop), neighbor_count(prop,val)
+ *   Operators:       + - * / % **  > < == != >= <=  and or not
+ *   Ternary:         value_if_true if condition else value_if_false
+ *   Control flow:    if/elif/else blocks
+ *   Grid params:     x, y, width, height, generation, dt
+ *   No: numpy, imports, loops, functions, strings, grid-wide reductions
+ *
  * Registered once at startup via registerBuiltinNodes().
  */
 
@@ -32,10 +46,10 @@ const PropertyRead: NodeTypeDefinition = {
   compile: (_inputs, data) => {
     const addr = (data.address as string) ?? 'cell.alive';
     const parts = addr.split('.');
-    if (parts[0] === 'cell') return `cell['${parts[1]}']`;
-    if (parts[0] === 'env') return `env['${parts[1]}']`;
-    if (parts[0] === 'global') return `glob['${parts[1]}']`;
-    return `cell['${parts[1] ?? parts[0]}']`;
+    if (parts[0] === 'cell') return parts[1];
+    if (parts[0] === 'env') return `env.${parts[1]}`;
+    if (parts[0] === 'global') return `glob.${parts[1]}`;
+    return parts[1] ?? parts[0];
   },
 };
 
@@ -51,8 +65,8 @@ const PropertyWrite: NodeTypeDefinition = {
     const parts = addr.split('.');
     const val = inputs.value ?? '0';
     if (parts[0] === 'cell') return `self.${parts[1]} = ${val}`;
-    if (parts[0] === 'env') return `env['${parts[1]}'] = ${val}`;
-    if (parts[0] === 'global') return `glob['${parts[1]}'] = ${val}`;
+    if (parts[0] === 'env') return `# WARNING: env writes are not GPU-compatible\n# env.${parts[1]} = ${val}`;
+    if (parts[0] === 'global') return `# WARNING: global writes are not GPU-compatible\n# glob.${parts[1]} = ${val}`;
     return `self.${parts[1] ?? parts[0]} = ${val}`;
   },
 };
@@ -66,7 +80,10 @@ const Constant: NodeTypeDefinition = {
   hasData: true,
   compile: (_inputs, data) => {
     const v = data.value ?? 0;
-    return String(v);
+    const s = String(v);
+    // Emit float format for readability (1.0 not 1)
+    if (typeof v === 'number' && Number.isFinite(v) && !s.includes('.')) return `${s}.0`;
+    return s;
   },
 };
 
@@ -76,7 +93,7 @@ const Time: NodeTypeDefinition = {
   category: 'property',
   inputs: [],
   outputs: [out('frame', 'Frame'), out('t', 'Normalized')],
-  compile: () => 'frame',
+  compile: () => 'generation',
 };
 
 // ---------------------------------------------------------------------------
@@ -117,12 +134,12 @@ const Divide = binaryMathNode('Divide', 'Divide', '/');
 const Power = binaryMathNode('Power', 'Power', '**');
 const Modulo = binaryMathNode('Modulo', 'Modulo', '%');
 const Negate = unaryMathNode('Negate', 'Negate', '-');
-const Abs = unaryMathNode('Abs', 'Abs', 'np.abs');
-const Sqrt = unaryMathNode('Sqrt', 'Sqrt', 'np.sqrt');
-const Sin = unaryMathNode('Sin', 'Sin', 'np.sin');
-const Cos = unaryMathNode('Cos', 'Cos', 'np.cos');
-const Floor = unaryMathNode('Floor', 'Floor', 'np.floor');
-const Ceil = unaryMathNode('Ceil', 'Ceil', 'np.ceil');
+const Abs = unaryMathNode('Abs', 'Abs', 'abs');
+const Sqrt = unaryMathNode('Sqrt', 'Sqrt', 'sqrt');
+const Sin = unaryMathNode('Sin', 'Sin', 'sin');
+const Cos = unaryMathNode('Cos', 'Cos', 'cos');
+const Floor = unaryMathNode('Floor', 'Floor', 'floor');
+const Ceil = unaryMathNode('Ceil', 'Ceil', 'ceil');
 
 // ---------------------------------------------------------------------------
 // Range nodes
@@ -164,7 +181,7 @@ const Clamp: NodeTypeDefinition = {
     const v = inputs.value ?? '0';
     const lo = inputs.min ?? '0';
     const hi = inputs.max ?? '1';
-    return `np.clip(${v}, ${lo}, ${hi})`;
+    return `clamp(${v}, ${lo}, ${hi})`;
   },
 };
 
@@ -182,7 +199,7 @@ const Smoothstep: NodeTypeDefinition = {
     const v = inputs.value ?? '0';
     const e0 = inputs.edge0 ?? '0';
     const e1 = inputs.edge1 ?? '1';
-    return `(lambda t: t * t * (3 - 2 * t))(np.clip((${v} - ${e0}) / (${e1} - ${e0}), 0, 1))`;
+    return `smoothstep(${e0}, ${e1}, ${v})`;
   },
 };
 
@@ -200,7 +217,7 @@ const Linear: NodeTypeDefinition = {
     const a = inputs.a ?? '0';
     const b = inputs.b ?? '1';
     const t = inputs.t ?? '0.5';
-    return `(${a} + (${b} - ${a}) * ${t})`;
+    return `mix(${a}, ${b}, ${t})`;
   },
 };
 
@@ -229,7 +246,7 @@ const And: NodeTypeDefinition = {
   category: 'logic',
   inputs: [inp('a', 'A', 'bool'), inp('b', 'B', 'bool')],
   outputs: [out('result', 'Result', 'bool')],
-  compile: (inputs) => `np.logical_and(${inputs.a ?? 'False'}, ${inputs.b ?? 'False'})`,
+  compile: (inputs) => `(${inputs.a ?? 'False'} and ${inputs.b ?? 'False'})`,
 };
 
 const Or: NodeTypeDefinition = {
@@ -238,7 +255,7 @@ const Or: NodeTypeDefinition = {
   category: 'logic',
   inputs: [inp('a', 'A', 'bool'), inp('b', 'B', 'bool')],
   outputs: [out('result', 'Result', 'bool')],
-  compile: (inputs) => `np.logical_or(${inputs.a ?? 'False'}, ${inputs.b ?? 'False'})`,
+  compile: (inputs) => `(${inputs.a ?? 'False'} or ${inputs.b ?? 'False'})`,
 };
 
 const Not: NodeTypeDefinition = {
@@ -247,7 +264,7 @@ const Not: NodeTypeDefinition = {
   category: 'logic',
   inputs: [inp('value', 'Value', 'bool')],
   outputs: [out('result', 'Result', 'bool')],
-  compile: (inputs) => `np.logical_not(${inputs.value ?? 'False'})`,
+  compile: (inputs) => `(not ${inputs.value ?? 'False'})`,
 };
 
 const Select: NodeTypeDefinition = {
@@ -264,7 +281,7 @@ const Select: NodeTypeDefinition = {
     const cond = inputs.condition ?? 'True';
     const t = inputs.ifTrue ?? '1';
     const f = inputs.ifFalse ?? '0';
-    return `np.where(${cond}, ${t}, ${f})`;
+    return `(${t} if ${cond} else ${f})`;
   },
 };
 
@@ -276,12 +293,13 @@ const Random: NodeTypeDefinition = {
   type: 'Random',
   label: 'Random',
   category: 'utility',
+  gpuCompatible: false,
   inputs: [inp('min', 'Min', 'scalar', 0), inp('max', 'Max', 'scalar', 1)],
   outputs: [out('value', 'Value', 'array')],
   compile: (inputs) => {
     const lo = inputs.min ?? '0';
     const hi = inputs.max ?? '1';
-    return `(np.random.random(grid_shape) * (${hi} - ${lo}) + ${lo})`;
+    return `# WARNING: Random is not GPU-compatible\n# random(${lo}, ${hi})`;
   },
 };
 
@@ -289,18 +307,20 @@ const Sum: NodeTypeDefinition = {
   type: 'Sum',
   label: 'Sum',
   category: 'utility',
+  gpuCompatible: false,
   inputs: [inp('value', 'Value', 'array')],
   outputs: [out('result', 'Result')],
-  compile: (inputs) => `np.sum(${inputs.value ?? '0'})`,
+  compile: (inputs) => `# WARNING: Sum (grid-wide reduction) is not GPU-compatible\n# sum(${inputs.value ?? '0'})`,
 };
 
 const Mean: NodeTypeDefinition = {
   type: 'Mean',
   label: 'Mean',
   category: 'utility',
+  gpuCompatible: false,
   inputs: [inp('value', 'Value', 'array')],
   outputs: [out('result', 'Result')],
-  compile: (inputs) => `np.mean(${inputs.value ?? '0'})`,
+  compile: (inputs) => `# WARNING: Mean (grid-wide reduction) is not GPU-compatible\n# mean(${inputs.value ?? '0'})`,
 };
 
 const MaxNode: NodeTypeDefinition = {
@@ -309,7 +329,7 @@ const MaxNode: NodeTypeDefinition = {
   category: 'utility',
   inputs: [inp('a', 'A'), inp('b', 'B')],
   outputs: [out('result', 'Result')],
-  compile: (inputs) => `np.maximum(${inputs.a ?? '0'}, ${inputs.b ?? '0'})`,
+  compile: (inputs) => `max(${inputs.a ?? '0'}, ${inputs.b ?? '0'})`,
 };
 
 const MinNode: NodeTypeDefinition = {
@@ -318,16 +338,17 @@ const MinNode: NodeTypeDefinition = {
   category: 'utility',
   inputs: [inp('a', 'A'), inp('b', 'B')],
   outputs: [out('result', 'Result')],
-  compile: (inputs) => `np.minimum(${inputs.a ?? '0'}, ${inputs.b ?? '0'})`,
+  compile: (inputs) => `min(${inputs.a ?? '0'}, ${inputs.b ?? '0'})`,
 };
 
 const Count: NodeTypeDefinition = {
   type: 'Count',
   label: 'Count',
   category: 'utility',
+  gpuCompatible: false,
   inputs: [inp('value', 'Value', 'bool')],
   outputs: [out('result', 'Result')],
-  compile: (inputs) => `np.count_nonzero(${inputs.value ?? '0'})`,
+  compile: (inputs) => `# WARNING: Count (grid-wide reduction) is not GPU-compatible\n# count(${inputs.value ?? '0'})`,
 };
 
 const Coordinates: NodeTypeDefinition = {
@@ -336,7 +357,51 @@ const Coordinates: NodeTypeDefinition = {
   category: 'utility',
   inputs: [],
   outputs: [out('x', 'X', 'array'), out('y', 'Y', 'array')],
-  compile: () => 'coords',
+  compile: () => 'x',
+};
+
+// ---------------------------------------------------------------------------
+// Neighbor nodes
+// ---------------------------------------------------------------------------
+
+const NeighborRead: NodeTypeDefinition = {
+  type: 'NeighborRead',
+  label: 'Neighbor Read',
+  category: 'property',
+  inputs: [],
+  outputs: [out('result', 'Value')],
+  hasData: true,
+  compile: (_inputs, data) => {
+    const dx = (data.dx as number) ?? 0;
+    const dy = (data.dy as number) ?? 0;
+    const prop = (data.property as string) ?? 'alive';
+    return `neighbor_at(${dx}, ${dy}, ${prop})`;
+  },
+};
+
+const NeighborSum: NodeTypeDefinition = {
+  type: 'NeighborSum',
+  label: 'Neighbor Sum',
+  category: 'property',
+  inputs: [],
+  outputs: [out('result', 'Sum')],
+  hasData: true,
+  compile: (_inputs, data) => {
+    const prop = (data.property as string) ?? 'alive';
+    return `neighbor_sum_${prop}`;
+  },
+};
+
+const CodeBlock: NodeTypeDefinition = {
+  type: 'CodeBlock',
+  label: 'Code Block',
+  category: 'utility',
+  inputs: [],
+  outputs: [out('result', 'Result')],
+  hasData: true,
+  compile: (_inputs, data) => {
+    return (data.code as string) ?? '0';
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -367,7 +432,9 @@ const ALL_NODES: NodeTypeDefinition[] = [
   // Logic
   Compare, And, Or, Not, Select,
   // Utility
-  Random, Sum, Mean, MaxNode, MinNode, Count, Coordinates,
+  Random, Sum, Mean, MaxNode, MinNode, Count, Coordinates, CodeBlock,
+  // Neighbor
+  NeighborRead, NeighborSum,
   // Object
   ObjectNode,
 ];

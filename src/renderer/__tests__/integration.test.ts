@@ -14,10 +14,9 @@ import { CameraController } from '../CameraController';
  */
 
 describe('Rendering Pipeline Integration', () => {
-  it('TestIntegration_ConwaysGoL_MapsAliveToGreen', () => {
+  it('TestIntegration_ConwaysGoL_SetCellAndReadBuffer', () => {
     const preset = loadBuiltinPreset('conways-gol');
     const sim = new Simulation(preset);
-    const mapper = new VisualMapper(preset);
 
     // Set some cells alive
     sim.setCellDirect('alive', 0, 1);
@@ -27,17 +26,14 @@ describe('Rendering Pipeline Integration', () => {
     // Read buffer directly (zero-copy)
     const buffer = sim.grid.getCurrentBuffer('alive');
 
-    // Verify alive cells map to green
-    const aliveColor = mapper.getColor('alive', buffer[0]);
-    expect(aliveColor.r).toBeCloseTo(0);
-    expect(aliveColor.g).toBeCloseTo(1);
-    expect(aliveColor.b).toBeCloseTo(0);
+    // Verify alive cells are set
+    expect(buffer[0]).toBe(1);
+    expect(buffer[10]).toBe(1);
+    expect(buffer[100]).toBe(1);
 
-    // Verify dead cells map to black
-    const deadColor = mapper.getColor('alive', buffer[1]);
-    expect(deadColor.r).toBeCloseTo(0);
-    expect(deadColor.g).toBeCloseTo(0);
-    expect(deadColor.b).toBeCloseTo(0);
+    // Verify dead cells remain zero
+    expect(buffer[1]).toBe(0);
+    expect(buffer[50]).toBe(0);
   });
 
   it('TestIntegration_ConwaysGoL_CorrectInstanceCount', () => {
@@ -58,16 +54,13 @@ describe('Rendering Pipeline Integration', () => {
     expect(renderMode).toBe('1d-spacetime');
   });
 
-  it('TestIntegration_Rule110_SameRendererPath', () => {
-    // Both 1D and 2D presets use the same VisualMapper + buffer read path (RNDR-04)
+  it('TestIntegration_Rule110_SameBufferPath', () => {
+    // Both 1D and 2D presets use the same buffer read path (RNDR-04)
     const golPreset = loadBuiltinPreset('conways-gol');
     const r110Preset = loadBuiltinPreset('rule-110');
 
     const golSim = new Simulation(golPreset);
     const r110Sim = new Simulation(r110Preset);
-
-    const golMapper = new VisualMapper(golPreset);
-    const r110Mapper = new VisualMapper(r110Preset);
 
     // Both can read buffers directly
     const golBuffer = golSim.grid.getCurrentBuffer('alive');
@@ -75,11 +68,11 @@ describe('Rendering Pipeline Integration', () => {
     expect(golBuffer).toBeInstanceOf(Float32Array);
     expect(r110Buffer).toBeInstanceOf(Float32Array);
 
-    // Both use VisualMapper for color lookup
-    expect(golMapper.getPrimaryColorProperty()).toBe('alive');
-    expect(r110Mapper.getPrimaryColorProperty()).toBe('state');
-
-    // Same code path -- no separate renderers
+    // Both presets have script-type visual mappings (GPU compute handles coloring)
+    const golVm = golPreset.visual_mappings?.find(m => m.type === 'script');
+    const r110Vm = r110Preset.visual_mappings?.find(m => m.type === 'script');
+    expect(golVm).toBeDefined();
+    expect(r110Vm).toBeDefined();
   });
 
   it('TestIntegration_VisualMappingChange_ChangesOutput', () => {

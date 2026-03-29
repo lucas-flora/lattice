@@ -37,11 +37,12 @@ rule:
     self.state = floor(env_ruleNumber / pow(2.0, pattern)) % 2.0
 
 visual_mappings:
-  - property: "state"
-    channel: "color"
-    mapping:
-      "0": "#ffffff"
-      "1": "#000000"
+  - type: "script"
+    code: |
+      inv = 1.0 - state
+      self.colorR = inv
+      self.colorG = inv
+      self.colorB = inv
 
 initial_state:
   type: "script"

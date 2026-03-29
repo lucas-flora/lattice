@@ -16,5 +16,5 @@ export type {
 
 export { nodeTypeRegistry } from './NodeTypeRegistry';
 export { compileNodeGraph, topologicalSort } from './NodeCompiler';
-export { decompileCode, hasNodeGraphComment, stripNodeGraphComment } from './NodeDecompiler';
+export { decompileCode, hasNodeGraphComment, stripNodeGraphComment, prettifyCode } from './NodeDecompiler';
 export { registerBuiltinNodes } from './builtinNodes';

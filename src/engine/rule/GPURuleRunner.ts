@@ -23,7 +23,6 @@ import { validateIR } from '../ir/validate';
 import { generateWGSL, type WGSLCodegenConfig } from '../ir/WGSLCodegen';
 import type { IRProgram } from '../ir/types';
 import { parsePython, ParseError } from '../ir/PythonParser';
-import { compileRampToIR, type RampMapping } from '../ir/RampCompiler';
 import { BrushDispatcher } from '../gpu/BrushDispatcher';
 import type { Brush } from '../../store/brushStore';
 import { logGPU } from '../../lib/debugLog';
@@ -48,14 +47,14 @@ interface RuleStage {
 
 /** A single entry in the pipeline execution order */
 export interface PipelineEntry {
-  /** Unique ID (stage name for rules, pass name for ops, 'visual-ramp'/'visual-script' for visual) */
+  /** Unique ID (stage name for rules, pass name for ops) */
   id: string;
   /** Display name */
   name: string;
   /** Pipeline category */
-  type: 'interaction-op' | 'pre-rule-op' | 'rule-stage' | 'post-rule-op' | 'visual-mapping';
+  type: 'interaction-op' | 'pre-rule-op' | 'rule-stage' | 'post-rule-op';
   /** Pipeline phase */
-  phase: 'interaction' | 'pre-rule' | 'rule' | 'post-rule' | 'visual';
+  phase: 'interaction' | 'pre-rule' | 'rule' | 'post-rule';
   enabled: boolean;
   /** CPU for pre-rule link ops, GPU for everything else */
   executionContext: 'cpu' | 'gpu';
@@ -87,8 +86,6 @@ export class GPURuleRunner {
   private expressionPasses: ExpressionPass[] = [];
   /** Shared bind group layout for all compute pipelines */
   private bindGroupLayout: GPUBindGroupLayout | null = null;
-  /** Whether a visual mapping ramp pass was compiled */
-  private _hasVisualMappingPass = false;
   /** Current env param values (updated by controller, read during tick) */
   private currentEnvParams: Record<string, number> = {};
   /** GPU brush dispatcher — applies brush before rule stages */
@@ -223,16 +220,9 @@ export class GPURuleRunner {
     // 8. Write initial params
     this.updateParams({}, 0, 1.0);
 
-    // 9. Compile expression tags (post-rule passes)
-    this.compileExpressionTags();
-
-    // 10. Compile visual mapping (runs after all expression tags)
-    this.compileVisualMapping();
-
-    // 11. Run expression/visual passes once to compute colorR/G/B for the initial frame
-    this.runExpressionPasses();
-
-    // 12. Initialize brush dispatcher (writes in-place to read buffer before rule stages)
+    // 9. Initialize brush dispatcher (writes in-place to read buffer before rule stages)
+    // NOTE: Expression/visual passes are compiled externally via recompileExpressionTags()
+    // after initialize(). The caller (SimulationController) handles this.
     this.brushDispatcher.initialize(width, height, this.bufferManager.getReadBuffer());
 
     const totalDispatches = this.ruleStages.reduce((n, s) => n + s.iterations, 0);
@@ -270,12 +260,13 @@ export class GPURuleRunner {
   }
 
   /**
-   * Compile expression tags from the preset into additional compute passes.
-   * Each tag becomes a separate WGSL compute shader dispatched after the main rule.
+   * Compile all ops into compute passes. Clears expression passes and rebuilds.
+   * Also recompiles rule-phase tags by replacing their corresponding rule stages.
+   * Handles ALL ops uniformly — rule stages, expression tags, visual mappings, everything.
    */
-  private compileExpressionTags(): void {
-    const tags = this.preset.expression_tags;
-    if (!tags || tags.length === 0) return;
+  recompileExpressionTags(liveTags: Array<{ name: string; code: string; phase?: string; enabled?: boolean }>): void {
+    // Clear ALL expression passes and rebuild from scratch
+    this.expressionPasses = [];
 
     const context = {
       cellProperties: this.propertyLayout
@@ -290,85 +281,7 @@ export class GPURuleRunner {
       neighborhoodType: 'moore' as const,
     };
 
-    const readBuf = this.bufferManager.getReadBuffer();
-    const writeBuf = this.bufferManager.getWriteBuffer();
-    const paramsBuf = this.bufferManager.getParamsBuffer();
-
-    for (const tag of tags) {
-      if (tag.enabled === false || tag.phase !== 'post-rule' || !tag.code) continue;
-
-      try {
-        const result = parsePython(tag.code, context);
-        const irProgram = result.program;
-
-        const validation = validateIR(irProgram);
-        if (!validation.valid) {
-          logGPU(`Expression tag "${tag.name}" IR validation failed: ${validation.errors.map(e => e.message).join('; ')}`);
-          continue;
-        }
-
-        const config: WGSLCodegenConfig = {
-          workgroupSize: [8, 8, 1],
-          topology: this.grid.config.topology ?? 'toroidal',
-          propertyLayout: this.propertyLayout,
-          envParams: this.envParamNames,
-          globalParams: [],
-          copyAllProperties: true, // Expression tags only write some props — copy the rest
-        };
-        const wgsl = generateWGSL(irProgram, config);
-        const pipeline = this.createPipelineWithLayout(wgsl, `expr-${tag.name}`);
-
-        // Expression passes use the same ping-pong buffers
-        const bg0 = this.createBindGroup(readBuf, writeBuf, paramsBuf);
-        const bg1 = this.createBindGroup(writeBuf, readBuf, paramsBuf);
-
-        this.expressionPasses.push({ name: tag.name, pipeline, bindGroups: [bg0, bg1], enabled: true });
-        logGPU(`Expression tag "${tag.name}" compiled to GPU`);
-      } catch (e) {
-        logGPU(`Expression tag "${tag.name}" transpile failed: ${e instanceof Error ? e.message : e}`);
-      }
-    }
-  }
-
-  /**
-   * Recompile visual mapping from updated configuration (e.g. after user edits stops).
-   * Removes old visual passes and compiles new ones.
-   */
-  recompileVisualMapping(mappings: PresetConfig['visual_mappings']): void {
-    // Remove old visual mapping passes
-    this.expressionPasses = this.expressionPasses.filter(
-      p => p.name !== 'visual-ramp' && p.name !== 'visual-script',
-    );
-    this._hasVisualMappingPass = false;
-
-    // Compile new ones
-    this.compileVisualMappingFrom(mappings ?? []);
-
-    // Re-run expression passes to update colorR/G/B immediately
-    this.runExpressionPasses();
-
-    logGPU(`Visual mapping recompiled (${this.expressionPasses.filter(p => p.name.startsWith('visual-')).length} visual passes)`);
-  }
-
-  /**
-   * Compile visual mappings into final compute passes.
-   * Supports two modes:
-   *   - type: 'ramp'   → multi-stop gradient compiled via RampCompiler
-   *   - type: 'script'  → freeform Python code compiled via PythonParser
-   * Runs after all expression tags so the visual mapping has the last word on colorR/G/B.
-   */
-  private compileVisualMapping(): void {
-    this.compileVisualMappingFrom(this.preset.visual_mappings ?? []);
-  }
-
-  private compileVisualMappingFrom(mappings: NonNullable<PresetConfig['visual_mappings']>): void {
-    if (mappings.length === 0) return;
-
-    const readBuf = this.bufferManager.getReadBuffer();
-    const writeBuf = this.bufferManager.getWriteBuffer();
-    const paramsBuf = this.bufferManager.getParamsBuffer();
-
-    const baseConfig: WGSLCodegenConfig = {
+    const wgslConfig: WGSLCodegenConfig = {
       workgroupSize: [8, 8, 1],
       topology: this.grid.config.topology ?? 'toroidal',
       propertyLayout: this.propertyLayout,
@@ -377,82 +290,88 @@ export class GPURuleRunner {
       copyAllProperties: true,
     };
 
-    // --- Ramp-type mappings ---
-    const rampMappings: RampMapping[] = mappings
-      .filter(m => m.type === 'ramp' && m.stops && m.stops.length > 0)
-      .map(m => ({
-        property: m.property!,
-        channel: m.channel as 'color' | 'alpha',
-        type: 'ramp' as const,
-        range: m.range as [number, number] | undefined,
-        stops: m.stops!,
-        cell_type: m.cell_type,
-      }));
+    const readBuf = this.bufferManager.getReadBuffer();
+    const writeBuf = this.bufferManager.getWriteBuffer();
+    const paramsBuf = this.bufferManager.getParamsBuffer();
 
-    if (rampMappings.length > 0) {
+    // --- Recompile rule-phase tags by replacing their rule stages ---
+    const ruleTags = liveTags.filter(t => t.phase === 'rule' && t.code);
+    for (const tag of ruleTags) {
       try {
-        const irProgram = compileRampToIR(rampMappings);
-        if (irProgram.statements.length > 0) {
-          const validation = validateIR(irProgram);
-          if (!validation.valid) {
-            logGPU(`Visual mapping ramp IR validation failed: ${validation.errors.map(e => e.message).join('; ')}`);
-          } else {
-            const wgsl = generateWGSL(irProgram, baseConfig);
-            const pipeline = this.createPipelineWithLayout(wgsl, 'visual-ramp');
-            const bg0 = this.createBindGroup(readBuf, writeBuf, paramsBuf);
-            const bg1 = this.createBindGroup(writeBuf, readBuf, paramsBuf);
-            this.expressionPasses.push({ name: 'visual-ramp', pipeline, bindGroups: [bg0, bg1], enabled: true });
-            this._hasVisualMappingPass = true;
-            logGPU(`Visual mapping ramp compiled to GPU (${rampMappings.length} ramp(s))`);
-          }
-        }
-      } catch (e) {
-        logGPU(`Visual mapping ramp compilation failed: ${e instanceof Error ? e.message : e}`);
-      }
-    }
-
-    // --- Script-type mappings ---
-    const scriptMappings = mappings.filter(m => m.type === 'script' && m.code);
-
-    const context = {
-      cellProperties: this.propertyLayout
-        .filter(p => p.name !== '_cellType')
-        .map(p => ({
-          name: p.name,
-          type: 'f32' as const,
-          channels: p.channels,
-        })),
-      envParams: this.envParamNames,
-      globalVars: [] as string[],
-      neighborhoodType: 'moore' as const,
-    };
-
-    for (const mapping of scriptMappings) {
-      try {
-        const result = parsePython(mapping.code!, context);
+        const result = parsePython(tag.code, context);
         const irProgram = result.program;
 
         const validation = validateIR(irProgram);
         if (!validation.valid) {
-          logGPU(`Visual mapping script IR validation failed: ${validation.errors.map(e => e.message).join('; ')}`);
+          logGPU(`Rule "${tag.name}" IR validation failed: ${validation.errors.map(e => e.message).join('; ')}`);
           continue;
         }
 
-        const wgsl = generateWGSL(irProgram, baseConfig);
-        const pipeline = this.createPipelineWithLayout(wgsl, 'visual-script');
+        const wgsl = generateWGSL(irProgram, wgslConfig);
+        const pipeline = this.createPipelineWithLayout(wgsl, `rule-${tag.name}`);
+
         const bg0 = this.createBindGroup(readBuf, writeBuf, paramsBuf);
         const bg1 = this.createBindGroup(writeBuf, readBuf, paramsBuf);
-        this.expressionPasses.push({ name: 'visual-script', pipeline, bindGroups: [bg0, bg1], enabled: true });
-        this._hasVisualMappingPass = true;
-        logGPU(`Visual mapping script compiled to GPU`);
+
+        // Match to existing rule stage — for single-stage presets this is ruleStages[0].
+        // For multi-stage, match by name suffix (tag name ends with "— stageName").
+        if (this.ruleStages.length === 1 && ruleTags.length === 1) {
+          // Single rule → replace the only stage
+          this.ruleStages[0] = {
+            ...this.ruleStages[0],
+            pipeline,
+            bindGroups: [bg0, bg1],
+            enabled: tag.enabled !== false,
+          };
+          logGPU(`Rule "${tag.name}" recompiled to GPU (replaced single stage)`);
+        } else {
+          // Multi-stage — find matching stage by name
+          const idx = this.ruleStages.findIndex(s => tag.name.includes(s.name));
+          if (idx >= 0) {
+            this.ruleStages[idx] = {
+              ...this.ruleStages[idx],
+              pipeline,
+              bindGroups: [bg0, bg1],
+              enabled: tag.enabled !== false,
+            };
+            logGPU(`Rule "${tag.name}" recompiled to GPU (replaced stage "${this.ruleStages[idx].name}")`);
+          } else {
+            logGPU(`Rule "${tag.name}" has no matching stage — skipped`);
+          }
+        }
       } catch (e) {
-        logGPU(`Visual mapping script compilation failed: ${e instanceof Error ? e.message : e}`);
+        logGPU(`Rule "${tag.name}" recompile failed: ${e instanceof Error ? e.message : e}`);
       }
     }
-  }
 
-  /** Whether a visual mapping ramp compute pass is active */
-  hasVisualMappingPass(): boolean { return this._hasVisualMappingPass; }
+    // --- Compile all enabled post-rule tags (expression tags, visual mappings, everything) ---
+    const postRuleTags = liveTags.filter(t => t.enabled !== false && t.phase === 'post-rule' && t.code);
+    for (const tag of postRuleTags) {
+      try {
+        const result = parsePython(tag.code, context);
+        const irProgram = result.program;
+
+        const validation = validateIR(irProgram);
+        if (!validation.valid) {
+          logGPU(`Op "${tag.name}" IR validation failed: ${validation.errors.map(e => e.message).join('; ')}`);
+          continue;
+        }
+
+        const wgsl = generateWGSL(irProgram, wgslConfig);
+        const pipeline = this.createPipelineWithLayout(wgsl, `expr-${tag.name}`);
+
+        const bg0 = this.createBindGroup(readBuf, writeBuf, paramsBuf);
+        const bg1 = this.createBindGroup(writeBuf, readBuf, paramsBuf);
+
+        this.expressionPasses.push({ name: tag.name, pipeline, bindGroups: [bg0, bg1], enabled: true });
+        logGPU(`Op "${tag.name}" compiled to GPU`);
+      } catch (e) {
+        logGPU(`Op "${tag.name}" compile failed: ${e instanceof Error ? e.message : e}`);
+      }
+    }
+
+    logGPU(`Ops recompiled (${ruleTags.length} rule, ${postRuleTags.length} post-rule, ${this.expressionPasses.length} expr passes)`);
+  }
 
   /**
    * Run only the expression/visual passes without the main rule.
@@ -637,21 +556,21 @@ export class GPURuleRunner {
     }
 
     // 1. Pre-rule ops — link-sourced fast-path evaluations (CPU)
-    const tags = this.preset.expression_tags;
-    if (tags) {
-      for (const tag of tags) {
-        if (tag.phase === 'pre-rule') {
-          entries.push({
-            id: `pre-rule-${tag.name}`,
-            name: tag.name,
-            type: 'pre-rule-op',
-            phase: 'pre-rule',
-            enabled: tag.enabled !== false,
-            executionContext: 'cpu',
-            sourceId: tag.name,
-            index: idx++,
-          });
-        }
+    // Use allTags (live registry) when available, fall back to preset for backward compat
+    const preRuleSrc = allTags ?? this.preset.expression_tags ?? [];
+    for (const tag of preRuleSrc) {
+      if (tag.phase === 'pre-rule') {
+        entries.push({
+          id: `pre-rule-${tag.name}`,
+          name: tag.name,
+          type: 'pre-rule-op',
+          phase: 'pre-rule',
+          enabled: tag.enabled !== false,
+          executionContext: 'cpu',
+          sourceId: tag.name,
+          opId: (tag as { id?: string }).id,
+          index: idx++,
+        });
       }
     }
 
@@ -670,20 +589,37 @@ export class GPURuleRunner {
       });
     }
 
-    // 3. Post-rule expression passes + visual mapping passes (GPU)
-    // expressionPasses contains both post-rule ops AND visual mapping passes in order
-    for (const pass of this.expressionPasses) {
-      const isVisual = pass.name === 'visual-ramp' || pass.name === 'visual-script';
-      entries.push({
-        id: isVisual ? pass.name : `post-rule-${pass.name}`,
-        name: isVisual ? (pass.name === 'visual-ramp' ? 'Color Ramp' : 'Color Script') : pass.name,
-        type: isVisual ? 'visual-mapping' : 'post-rule-op',
-        phase: isVisual ? 'visual' : 'post-rule',
-        enabled: pass.enabled,
-        executionContext: 'gpu',
-        sourceId: pass.name,
-        index: idx++,
-      });
+    // 3. Post-rule ops (GPU) — use allTags so disabled ops still appear
+    if (allTags) {
+      for (const tag of allTags) {
+        if (tag.phase === 'post-rule') {
+          entries.push({
+            id: `post-rule-${tag.name}`,
+            name: tag.name,
+            type: 'post-rule-op',
+            phase: 'post-rule',
+            enabled: tag.enabled !== false,
+            executionContext: 'gpu',
+            sourceId: tag.name,
+            opId: tag.id,
+            index: idx++,
+          });
+        }
+      }
+    } else {
+      // Fallback: use compiled passes (no allTags available)
+      for (const pass of this.expressionPasses) {
+        entries.push({
+          id: `post-rule-${pass.name}`,
+          name: pass.name,
+          type: 'post-rule-op',
+          phase: 'post-rule',
+          enabled: pass.enabled,
+          executionContext: 'gpu',
+          sourceId: pass.name,
+          index: idx++,
+        });
+      }
     }
 
     return entries;
@@ -727,42 +663,16 @@ export class GPURuleRunner {
   }
 
   /**
-   * Reorder an expression/visual pass within the compiled expressionPasses array.
+   * Reorder an expression pass within the compiled expressionPasses array.
    * Changes actual GPU dispatch order — no recompilation needed.
-   * Constrains reorder to non-visual passes only (visual passes stay at the end).
    * Also reorders the preset config expression_tags array to stay in sync.
    */
   reorderPass(name: string, newIndex: number): boolean {
-    // Find all non-visual passes (the reorderable set)
-    const nonVisualIndices: number[] = [];
-    for (let i = 0; i < this.expressionPasses.length; i++) {
-      const p = this.expressionPasses[i];
-      if (p.name !== 'visual-ramp' && p.name !== 'visual-script') {
-        nonVisualIndices.push(i);
-      }
-    }
-    const curLocalIdx = nonVisualIndices.findIndex(
-      (gi) => this.expressionPasses[gi].name === name,
-    );
-    if (curLocalIdx < 0 || newIndex < 0 || newIndex >= nonVisualIndices.length || curLocalIdx === newIndex) return false;
+    const curIdx = this.expressionPasses.findIndex(p => p.name === name);
+    if (curIdx < 0 || newIndex < 0 || newIndex >= this.expressionPasses.length || curIdx === newIndex) return false;
 
-    // Remove from current global position
-    const curGlobalIdx = nonVisualIndices[curLocalIdx];
-    const [moved] = this.expressionPasses.splice(curGlobalIdx, 1);
-
-    // Recompute non-visual indices after removal
-    const updatedIndices: number[] = [];
-    for (let i = 0; i < this.expressionPasses.length; i++) {
-      const p = this.expressionPasses[i];
-      if (p.name !== 'visual-ramp' && p.name !== 'visual-script') {
-        updatedIndices.push(i);
-      }
-    }
-    // Insert at new local position
-    const insertGlobal = newIndex < updatedIndices.length
-      ? updatedIndices[newIndex]
-      : (updatedIndices.length > 0 ? updatedIndices[updatedIndices.length - 1] + 1 : this.expressionPasses.length);
-    this.expressionPasses.splice(insertGlobal, 0, moved);
+    const [moved] = this.expressionPasses.splice(curIdx, 1);
+    this.expressionPasses.splice(newIndex, 0, moved);
 
     // Keep preset config expression_tags in sync (same-phase reorder)
     if (this.preset.expression_tags) {

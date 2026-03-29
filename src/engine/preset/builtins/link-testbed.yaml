@@ -77,11 +77,11 @@ rule:
         self.age = 0.0
 
 visual_mappings:
-  - property: "alive"
-    channel: "color"
-    mapping:
-      "0": "#000000"
-      "1": "#00ff00"
+  - type: "script"
+    code: |
+      self.colorR = 0.0
+      self.colorG = alive
+      self.colorB = 0.0
 
 initial_state:
   type: "script"

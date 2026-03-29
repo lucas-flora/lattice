@@ -51,12 +51,18 @@ See `docs/ARCHITECTURE.md` for the full system architecture document (north star
 ### Tick Pipeline Order (GPU)
 1. Update env params uniform (current slider values)
 2. Execute rule stages (1..N GPU compute dispatches, buffer swap after each)
-3. Execute expression tag passes (post-rule GPU compute)
-4. Execute visual mapping pass (ramp or script → GPU compute, writes colorR/G/B/alpha)
-5. Fragment shader reads colorR/G/B/alpha → render
+3. Execute post-rule op passes (expression tags + visual mappings — all unified, GPU compute)
+4. Fragment shader reads colorR/G/B/alpha → render
+
+### Node Editor & Decompiler
+Code ↔ nodes are fully bidirectional. The decompiler uses IR-based decompilation:
+`code → PythonParser → IR → walk IR → create visual NodeGraph`. The compiler goes
+the other direction: `NodeGraph → NodeCompiler → Python code → prettifyCode → tag`.
+All views (card view, inspector, node editor) stay in sync via the expression store.
+Rule-phase ops recompile GPU rule stages dynamically (not just post-rule ops).
 
 ### Visual Mapping
-Colors are NEVER written in rules. Three types: `discrete` (fragment shader dead/alive), `ramp` (RampCompiler → IR → WGSL gradient), `script` (PythonParser → IR → WGSL freeform). All defined in YAML `visual_mappings` section.
+Colors are NEVER written in rules. Visual mappings are regular post-rule ops (same compile path as every other op) that write colorR/G/B via GPU compute. Registered with `owner: { type: 'visual' }` to attach to the Visual scene node. The fragment shader only reads colorR/G/B/alpha from the buffer. Fallback: if no color mapper writes colorR/G/B, first cell property renders as grayscale. Every preset MUST have a visual mapping script.
 
 ### Multi-Stage Rules
 `rule.stages[]` as alternative to `rule.compute`. Each stage is a separate GPU dispatch. Supports `iterations: N` for solvers. Fire uses 8 stages (17 dispatches/tick).

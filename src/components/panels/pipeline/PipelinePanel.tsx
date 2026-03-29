@@ -93,14 +93,8 @@ function PipelineContent() {
   const preRuleOps = useMemo(() => entries.filter((e) => e.type === 'pre-rule-op'), [entries]);
   const ruleStages = useMemo(() => entries.filter((e) => e.type === 'rule-stage'), [entries]);
   const postRuleOps = useMemo(() => entries.filter((e) => e.type === 'post-rule-op'), [entries]);
-  const visualMappings = useMemo(() => entries.filter((e) => e.type === 'visual-mapping'), [entries]);
-
   const handleSelectEntry = useCallback((entry: PipelineEntry) => {
-    if (entry.type === 'visual-mapping' && visualNodeId) {
-      uiStoreActions.focusOp(null);
-      uiStoreActions.selectPipelineEntry(null);
-      sceneStoreActions.select(visualNodeId);
-    } else if (entry.type === 'interaction-op') {
+    if (entry.type === 'interaction-op') {
       // Sync brush toolbar: select the brush matching this interaction op
       const brushIdx = interactionOps.indexOf(entry);
       if (brushIdx >= 0) brushStoreActions.selectByIndex(brushIdx);
@@ -207,12 +201,12 @@ function PipelineContent() {
       },
       {
         label: 'Move Up',
-        hidden: idxInPhase <= 0 || entry.type === 'visual-mapping',
+        hidden: idxInPhase <= 0,
         action: () => handleReorder(entry.id, idxInPhase - 1),
       },
       {
         label: 'Move Down',
-        hidden: idxInPhase >= phaseEntries.length - 1 || entry.type === 'visual-mapping',
+        hidden: idxInPhase >= phaseEntries.length - 1,
         action: () => handleReorder(entry.id, idxInPhase + 1),
       },
       {
@@ -297,7 +291,7 @@ function PipelineContent() {
             onToggleEnabled={handleToggleEnabled}
             onEntryContextMenu={handleEntryContextMenu}
             isFirstSection
-            isLastSection={preRuleOps.length === 0 && ruleStages.length === 0 && postRuleOps.length === 0 && visualMappings.length === 0}
+            isLastSection={preRuleOps.length === 0 && ruleStages.length === 0 && postRuleOps.length === 0}
           />
           <PipelineSection
             title="Pre-Rule Ops"
@@ -309,7 +303,7 @@ function PipelineContent() {
             onReorder={handleReorder}
             onEntryContextMenu={handleEntryContextMenu}
             isFirstSection={interactionOps.length === 0}
-            isLastSection={ruleStages.length === 0 && postRuleOps.length === 0 && visualMappings.length === 0}
+            isLastSection={ruleStages.length === 0 && postRuleOps.length === 0}
           />
           <PipelineSection
             title="Rule Stages"
@@ -321,7 +315,7 @@ function PipelineContent() {
             onReorder={handleReorder}
             onEntryContextMenu={handleEntryContextMenu}
             isFirstSection={interactionOps.length === 0 && preRuleOps.length === 0}
-            isLastSection={postRuleOps.length === 0 && visualMappings.length === 0}
+            isLastSection={postRuleOps.length === 0}
           />
           <PipelineSection
             title="Post-Rule Ops"
@@ -333,17 +327,6 @@ function PipelineContent() {
             onReorder={handleReorder}
             onEntryContextMenu={handleEntryContextMenu}
             isFirstSection={interactionOps.length === 0 && preRuleOps.length === 0 && ruleStages.length === 0}
-            isLastSection={visualMappings.length === 0}
-          />
-          <PipelineSection
-            title="Visual Mapping"
-            entries={visualMappings}
-            executionContext="gpu"
-            selectedId={focusedOpId ?? selectedPipelineEntryId}
-            onSelectEntry={handleSelectEntry}
-            onToggleEnabled={handleToggleEnabled}
-            onEntryContextMenu={handleEntryContextMenu}
-            isFirstSection={interactionOps.length === 0 && preRuleOps.length === 0 && ruleStages.length === 0 && postRuleOps.length === 0}
             isLastSection
           />
         </div>

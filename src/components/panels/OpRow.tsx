@@ -8,7 +8,7 @@
 
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import type { Operator } from '@/engine/expression/types';
 import { commandRegistry } from '@/commands/CommandRegistry';
 import { useSceneStore, sceneStoreActions } from '@/store/sceneStore';
@@ -44,6 +44,13 @@ function OpEditForm({
   const [name, setName] = useState(op.name);
   const [code, setCode] = useState(op.code);
   const [phase, setPhase] = useState(op.phase);
+
+  // Sync from prop when op is updated externally (e.g., node editor auto-compile)
+  useEffect(() => {
+    setCode(op.code);
+    setName(op.name);
+    setPhase(op.phase);
+  }, [op.code, op.name, op.phase]);
 
   const ioDisplay =
     op.inputs.length > 0 || op.outputs.length > 0

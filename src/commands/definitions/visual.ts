@@ -31,16 +31,9 @@ const AddStopParams = z.object({
   color: z.string().default('#ffffff'),
 }).describe('{ nodeId, t, color? }');
 
-/** After a visual mapping edit, recompile the GPU ramp/script pass */
+/** After a visual mapping edit, trigger full recompilation through the unified op path */
 function triggerVisualRecompile(controller: SimulationController): void {
-  const gpuRunner = controller.getGPURuleRunner();
-  if (!gpuRunner) return;
-  // Read the updated mappings from the scene store's Visual node
-  const state = useSceneStore.getState();
-  const visualNode = Object.values(state.nodes).find(n => n.type === NODE_TYPES.VISUAL);
-  if (!visualNode) return;
-  const mappings = (visualNode.properties.mappings ?? []) as Array<Record<string, unknown>>;
-  gpuRunner.recompileVisualMapping(mappings as any);
+  controller.onTagChanged();
 }
 
 export function registerVisualCommands(

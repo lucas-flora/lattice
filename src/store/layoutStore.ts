@@ -88,13 +88,13 @@ const DEFAULTS: LayoutState = {
   terminalMode: 'docked',
   terminalHeight: 250,
 
-  isDrawer1Open: false,
+  isDrawer1Open: true,
   drawer1Mode: 'docked',
   drawer1Width: 280,
   drawer1SplitRatio: 0.35,
   drawer1TopTab: 'tree',
 
-  isDrawer2Open: false,
+  isDrawer2Open: true,
   drawer2Mode: 'docked',
   drawer2Width: 280,
 
@@ -110,16 +110,16 @@ const DEFAULTS: LayoutState = {
   fullscreenViewportId: null,
 
   // Legacy aliases — kept in sync
-  isLeftDrawerOpen: false,
+  isLeftDrawerOpen: true,
   leftDrawerMode: 'docked',
   leftDrawerWidth: 280,
   isScriptPanelOpen: false,
   scriptPanelMode: 'docked',
   scriptPanelWidth: 300,
-  isParamPanelOpen: false,
+  isParamPanelOpen: true,
   paramPanelMode: 'docked',
   paramPanelWidth: 280,
-  isInspectorOpen: false,
+  isInspectorOpen: true,
   inspectorMode: 'docked',
   inspectorWidth: 280,
 };

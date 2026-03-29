@@ -510,7 +510,8 @@ function GenericCards({
 // ---------------------------------------------------------------------------
 
 export function CardViewPanel({ defaultFilters }: CardViewPanelProps) {
-  const initFilters = defaultFilters ?? ['cells'];
+  const allFilterKeys: FilterKey[] = FILTER_DEFS.map(f => f.key);
+  const initFilters = defaultFilters ?? allFilterKeys;
   const [activeFilters, setActiveFilters] = useState<Set<FilterKey>>(new Set(initFilters));
   const [collapsedSections, setCollapsedSections] = useState<Set<FilterKey>>(new Set());
   const [showOpAddForm, setShowOpAddForm] = useState(false);

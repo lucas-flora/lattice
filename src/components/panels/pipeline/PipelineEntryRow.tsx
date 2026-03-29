@@ -18,7 +18,6 @@ const TYPE_STYLES: Record<PipelineEntry['type'], { label: string; class: string;
   'rule-stage':    { label: 'rule',    class: 'bg-blue-500/15 text-blue-400',     dotColor: 'bg-blue-400' },
   'pre-rule-op':   { label: 'pre',     class: 'bg-zinc-700 text-zinc-400',        dotColor: 'bg-zinc-500' },
   'post-rule-op':  { label: 'post',    class: 'bg-green-500/15 text-green-400',   dotColor: 'bg-green-400' },
-  'visual-mapping':{ label: 'visual',  class: 'bg-purple-500/15 text-purple-400', dotColor: 'bg-purple-400' },
 };
 
 const LINE_ENABLED = 'rgba(74, 222, 128, 0.2)';

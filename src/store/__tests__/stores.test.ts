@@ -33,7 +33,7 @@ describe('Zustand Stores', () => {
   it('TestLayoutStore_InitializesWithDefaults', () => {
     const state = useLayoutStore.getState();
     expect(state.isTerminalOpen).toBe(false);
-    expect(state.isParamPanelOpen).toBe(false);
+    expect(state.isParamPanelOpen).toBe(true);
     expect(state.terminalHeight).toBe(250);
     expect(state.paramPanelWidth).toBe(280);
     expect(state.terminalMode).toBe('docked');

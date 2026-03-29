@@ -10,6 +10,7 @@ import type { CommandRegistry } from '../CommandRegistry';
 import type { SimulationController } from '../SimulationController';
 import type { EventBus } from '../../engine/core/EventBus';
 import type { EasingType } from '../../engine/expression/types';
+import { useSceneStore, sceneStoreActions } from '../../store/sceneStore';
 
 const VALID_EASINGS = ['linear', 'smoothstep', 'easeIn', 'easeOut', 'easeInOut'] as const;
 
@@ -167,6 +168,15 @@ export function registerOpCommands(
     },
   });
 
+  /** Sync parent scene node's enabled state when an op is toggled */
+  const syncSceneNodeEnabled = (tagId: string, enabled: boolean) => {
+    const nodes = useSceneStore.getState().nodes;
+    const parentNode = Object.values(nodes).find(n => n.tags.includes(tagId));
+    if (parentNode) {
+      sceneStoreActions.updateNode(parentNode.id, { enabled });
+    }
+  };
+
   /**
    * Sync the GPU runner's internal pass/stage enabled state to match a tag.
    *
@@ -216,7 +226,9 @@ export function registerOpCommands(
       }
       tagRegistry.enable(id);
       syncRunnerEnabled(tag, true);
+      syncSceneNodeEnabled(id, true);
       eventBus.emit('tag:updated', { id, enabled: true });
+      controller.onTagChanged();
       return { success: true, data: { id, enabled: true } };
     },
   });
@@ -238,7 +250,9 @@ export function registerOpCommands(
       }
       tagRegistry.disable(id);
       syncRunnerEnabled(tag, false);
+      syncSceneNodeEnabled(id, false);
       eventBus.emit('tag:updated', { id, enabled: false });
+      controller.onTagChanged();
       return { success: true, data: { id, enabled: false } };
     },
   });

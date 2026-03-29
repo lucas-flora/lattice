@@ -207,23 +207,37 @@ export function registerSceneCommands(
   });
 
   // --- scene.enable / scene.disable ---
+  // Propagates to attached ops so the GPU pipeline stays in sync.
   registry.register({
     name: 'scene.enable',
-    description: 'Enable a node',
+    description: 'Enable a node and its attached ops',
     category: 'scene',
     params: z.object({ id: z.string() }),
     execute: async (params) => {
       const { id } = params as { id: string };
 
+      let attachedTagIds: string[] = [];
       const graph = controller.getSceneGraph?.();
       if (graph) {
         const node = graph.getNode(id);
         if (!node) return { success: false, error: `Node '${id}' not found` };
         node.enabled = true;
+        attachedTagIds = [...node.tags];
         const json = graph.toJSON();
         sceneStoreActions.setTree(json.nodes, json.rootIds);
       } else {
+        const storeNode = useSceneStore.getState().nodes[id];
+        attachedTagIds = storeNode?.tags ?? [];
         sceneStoreActions.updateNode(id, { enabled: true });
+      }
+
+      // Propagate to attached ops — update tag registry directly, one recompile at end
+      const tagRegistry = controller.getTagRegistry();
+      if (tagRegistry && attachedTagIds.length > 0) {
+        for (const tagId of attachedTagIds) {
+          tagRegistry.enable(tagId);
+        }
+        controller.onTagChanged();
       }
 
       eventBus.emit('scene:nodeUpdated', { id, enabled: true });
@@ -233,21 +247,34 @@ export function registerSceneCommands(
 
   registry.register({
     name: 'scene.disable',
-    description: 'Disable a node',
+    description: 'Disable a node and its attached ops',
     category: 'scene',
     params: z.object({ id: z.string() }),
     execute: async (params) => {
       const { id } = params as { id: string };
 
+      let attachedTagIds: string[] = [];
       const graph = controller.getSceneGraph?.();
       if (graph) {
         const node = graph.getNode(id);
         if (!node) return { success: false, error: `Node '${id}' not found` };
         node.enabled = false;
+        attachedTagIds = [...node.tags];
         const json = graph.toJSON();
         sceneStoreActions.setTree(json.nodes, json.rootIds);
       } else {
+        const storeNode = useSceneStore.getState().nodes[id];
+        attachedTagIds = storeNode?.tags ?? [];
         sceneStoreActions.updateNode(id, { enabled: false });
+      }
+
+      // Propagate to attached ops — update tag registry directly, one recompile at end
+      const tagRegistry = controller.getTagRegistry();
+      if (tagRegistry && attachedTagIds.length > 0) {
+        for (const tagId of attachedTagIds) {
+          tagRegistry.disable(tagId);
+        }
+        controller.onTagChanged();
       }
 
       eventBus.emit('scene:nodeUpdated', { id, enabled: false });

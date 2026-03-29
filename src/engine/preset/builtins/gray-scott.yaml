@@ -87,18 +87,39 @@ rule:
     self.v = clamp(v + env_dt * (env_Dv * lap_v + uvv - (env_F + env_k) * v), 0.0, 1.0)
 
 visual_mappings:
-  - property: "v"
-    channel: "color"
-    type: "ramp"
-    range: [0.0, 1.0]
-    stops:
-      - { t: 0.0, color: "#000033" }
-      - { t: 0.15, color: "#000066" }
-      - { t: 0.3, color: "#0066ff" }
-      - { t: 0.5, color: "#00ccff" }
-      - { t: 0.7, color: "#ffffff" }
-      - { t: 0.85, color: "#ff6600" }
-      - { t: 1.0, color: "#ff3300" }
+  - type: "script"
+    code: |
+      val = clamp(v, 0.0, 1.0)
+      r = 0.0
+      g = 0.0
+      b = 0.2
+      f = smoothstep(0.0, 0.15, val)
+      r = mix(r, 0.0, f)
+      g = mix(g, 0.0, f)
+      b = mix(b, 0.4, f)
+      f = smoothstep(0.15, 0.3, val)
+      r = mix(r, 0.0, f)
+      g = mix(g, 0.4, f)
+      b = mix(b, 1.0, f)
+      f = smoothstep(0.3, 0.5, val)
+      r = mix(r, 0.0, f)
+      g = mix(g, 0.8, f)
+      b = mix(b, 1.0, f)
+      f = smoothstep(0.5, 0.7, val)
+      r = mix(r, 1.0, f)
+      g = mix(g, 1.0, f)
+      b = mix(b, 1.0, f)
+      f = smoothstep(0.7, 0.85, val)
+      r = mix(r, 1.0, f)
+      g = mix(g, 0.4, f)
+      b = mix(b, 0.0, f)
+      f = smoothstep(0.85, 1.0, val)
+      r = mix(r, 1.0, f)
+      g = mix(g, 0.2, f)
+      b = mix(b, 0.0, f)
+      self.colorR = r
+      self.colorG = g
+      self.colorB = b
 
 initial_state:
   type: "script"

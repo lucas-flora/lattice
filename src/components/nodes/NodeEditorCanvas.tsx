@@ -321,6 +321,9 @@ function NodeEditorCanvasInner({ graph, onGraphChange }: NodeEditorCanvasProps) 
         if (type === 'PropertyRead') defaultData.address = 'cell.alive';
         if (type === 'PropertyWrite') defaultData.address = 'cell.alive';
         if (type === 'Compare') defaultData.operator = '>';
+        if (type === 'CodeBlock') defaultData.code = '0';
+        if (type === 'NeighborRead') { defaultData.dx = 0; defaultData.dy = 0; defaultData.property = 'alive'; }
+        if (type === 'NeighborSum') { defaultData.property = 'alive'; }
 
         newNode = {
           id,
@@ -466,12 +469,9 @@ function NodeEditorCanvasInner({ graph, onGraphChange }: NodeEditorCanvasProps) 
         (srcType === 'array' && tgtType === 'scalar')
       )
         return true;
-      // Implicit bool↔scalar (numpy bools are ints: True=1, False=0)
-      if (
-        (srcType === 'bool' && tgtType === 'scalar') ||
-        (srcType === 'scalar' && tgtType === 'bool')
-      )
-        return true;
+      // Implicit bool↔scalar↔array (all f32 on GPU: bools are 0.0/1.0)
+      const numericTypes = new Set(['bool', 'scalar', 'array']);
+      if (numericTypes.has(srcType) && numericTypes.has(tgtType)) return true;
       return false;
     },
     [reactFlowInstance, resolvePortType],

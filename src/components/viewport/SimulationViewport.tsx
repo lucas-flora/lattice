@@ -17,7 +17,7 @@ import { useRef, useEffect, useCallback } from 'react';
 import { LatticeRenderer } from '@/renderer/LatticeRenderer';
 import { CameraController } from '@/renderer/CameraController';
 import { OrbitCameraController } from '@/renderer/OrbitCameraController';
-import { GPUGridRenderer, parseVisualMappingColors, type GPUCameraState, type ColorMappingConfig } from '@/renderer/GPUGridRenderer';
+import { GPUGridRenderer, type GPUCameraState, type ColorMappingConfig } from '@/renderer/GPUGridRenderer';
 import { getController } from '@/components/AppShell';
 import { eventBus } from '@/engine/core/EventBus';
 import { commandRegistry } from '@/commands/CommandRegistry';
@@ -506,58 +506,24 @@ export function SimulationViewport({ viewportId = 'viewport-1' }: SimulationView
         gpuGridRenderer = new GPUGridRenderer(gpuCanvas);
         gpuGridRenderer.setClearColor(useUiStore.getState().viewportBgColor);
         const layout = gpuRunner.getPropertyLayout();
-        // Primary property = what the renderer displays. Use visual_mappings color
-        // property as the single source of truth, falling back to first cell property.
-        const visualColorProp = currentSim.preset.visual_mappings?.find(m => m.channel === 'color')?.property;
-        const presetPrimaryName = visualColorProp
-          ?? currentSim.preset.cell_properties?.[0]?.name;
-        const primaryProp = (presetPrimaryName && layout.find(p => p.name === presetPrimaryName)) || layout[0];
 
-        // Determine color mapping from visual_mappings — the single source of truth
+        // First cell property = grayscale fallback when no color mapper writes colorR/G/B
+        const firstUserPropName = currentSim.preset.cell_properties?.[0]?.name;
+        const fallbackProp = (firstUserPropName && layout.find(p => p.name === firstUserPropName)) || layout[0];
+
         const colorR = layout.find(p => p.name === 'colorR');
         const colorG = layout.find(p => p.name === 'colorG');
         const colorB = layout.find(p => p.name === 'colorB');
         const alpha = layout.find(p => p.name === 'alpha');
 
-        // Check if rule or expression tags write to colorR/G/B → direct mode
-        const exprTags = currentSim.preset.expression_tags ?? [];
-        const exprOutputs = exprTags.flatMap(t => t.outputs ?? []);
-        const ruleBodies = currentSim.preset.rule.stages
-          ? currentSim.preset.rule.stages.map(s => s.compute).join('\n')
-          : (currentSim.preset.rule.compute ?? '');
-        const writesColor = exprOutputs.some(o => o.includes('colorR') || o.includes('colorG') || o.includes('colorB'))
-          || ruleBodies.includes('self.colorR') || ruleBodies.includes('self.colorG') || ruleBodies.includes('self.colorB');
-        const writesAlpha = exprOutputs.some(o => o.includes('alpha'))
-          || ruleBodies.includes('self.alpha');
-        const useDirectColor = (writesColor || writesAlpha) && colorR && colorG && colorB;
-
-        // Parse visual_mappings to determine rendering mode and colors
-        const colorVm = currentSim.preset.visual_mappings?.find(m => m.channel === 'color');
-        const parsed = parseVisualMappingColors(colorVm?.mapping as Record<string, unknown> | undefined);
-
-        let colorMapping: ColorMappingConfig;
-        const baseConfig = {
-          primaryOffset: primaryProp?.offset ?? 0,
-          gradientOffset: primaryProp?.offset ?? 0,
+        const colorMapping: ColorMappingConfig = {
+          fallbackOffset: fallbackProp?.offset ?? 0,
           colorROffset: colorR?.offset ?? 0,
           colorGOffset: colorG?.offset ?? 0,
           colorBOffset: colorB?.offset ?? 0,
           alphaOffset: alpha?.offset ?? 0,
-          deadColor: parsed.deadColor,
-          aliveColor: parsed.aliveColor,
         };
-
-        // Ramp visual mapping pass writes colorR/G/B via compute → force direct mode
-        const hasRampPass = gpuRunner.hasVisualMappingPass();
-
-        if (hasRampPass || useDirectColor) {
-          colorMapping = { mode: 'direct', ...baseConfig };
-        } else if (parsed.mode === 'gradient') {
-          colorMapping = { mode: 'gradient', ...baseConfig };
-        } else {
-          colorMapping = { mode: 'binary', ...baseConfig };
-        }
-        logGPU(`Color mode: ${colorMapping.mode} (exprTags=${exprTags.length}, writesColor=${writesColor}, writesAlpha=${writesAlpha}, preset=${currentSim.preset.meta.name})`);
+        logGPU(`Color mapping: fallback=${firstUserPropName ?? 'layout[0]'}, preset=${currentSim.preset.meta.name}`);
 
         gpuGridRenderer.setSimulation(
           gpuRunner.getReadBuffer(),
@@ -565,7 +531,7 @@ export function SimulationViewport({ viewportId = 'viewport-1' }: SimulationView
           layout,
           colorMapping,
         );
-        logGPU(`Renderer ready (mode=${colorMapping.mode}, stride=${gpuRunner.getStride()}, ${gpuRunner.getWidth()}×${gpuRunner.getHeight()})`);
+        logGPU(`Renderer ready (stride=${gpuRunner.getStride()}, ${gpuRunner.getWidth()}×${gpuRunner.getHeight()})`);
       } catch (err) {
         logGPU(`Renderer setup FAILED: ${err}`);
         gpuGridRenderer = null;

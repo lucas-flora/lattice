@@ -66,15 +66,12 @@ rule:
     self.ant_dir = new_dir
 
 visual_mappings:
-  - property: "color"
-    channel: "color"
-    mapping:
-      "0": "#ffffff"
-      "1": "#000000"
-  - property: "ant"
-    channel: "color"
-    mapping:
-      "1": "#ff0000"
+  - type: "script"
+    code: |
+      base = 1.0 - color
+      self.colorR = base * (1.0 - ant) + ant
+      self.colorG = base * (1.0 - ant)
+      self.colorB = base * (1.0 - ant)
 
 initial_state:
   type: "script"

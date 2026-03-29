@@ -35,8 +35,6 @@ function buildLabel(entry: PipelineEntry, indexInPhase: number): string {
       return `PRE-RULE OP — ${entry.name}`;
     case 'post-rule-op':
       return `OP — ${entry.name}`;
-    case 'visual-mapping':
-      return `VISUAL MAPPING — ${entry.name}`;
     default:
       return entry.name;
   }
@@ -83,24 +81,6 @@ function getEntryCode(
         if (tag) return tag.code.trim();
       }
       return '# (no source)';
-    }
-    case 'visual-mapping': {
-      const mappings = preset.visual_mappings;
-      if (!mappings || mappings.length === 0) return '# (no visual mappings)';
-      // Script type: return code
-      const scriptMapping = mappings.find((m) => m.type === 'script' && m.code);
-      if (scriptMapping?.code) return scriptMapping.code.trim();
-      // Ramp type: describe
-      const rampMapping = mappings.find((m) => m.type === 'ramp');
-      if (rampMapping) {
-        const prop = rampMapping.property ?? 'unknown';
-        const stops = rampMapping.stops ?? [];
-        const stopsStr = stops
-          .map((s) => `${s.t}: ${s.color ?? `alpha=${s.alpha}`}`)
-          .join(', ');
-        return `# Ramp mapping: ${prop} → gradient [${stopsStr}]`;
-      }
-      return '# (discrete mapping)';
     }
     default:
       return '# (unknown entry type)';

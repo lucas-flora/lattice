@@ -3,48 +3,12 @@
  * simulation storage buffers. Zero CPU readback for rendering.
  *
  * Renders cells as a 2D grid with camera transform (pan + zoom).
- * Supports binary alive/dead coloring and continuous gradient modes.
+ * Reads colorR/G/B/alpha written by visual mapping compute passes.
+ * Fallback: first cell property → grayscale when no color mapper is present.
  */
 
 import { GPUContext } from '@/engine/gpu/GPUContext';
 import type { PropertyLayout } from '@/engine/gpu/types';
-
-/** Parse a hex color string (#rrggbb) to [r, g, b] in 0-1 range */
-function hexToRgb01(hex: string): [number, number, number] {
-  const h = hex.replace('#', '');
-  return [
-    parseInt(h.slice(0, 2), 16) / 255,
-    parseInt(h.slice(2, 4), 16) / 255,
-    parseInt(h.slice(4, 6), 16) / 255,
-  ];
-}
-
-/** Parse a visual_mapping color entry to determine rendering mode and colors */
-export function parseVisualMappingColors(mapping?: Record<string, unknown>): {
-  mode: 'binary' | 'gradient';
-  deadColor: [number, number, number];
-  aliveColor: [number, number, number];
-} {
-  if (!mapping) return { mode: 'binary', deadColor: [0, 0, 0], aliveColor: [1, 1, 1] };
-
-  // Continuous gradient: has min/max keys
-  if ('min' in mapping && 'max' in mapping) {
-    return {
-      mode: 'gradient',
-      deadColor: hexToRgb01(String(mapping.min)),
-      aliveColor: hexToRgb01(String(mapping.max)),
-    };
-  }
-
-  // Discrete binary: has "0"/"1" keys
-  const deadHex = mapping['0'] as string | undefined;
-  const aliveHex = mapping['1'] as string | undefined;
-  return {
-    mode: 'binary',
-    deadColor: deadHex ? hexToRgb01(deadHex) : [0, 0, 0],
-    aliveColor: aliveHex ? hexToRgb01(aliveHex) : [1, 1, 1],
-  };
-}
 
 /** Camera state in grid-space units */
 export interface GPUCameraState {
@@ -57,18 +21,13 @@ export interface GPUCameraState {
 
 /** How to map cell data to colors */
 export interface ColorMappingConfig {
-  mode: 'binary' | 'gradient' | 'direct';
-  /** Property offset for the primary value (alive, u, v, etc.) */
-  primaryOffset: number;
-  /** For gradient mode: which property to visualize */
-  gradientOffset: number;
-  /** For direct mode: offsets of colorR, colorG, colorB, alpha in the buffer */
+  /** Offset of first cell property — grayscale fallback when no color mapper wrote colorR/G/B */
+  fallbackOffset: number;
+  /** Offsets of colorR, colorG, colorB, alpha in the buffer */
   colorROffset: number;
   colorGOffset: number;
   colorBOffset: number;
   alphaOffset: number;
-  deadColor: [number, number, number];
-  aliveColor: [number, number, number];
 }
 
 // Render params: 32 floats/u32s = 128 bytes (aligned to 16)
@@ -97,38 +56,38 @@ const FRAGMENT_SHADER = /* wgsl */`
 @group(0) @binding(1) var<uniform> rp: RenderParams;
 
 struct RenderParams {
-  gridWidth: u32,       // 0
-  gridHeight: u32,      // 1
-  stride: u32,          // 2
-  primaryOffset: u32,   // 3
-  canvasWidth: f32,     // 4
-  canvasHeight: f32,    // 5
-  viewOffsetX: f32,     // 6
-  viewOffsetY: f32,     // 7
-  viewScale: f32,       // 8
-  deadR: f32,           // 9
-  deadG: f32,           // 10
-  deadB: f32,           // 11
-  aliveR: f32,          // 12
-  aliveG: f32,          // 13
-  aliveB: f32,          // 14
-  mappingMode: u32,     // 15: 0=binary, 1=gradient, 2=direct
-  gradientOffset: u32,  // 16
-  colorROffset: u32,    // 17
-  colorGOffset: u32,    // 18
-  colorBOffset: u32,    // 19
-  alphaOffset: u32,     // 20
-  bgR: f32,             // 21
-  bgG: f32,             // 22
-  bgB: f32,             // 23
-  _pad0: u32,           // 24
-  _pad1: u32,           // 25
-  _pad2: u32,           // 26
-  _pad3: u32,           // 27
-  _pad4: u32,           // 28
-  _pad5: u32,           // 29
-  _pad6: u32,           // 30
-  _pad7: u32,           // 31
+  gridWidth: u32,         // 0
+  gridHeight: u32,        // 1
+  stride: u32,            // 2
+  fallbackOffset: u32,    // 3: first cell property, used for grayscale when no color mapper
+  canvasWidth: f32,       // 4
+  canvasHeight: f32,      // 5
+  viewOffsetX: f32,       // 6
+  viewOffsetY: f32,       // 7
+  viewScale: f32,         // 8
+  colorROffset: u32,      // 9
+  colorGOffset: u32,      // 10
+  colorBOffset: u32,      // 11
+  alphaOffset: u32,       // 12
+  bgR: f32,               // 13
+  bgG: f32,               // 14
+  bgB: f32,               // 15
+  _pad0: u32,             // 16
+  _pad1: u32,             // 17
+  _pad2: u32,             // 18
+  _pad3: u32,             // 19
+  _pad4: u32,             // 20
+  _pad5: u32,             // 21
+  _pad6: u32,             // 22
+  _pad7: u32,             // 23
+  _pad8: u32,             // 24
+  _pad9: u32,             // 25
+  _pad10: u32,            // 26
+  _pad11: u32,            // 27
+  _pad12: u32,            // 28
+  _pad13: u32,            // 29
+  _pad14: u32,            // 30
+  _pad15: u32,            // 31
 }
 
 @fragment
@@ -146,37 +105,22 @@ fn fs(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
   }
 
   let idx = u32(gy) * rp.gridWidth + u32(gx);
-  let primary = cells[idx * rp.stride + rp.primaryOffset];
 
-  var r: f32; var g: f32; var b: f32; var a: f32 = 1.0;
+  // Read color written by visual mapping compute pass
+  let cr = cells[idx * rp.stride + rp.colorROffset];
+  let cg = cells[idx * rp.stride + rp.colorGOffset];
+  let cb = cells[idx * rp.stride + rp.colorBOffset];
+  let a = cells[idx * rp.stride + rp.alphaOffset];
 
-  if (rp.mappingMode == 2u) {
-    // Direct mode: read colorR/G/B and alpha from buffer
-    let cr = cells[idx * rp.stride + rp.colorROffset];
-    let cg = cells[idx * rp.stride + rp.colorGOffset];
-    let cb = cells[idx * rp.stride + rp.colorBOffset];
-    let ca = cells[idx * rp.stride + rp.alphaOffset];
-    // Use direct color if any channel is set, else fall back to alive mapping
-    let hasColor = (cr + cg + cb) > 0.001;
-    if (hasColor) {
-      r = cr; g = cg; b = cb;
-    } else {
-      r = mix(rp.deadR, rp.aliveR, primary);
-      g = mix(rp.deadG, rp.aliveG, primary);
-      b = mix(rp.deadB, rp.aliveB, primary);
-    }
-    a = ca;
-  } else if (rp.mappingMode == 1u) {
-    // Gradient mode: linear interpolation between dead/alive (min/max) colors
-    let v = clamp(cells[idx * rp.stride + rp.gradientOffset], 0.0, 1.0);
-    r = mix(rp.deadR, rp.aliveR, v);
-    g = mix(rp.deadG, rp.aliveG, v);
-    b = mix(rp.deadB, rp.aliveB, v);
+  var r: f32; var g: f32; var b: f32;
+
+  // Fallback: if no color mapper wrote to colorR/G/B, show first property as grayscale
+  let hasColor = (cr + cg + cb) > 0.001;
+  if (hasColor) {
+    r = cr; g = cg; b = cb;
   } else {
-    // Binary mode: lerp between dead/alive colors
-    r = mix(rp.deadR, rp.aliveR, primary);
-    g = mix(rp.deadG, rp.aliveG, primary);
-    b = mix(rp.deadB, rp.aliveB, primary);
+    let v = clamp(cells[idx * rp.stride + rp.fallbackOffset], 0.0, 1.0);
+    r = v; g = v; b = v;
   }
 
   // Apply alpha (premultiplied blend toward background)
@@ -303,28 +247,19 @@ export class GPUGridRenderer {
     u32View[0] = gridWidth;
     u32View[1] = gridHeight;
     u32View[2] = stride;
-    u32View[3] = this.colorMapping.primaryOffset;
+    u32View[3] = this.colorMapping.fallbackOffset;
     f32View[4] = camera.canvasWidth;
     f32View[5] = camera.canvasHeight;
     f32View[6] = camera.offsetX;
     f32View[7] = camera.offsetY;
     f32View[8] = camera.scale;
-    f32View[9] = this.colorMapping.deadColor[0];
-    f32View[10] = this.colorMapping.deadColor[1];
-    f32View[11] = this.colorMapping.deadColor[2];
-    f32View[12] = this.colorMapping.aliveColor[0];
-    f32View[13] = this.colorMapping.aliveColor[1];
-    f32View[14] = this.colorMapping.aliveColor[2];
-    u32View[15] = this.colorMapping.mode === 'gradient' ? 1 : this.colorMapping.mode === 'direct' ? 2 : 0;
-    u32View[16] = this.colorMapping.gradientOffset;
-    u32View[17] = this.colorMapping.colorROffset;
-    u32View[18] = this.colorMapping.colorGOffset;
-    u32View[19] = this.colorMapping.colorBOffset;
-    u32View[20] = this.colorMapping.alphaOffset;
-    // Background color (from viewport bg picker)
-    f32View[21] = this.clearColor.r;
-    f32View[22] = this.clearColor.g;
-    f32View[23] = this.clearColor.b;
+    u32View[9] = this.colorMapping.colorROffset;
+    u32View[10] = this.colorMapping.colorGOffset;
+    u32View[11] = this.colorMapping.colorBOffset;
+    u32View[12] = this.colorMapping.alphaOffset;
+    f32View[13] = this.clearColor.r;
+    f32View[14] = this.clearColor.g;
+    f32View[15] = this.clearColor.b;
 
     this.device.queue.writeBuffer(this.renderParamsBuffer, 0, data);
 

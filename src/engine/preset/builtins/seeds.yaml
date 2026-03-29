@@ -33,11 +33,11 @@ rule:
         self.alive = 0.0
 
 visual_mappings:
-  - property: "alive"
-    channel: "color"
-    mapping:
-      "0": "#0a0a1a"
-      "1": "#ff6633"
+  - type: "script"
+    code: |
+      self.colorR = mix(0.039, 1.0, alive)
+      self.colorG = mix(0.039, 0.4, alive)
+      self.colorB = mix(0.102, 0.2, alive)
 
 initial_state:
   type: "script"

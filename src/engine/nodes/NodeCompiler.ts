@@ -1,8 +1,10 @@
 /**
- * NodeCompiler: compiles a NodeGraph into Python code.
+ * NodeCompiler: compiles a NodeGraph into PythonParser-compatible code.
+ *
+ * Output targets the GPU pipeline: PythonParser → IR → WGSL → GPU compute.
  *
  * 1. Topological sort nodes by edges
- * 2. Each node emits Python via its compile() function
+ * 2. Each node emits PythonParser-compatible code via its compile() function
  * 3. Single-use expressions are inlined (no temp vars)
  * 4. Multi-use expressions get readable variable names
  * 5. Embeds the full NodeGraph as a @nodegraph JSON comment for round-trip
@@ -99,14 +101,14 @@ export function compileNodeGraph(graph: NodeGraph): CompilationResult {
       const kind = od.objectKind;
 
       const readExpr = (prop: string) => {
-        if (kind === 'cell-type') return `cell['${prop}']`;
-        if (kind === 'environment') return `env['${prop}']`;
-        return `glob['${prop}']`;
+        if (kind === 'cell-type') return prop;
+        if (kind === 'environment') return `env.${prop}`;
+        return `glob.${prop}`;
       };
       const writeStmt = (prop: string, val: string) => {
         if (kind === 'cell-type') return `self.${prop} = ${val}`;
-        if (kind === 'environment') return `env['${prop}'] = ${val}`;
-        return `glob['${prop}'] = ${val}`;
+        if (kind === 'environment') return `# WARNING: env writes are not GPU-compatible\n# env.${prop} = ${val}`;
+        return `# WARNING: global writes are not GPU-compatible\n# glob.${prop} = ${val}`;
       };
       const addrPrefix = kind === 'cell-type' ? 'cell' : kind === 'environment' ? 'env' : 'global';
 
@@ -189,6 +191,12 @@ export function compileNodeGraph(graph: NodeGraph): CompilationResult {
 
     // Check downstream usage — inline if single consumer
     const outEdges = edges.filter((e) => e.source === nodeId);
+
+    // CodeBlock with no consumers → emit as statement lines
+    if (node.type === 'CodeBlock' && outEdges.length === 0) {
+      lines.push(expr);
+      continue;
+    }
     if (outEdges.length <= 1) {
       // Single use (or unused) → inline the expression, no temp var
       for (const edge of outEdges) {
@@ -196,7 +204,16 @@ export function compileNodeGraph(graph: NodeGraph): CompilationResult {
       }
     } else {
       // Multiple consumers → emit a readable temp var
-      const varName = `_${node.type.toLowerCase()}_${nodeId}`;
+      let varName: string;
+      if (node.type === 'NeighborSum') {
+        varName = 'n';
+      } else if (node.type === 'NeighborRead') {
+        const prop = (node.data.property as string) ?? 'nb';
+        varName = `nb_${prop}`;
+      } else {
+        varName = `_${node.type.toLowerCase()}_${nodeId}`;
+      }
+      if (usedVarNames.has(varName)) varName = `${varName}_${nodeId}`;
       lines.push(`${varName} = ${expr}`);
       for (const edge of outEdges) {
         portExprs.set(`${edge.target}:${edge.targetPort}`, varName);
